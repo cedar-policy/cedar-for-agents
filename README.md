@@ -1,17 +1,19 @@
-## My Project
+# Cedar For Agents
 
-TODO: Fill this README out!
+![Cedar Logo](./logo.svg)
 
-Be sure to:
+This repository contains the source code for Rust crates that provide functionality to secure Agentic workflows using the [cedar](https://github.com/cedar-policy/cedar) authorization policy language.
 
-* Change the title in this README
-* Edit your repository description on GitHub
+## Crates in This Workspace
 
 ## Security
 
-See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
+See [SECURITY](SECURITY.md) for more information.
+
+## Contributing
+
+We welcome contributions from the community. Please either file an issue, or see [CONTRIBUTING](CONTRIBUTING.md)
 
 ## License
 
 This project is licensed under the Apache-2.0 License.
-

@@ -1,27 +1,80 @@
-# Contributing Guidelines
+# Contributing to Cedar For Agents
 
-Thank you for your interest in contributing to our project. Whether it's a bug report, new feature, correction, or additional
-documentation, we greatly value feedback and contributions from our community.
+Cedar For Agents is a community project that is built and maintained by people just like **you**. We're glad you're interested in helping out. There are several different ways you can do it, but before we talk about that, let's talk about how to get started.
 
-Please read through this document before submitting any issues or pull requests to ensure we have all the necessary
-information to effectively respond to your bug report or contribution.
+## First Things First
 
+1. **When in doubt, open an issue** - For almost any type of contribution, the first step is opening an issue. Even if you think you already know what the solution is, writing down a description of the problem you're trying to solve will help everyone get context when they review your pull request. If it's truly a trivial change (e.g. spelling error), you can skip this step — but as the subject says, when in doubt, [open an issue](https://github.com/cedar-policy/cedar/issues). DO NOT open an issue for security-related issues. See [SECURITY](SECURITY.md).
+2. **Only submit your own work**  (or work you have sufficient rights to submit) - Please make sure that any code or documentation you submit is your work or you have the rights to submit. We respect the intellectual property rights of others.
 
-## Reporting Bugs/Feature Requests
+## Ways to Contribute
 
-We welcome you to use the GitHub issue tracker to report bugs or suggest features.
+### Bug Reports
 
-When filing an issue, please check existing open, or recently closed, issues to make sure somebody else hasn't already
-reported the issue. Please try to include as much information as you can. Details like these are incredibly useful:
+A bug is when software behaves in a way that you didn't expect and the developer didn't intend. To help us understand what's going on, we first want to make sure you're working from the latest version. Please make sure you're testing against the latest version.
+
+Once you've confirmed that the bug still exists in the latest version, you'll want to check to make sure it's not something we already know about on the [open issues GitHub page](https://github.com/cedar-policy/cedar/issues).
+
+If you've upgraded to the latest version and you can't find it in our open issues list, then you'll need to tell us how to reproduce it. To make the behavior as clear as possible, please provide all inputs and CLI commands.
+
+The easier it is for us to recreate your problem, the faster it is likely to be fixed. Please try to include as much information as you can. Details like these are incredibly useful:
 
 * A reproducible test case or series of steps
 * The version of our code being used
 * Any modifications you've made relevant to the bug
 * Anything unusual about your environment or deployment
 
+### Feature Requests
 
-## Contributing via Pull Requests
-Contributions via pull requests are much appreciated. Before sending us a pull request, please ensure that:
+If you've thought of a way that Cedar For Agents could be better, we want to hear about it. We track feature requests using GitHub, so please feel free to open an issue which describes the feature you would like to see, why you need it, and how it should work.
+
+### Documentation Changes
+
+If you would like to contribute to the documentation hosted on docs.cedarpolicy.com, please do so in the [documentation](https://github.com/cedar-policy/cedar-docs) repo.
+
+### Contributing Code
+
+As with other types of contributions, the first step is to [**open an issue on GitHub**](https://github.com/cedar-policy/cedar-for-agents/issues). Opening an issue before you make changes makes sure that someone else isn't already working on that particular problem. It also lets us all work together to find the right approach before you spend a bunch of time on a PR. So again, when in doubt, open an issue.
+
+If your change would require a change to the Cedar language or SDK, please either submit an issue to [Cedar](https://github.com/cedar-policy/cedar/) or [follow the RFC process](https://github.com/cedar-policy/rfcs) as appropriate.
+
+## Changelog
+
+Cedar For Agents maintains a changelog for the public-facing crate [cedar-policy-mcp-schema-generator](https://github.com/cedar-policy/cedar-for-agents/blob/main/cedar-policy-mcp-schema-generator/CHANGELOG.md), which adhere to the [Keep A Changelog](https://keepachangelog.com/en/1.0.0/) format. The purpose of the changelog is for the contributors and maintainers to incrementally build release notes throughout the development process to avoid the painful and error-prone process of attempting to compile the release notes at release time. On each release the "unreleased" entries of the changelog are moved under the appropriate header. Also, incrementally building the changelog provides a concise, human-readable list of significant features that have been added to the unreleased version under development. Changelogs for all release branches and the `main` branch are all maintained on the `main` branch of this repository only; you can see the most up-to-date changelogs by following the links above.
+
+### Which changes require a changelog entry?
+
+Changelogs are intended for developers integrating with libraries and APIs, and end-users interacting with Cedar For Agents (collectively referred to as "user"). In short, any change that a user of Cedar For Agents might want to be aware of should be included in the changelog. The changelog is *not* intended to replace the git commit log that developers of Cedar For Agents itself rely upon. The following are some examples of changes that should be in the changelog:
+
+* A newly added feature
+* A fix for a user-facing bug
+* Dependency updates
+* Fixes for security issues
+
+The following are some examples where a changelog entry is not necessary:
+
+* Adding, modifying, or fixing tests
+* An incremental PR for a larger feature (such features should include *one* changelog entry for the feature)
+* Documentation changes or code refactoring
+* Build-related changes
+
+### Where should I put my changelog entry?
+
+Add your entry under the "Unreleased" section, as part of the same PR that introduces the change.
+In the (rarer) case that your PR is to a `release/X.Y.Z` branch rather than `main`, make a separate PR to `main` which adds the changelog entry under the appropriate version header of the `main` changelog.
+
+## Review Process
+
+We deeply appreciate everyone who takes the time to make a contribution. We will review all contributions as quickly as possible. As a reminder, [opening an issue](https://github.com/cedar-policy/cedar-for-agents/issues) discussing your change before you make it is the best way to smooth the PR process. This will prevent a rejection because someone else is already working on the problem, or because the solution is incompatible with the architectural direction.
+Also take a minute to review our [style guide](style_guide.md). Most of this is handled by automated tooling, but there are a few conventions around documentation and error messages you should review before making a larger contribution.
+
+During the PR process, expect that there will be some back-and-forth. Please try to respond to comments in a timely fashion, and if you don't wish to continue with the PR, let us know. If a PR takes too many iterations for its complexity or size, we may reject it. Additionally, if you stop responding we may close the PR as abandoned. In either case, if you feel this was done in error, please add a comment on the PR.
+
+If we accept the PR, a maintainer will merge your change and usually take care of backporting it to appropriate branches ourselves.
+
+If we reject the PR, we will close the pull request with a comment explaining why. This decision isn't always final: if you feel we have misunderstood your intended change or otherwise think that we should reconsider then please continue the conversation with a comment on the PR and we'll do our best to address any further points you raise.
+
+ Before sending us a pull request, please ensure that:
 
 1. You are working against the latest source on the *main* branch.
 2. You check existing open, and recently merged, pull requests to make sure someone else hasn't addressed the problem already.
@@ -36,23 +89,19 @@ To send us a pull request, please:
 5. Send us a pull request, answering any default questions in the pull request interface.
 6. Pay attention to any automated CI failures reported in the pull request, and stay involved in the conversation.
 
-GitHub provides additional document on [forking a repository](https://help.github.com/articles/fork-a-repo/) and
-[creating a pull request](https://help.github.com/articles/creating-a-pull-request/).
+GitHub provides additional document on [forking a repository](https://help.github.com/articles/fork-a-repo/) and [creating a pull request](https://help.github.com/articles/creating-a-pull-request/).
 
+## Finding Ways to Contribute
 
-## Finding contributions to work on
-Looking at the existing issues is a great way to find something to contribute on. As our projects, by default, use the default GitHub issue labels (enhancement/bug/duplicate/help wanted/invalid/question/wontfix), looking at any 'help wanted' issues is a great place to start.
-
+Looking at the existing issues is a great way to find something to contribute on. Looking at any issues labeled as 'help-wanted' or 'good-first-issue' is a great place to start.
 
 ## Code of Conduct
-This project has adopted the [Amazon Open Source Code of Conduct](https://aws.github.io/code-of-conduct).
-For more information see the [Code of Conduct FAQ](https://aws.github.io/code-of-conduct-faq) or contact
-opensource-codeofconduct@amazon.com with any additional questions or comments.
 
+This project has adopted the [Amazon Open Source Code of Conduct](https://aws.github.io/code-of-conduct). For more information see the [Code of Conduct FAQ](https://aws.github.io/code-of-conduct-faq) or contact [opensource-codeofconduct@amazon.com](mailto:opensource-codeofconduct@amazon.com) with any additional questions or comments.
 
-## Security issue notifications
-If you discover a potential security issue in this project we ask that you notify AWS/Amazon Security via our [vulnerability reporting page](http://aws.amazon.com/security/vulnerability-reporting/). Please do **not** create a public github issue.
+## Security Issues
 
+If you discover a potential security issue in this project we ask that you notify AWS/Amazon Security via our [vulnerability reporting page](http://aws.amazon.com/security/vulnerability-reporting/). Please do **not** create a public github issue. See [SECURITY](SECURITY.md).
 
 ## Licensing
 
