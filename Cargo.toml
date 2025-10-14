@@ -1,4 +1,7 @@
 [workspace]
+members = [
+	"cedar-policy-mcp-schema-generator",
+]
 
 resolver = "2"
 
