@@ -26,6 +26,7 @@ use crate::description::{
 
 use std::collections::{HashMap, HashSet};
 
+#[allow(clippy::needless_pass_by_value, reason = "Better interface")]
 pub(crate) fn server_description_from_json_value(
     json_value: LocatedValue,
 ) -> Result<ServerDescription, DeserializationError> {
@@ -37,7 +38,7 @@ pub(crate) fn server_description_from_json_value(
                         Ok(ServerDescription::new(
                             tools
                                 .iter()
-                                .map(|tool_json| tool_description_from_json_value_inner(tool_json))
+                                .map(tool_description_from_json_value_inner)
                                 .collect::<Result<_, _>>()?,
                             typedefs_from_json_value(
                                 result.get("$defs"),
@@ -67,7 +68,7 @@ pub(crate) fn server_description_from_json_value(
         Ok(ServerDescription::new(
             tools
                 .iter()
-                .map(|tool_json| tool_description_from_json_value_inner(tool_json))
+                .map(tool_description_from_json_value_inner)
                 .collect::<Result<_, _>>()?,
             HashMap::new(),
         ))
@@ -80,6 +81,7 @@ pub(crate) fn server_description_from_json_value(
     }
 }
 
+#[allow(clippy::needless_pass_by_value, reason = "Better interface")]
 pub(crate) fn tool_description_from_json_value(
     json_value: LocatedValue,
 ) -> Result<ToolDescription, DeserializationError> {
@@ -231,7 +233,7 @@ fn required_from_json_value(
                         })
                     })
                     .collect::<Result<_, _>>()
-            } else if let Some(false) = json_value.get_bool() {
+            } else if json_value.get_bool() == Some(false) {
                 Ok(HashSet::new())
             } else {
                 Err(DeserializationError::unexpected_type(
@@ -261,7 +263,7 @@ fn properties_from_json_value(
                         property_from_json_value(ptype_json, name, required)
                     })
                     .collect::<Result<_, _>>()
-            } else if let Some(false) = json_value.get_bool() {
+            } else if json_value.get_bool() == Some(false) {
                 Ok(Vec::new())
             } else {
                 Err(DeserializationError::unexpected_type(
@@ -320,7 +322,7 @@ fn property_type_from_json_value(
                                     ContentType::PropertyType
                                 ))
                             }).collect::<Result<Vec<_>,_>>()?;
-                            if variants.len() == 0 {
+                            if variants.is_empty() {
                                 Err(DeserializationError::unexpected_value(
                                     enum_json,
                                     "Expected non-empty list of variants for `enum` attribute.",
@@ -424,7 +426,7 @@ fn property_type_from_json_value(
             if let Some(type_arr) = union_json.get_array() {
                 let types = type_arr
                     .iter()
-                    .map(|type_json| property_type_from_json_value(type_json))
+                    .map(property_type_from_json_value)
                     .collect::<Result<_, _>>()?;
                 Ok(PropertyType::Union { types })
             } else {

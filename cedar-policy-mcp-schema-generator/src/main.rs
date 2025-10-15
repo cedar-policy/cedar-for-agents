@@ -14,10 +14,7 @@
  * limitations under the License.
  */
 
-use cedar_policy_mcp_schema_generator::{
-    description::ServerDescription,
-    schema_generator::SchemaGenerator,
-};
+use cedar_policy_mcp_schema_generator::{SchemaGenerator, ServerDescription};
 use miette::Result;
 
 use cedar_policy_core::extensions::Extensions;
@@ -26,6 +23,11 @@ use cedar_policy_core::validator::json_schema::Fragment;
 fn main() -> Result<()> {
     let description = ServerDescription::from_json_file("tool.json")?;
 
+    #[allow(
+        clippy::unwrap_used,
+        reason = "It's fine if this demo main file panics"
+    )]
+    // PANIC SAFETY: not part of the library
     let schema_file = std::fs::File::open("tool.cedarschema").unwrap();
     let schema = Fragment::from_cedarschema_file(schema_file, Extensions::all_available())?.0;
     let mut generator = SchemaGenerator::new(schema)?;

@@ -145,7 +145,7 @@ impl Diagnostic for MissingExpectedAttributeError {
     }
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        if self.existing_keys.len() == 0 {
+        if self.existing_keys.is_empty() {
             Some(Box::new(std::iter::once(miette::LabeledSpan::new(
                 Some("Empty object".into()),
                 self.loc.start(),
@@ -159,7 +159,7 @@ impl Diagnostic for MissingExpectedAttributeError {
     }
 
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        let aliases = if self.aliases.len() == 0 {
+        let aliases = if self.aliases.is_empty() {
             String::new()
         } else {
             format!(" (aliases: `{}`)", self.aliases.join("`, `"))

@@ -14,6 +14,14 @@
  * limitations under the License.
  */
 
-pub mod description;
-pub mod err;
-pub mod schema_generator;
+mod description;
+mod err;
+mod schema_generator;
+
+pub use description::{
+    err::DeserializationError, parser::err::ParseError, Parameters, Property, PropertyType,
+    PropertyTypeDef, ServerDescription, ToolDescription,
+};
+
+pub use err::SchemaGeneratorError;
+pub use schema_generator::SchemaGenerator;

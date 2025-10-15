@@ -18,6 +18,22 @@ use miette::Diagnostic;
 use smol_str::SmolStr;
 use thiserror::Error;
 
+#[derive(Debug, Clone)]
+pub struct ConflictingSchemaNameError {
+    name: SmolStr,
+}
+
+#[derive(Debug, Clone)]
+pub struct UndefinedReferenceType {
+    name: String,
+    namespace: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct EmptyEnum {
+    name: String,
+}
+
 #[derive(Debug, Error, Diagnostic)]
 pub enum SchemaGeneratorError {
     #[error("Expected schema with a single namespace")]
@@ -44,13 +60,7 @@ pub enum SchemaGeneratorError {
         help("Input Cedar Schema stub should specify at least 1 Entity Type as an MCP Resource.")
     )]
     NoResourceTypes,
-    #[error("Multiple MCP contexts are labeled with the same attribute name: `{0}`")]
-    #[diagnostic(
-        code(schema_generator::conflicting_mcp_contexts),
-        help("Input Cedar Schema stub should assign each MCP context a unique attribute name.")
-    )]
-    ConflictingContextNames(String),
-    #[error("{0}")]
+    #[error(transparent)]
     #[diagnostic(
         code(schema_generator::use_of_reserved_name),
         help("MCP Tool Description Schemas make use of reserved keyword.")
@@ -61,38 +71,39 @@ pub enum SchemaGeneratorError {
         code(schema_generator::use_of_reserved_name),
         help("MCP Tool Description Schemas make use of reserved keyword.")
     )]
-    ReservedCommonTypeName(#[from] cedar_policy_core::validator::json_schema::ReservedCommonTypeBasenameError),
+    ReservedCommonTypeName(
+        #[from] cedar_policy_core::validator::json_schema::ReservedCommonTypeBasenameError,
+    ),
     #[error("Conflicting type definitions between MCP Tool Description and input Cedar Schema Stub File.")]
     #[diagnostic(
         code(schema_generator::conflicting_name),
-        help("MCP Tool Description's Schema makes use of a type name `{0}` that conflicts with a type defined in the input Cedar Schema stub file.")
+        help("MCP Tool Description's Schema makes use of a type name `{}` that conflicts with a type defined in the input Cedar Schema stub file.", .0.name)
     )]
-    ConflictingSchemaNameError(SmolStr),
+    ConflictingSchemaNameError(ConflictingSchemaNameError),
     #[error("Undefined Reference Type.")]
     #[diagnostic(
         code(schema_generator::undefined_reference),
-        help("`{name}` not found in `{namespace}` (or any containing namespace). Ensure that every `$ref` type in input MCP Tool Description references a defined type definition.")
+        help("`{}` not found in `{}` (or any containing namespace). Ensure that every `$ref` type in input MCP Tool Description references a defined type definition.", .0.name, .0.namespace)
     )]
-    UndefinedReferenceType {
-        name: String,
-        namespace: String,
-    },
-
-
-    //     #[error("Annotation of MCP Shared Context cannot be used as a Context attribute name.")]
-//     #[diagnostic(
-//         code(schema_generator::invalid_mcp_context_name),
-//         help("Input Cedar Schema stub should annotate all MCP Shared contexts with valid attribute names.")
-//     )]
-//     ContextNameAnnotation(#[from] cedar_policy_core::parser::err::ParseError),
+    UndefinedReferenceType(UndefinedReferenceType),
+    #[error("Empty Enum Type: {}.", .0.name)]
+    #[diagnostic(
+        code(schema_generator::empty_enum_type),
+        help("Ensure MCP Description does not contain any enum types with empty array of variant names.")
+    )]
+    EmptyEnumChoice(EmptyEnum),
 }
 
 impl SchemaGeneratorError {
     pub(crate) fn conflicting_name(name: SmolStr) -> Self {
-        Self::ConflictingSchemaNameError(name)
+        Self::ConflictingSchemaNameError(ConflictingSchemaNameError { name })
     }
 
     pub(crate) fn undefined_ref(name: String, namespace: String) -> Self {
-        Self::UndefinedReferenceType { name, namespace }
+        Self::UndefinedReferenceType(UndefinedReferenceType { name, namespace })
+    }
+
+    pub(crate) fn empty_enum_choice(name: String) -> Self {
+        Self::EmptyEnumChoice(EmptyEnum { name })
     }
 }

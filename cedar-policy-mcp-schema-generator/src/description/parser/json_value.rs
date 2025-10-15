@@ -52,7 +52,7 @@ impl LocatedString {
         &self.loc
     }
 
-    pub(crate) fn to_loc(self) -> Loc {
+    pub(crate) fn into_loc(self) -> Loc {
         self.loc
     }
 
@@ -63,6 +63,10 @@ impl LocatedString {
     }
 
     #[allow(dead_code, reason = "Added for completeness.")]
+    #[allow(
+        clippy::inherent_to_string,
+        reason = "Not provided as a proxy for display"
+    )]
     pub(crate) fn to_string(&self) -> String {
         self.as_str().to_string()
     }
@@ -143,7 +147,7 @@ impl LocatedValue {
     }
 
     #[allow(dead_code, reason = "Added for completeness.")]
-    pub(crate) fn to_loc(self) -> Loc {
+    pub(crate) fn into_loc(self) -> Loc {
         self.loc
     }
 

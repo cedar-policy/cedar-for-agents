@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 
+#[allow(clippy::module_inception)]
 mod description;
 mod deserializer;
 pub mod err;
-mod parser;
+pub mod parser;
 
 pub use description::*;

@@ -42,8 +42,12 @@ impl Token {
         self.kind
     }
 
-    pub(crate) fn to_loc(self) -> Loc {
+    pub(crate) fn into_loc(self) -> Loc {
         self.loc
+    }
+
+    pub(crate) fn as_loc(&self) -> &Loc {
+        &self.loc
     }
 }
 

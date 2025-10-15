@@ -31,7 +31,7 @@ impl JsonParser {
         }
     }
 
-    fn get_object(&mut self, loc: Loc) -> Result<LocatedValue, ParseError> {
+    fn get_object(&mut self, loc: &Loc) -> Result<LocatedValue, ParseError> {
         let mut items = LinkedHashMap::new();
         let mut maybe_empty = true;
 
@@ -40,7 +40,7 @@ impl JsonParser {
             match token.kind() {
                 TokenKind::String => {
                     maybe_empty = false;
-                    let key = LocatedString::new(token.to_loc());
+                    let key = LocatedString::new(token.into_loc());
                     let token = self.tokenizer.get_token()?;
                     if matches!(token.kind(), TokenKind::Colon) {
                         let value = self.get_value()?;
@@ -49,7 +49,7 @@ impl JsonParser {
                             Entry::Occupied(occ) => {
                                 return Err(ParseError::duplicate_key(
                                     occ.key().as_loc().into(),
-                                    key.to_loc(),
+                                    key.into_loc(),
                                 ))
                             }
                             Entry::Vacant(vac) => {
@@ -57,14 +57,17 @@ impl JsonParser {
                             }
                         }
                     } else {
-                        return Err(ParseError::unexpected_token(token.to_loc(), "Expected `:`"));
+                        return Err(ParseError::unexpected_token(
+                            token.into_loc(),
+                            "Expected `:`",
+                        ));
                     }
                     // Finished parsing key-value pair. Check for end or prepare for next key-value pair
                     let token = self.tokenizer.get_token()?;
                     match token.kind() {
                         TokenKind::ObjectEnd => {
                             let start = loc.start();
-                            let end = token.to_loc().end();
+                            let end = token.as_loc().end();
                             return Ok(LocatedValue::new_object(
                                 items,
                                 loc.span((start, end - start)),
@@ -73,7 +76,7 @@ impl JsonParser {
                         TokenKind::Comma => (),
                         _ => {
                             return Err(ParseError::unexpected_token(
-                                token.to_loc(),
+                                token.into_loc(),
                                 "Expected: `,` or `}`.",
                             ))
                         }
@@ -82,7 +85,7 @@ impl JsonParser {
                 // Allow for an empty object
                 TokenKind::ObjectEnd if maybe_empty => {
                     let start = loc.start();
-                    let end = token.to_loc().end();
+                    let end = token.as_loc().end();
                     return Ok(LocatedValue::new_object(
                         items,
                         loc.span((start, end - start)),
@@ -94,13 +97,13 @@ impl JsonParser {
                     } else {
                         "Expected: String."
                     };
-                    return Err(ParseError::unexpected_token(token.to_loc(), msg));
+                    return Err(ParseError::unexpected_token(token.into_loc(), msg));
                 }
             }
         }
     }
 
-    fn get_array(&mut self, loc: Loc) -> Result<LocatedValue, ParseError> {
+    fn get_array(&mut self, loc: &Loc) -> Result<LocatedValue, ParseError> {
         let mut items = Vec::new();
         let mut maybe_empty = true;
 
@@ -108,15 +111,15 @@ impl JsonParser {
             let token = self.tokenizer.get_token()?;
 
             let item = match token.kind() {
-                TokenKind::Null => LocatedValue::new_null(token.to_loc()),
-                TokenKind::Bool(b) => LocatedValue::new_bool(b, token.to_loc()),
-                TokenKind::Number => LocatedValue::new_number(token.to_loc()),
-                TokenKind::String => LocatedValue::new_string(token.to_loc()),
-                TokenKind::ArrayStart => self.get_array(token.to_loc())?,
-                TokenKind::ObjectStart => self.get_object(token.to_loc())?,
+                TokenKind::Null => LocatedValue::new_null(token.into_loc()),
+                TokenKind::Bool(b) => LocatedValue::new_bool(b, token.into_loc()),
+                TokenKind::Number => LocatedValue::new_number(token.into_loc()),
+                TokenKind::String => LocatedValue::new_string(token.into_loc()),
+                TokenKind::ArrayStart => self.get_array(token.as_loc())?,
+                TokenKind::ObjectStart => self.get_object(token.as_loc())?,
                 TokenKind::ArrayEnd if maybe_empty => {
                     let start = loc.start();
-                    let end = token.to_loc().end();
+                    let end = token.as_loc().end();
                     return Ok(LocatedValue::new_array(
                         items,
                         loc.span((start, end - start)),
@@ -128,7 +131,7 @@ impl JsonParser {
                     } else {
                         "Expected: value (i.e., null, Bool, Number, String, Array, or Object)."
                     };
-                    return Err(ParseError::unexpected_token(token.to_loc(), msg));
+                    return Err(ParseError::unexpected_token(token.into_loc(), msg));
                 }
             };
             maybe_empty = false;
@@ -140,7 +143,7 @@ impl JsonParser {
                 TokenKind::Comma => (),
                 TokenKind::ArrayEnd => {
                     let start = loc.start();
-                    let end = token.to_loc().end();
+                    let end = token.as_loc().end();
                     return Ok(LocatedValue::new_array(
                         items,
                         loc.span((start, end - start)),
@@ -148,7 +151,7 @@ impl JsonParser {
                 }
                 _ => {
                     return Err(ParseError::unexpected_token(
-                        token.to_loc(),
+                        token.into_loc(),
                         "Expected: `]` or `,`.",
                     ))
                 }
@@ -159,14 +162,14 @@ impl JsonParser {
     pub(crate) fn get_value(&mut self) -> Result<LocatedValue, ParseError> {
         let token = self.tokenizer.get_token()?;
         match token.kind() {
-            TokenKind::Null => Ok(LocatedValue::new_null(token.to_loc())),
-            TokenKind::Bool(b) => Ok(LocatedValue::new_bool(b, token.to_loc())),
-            TokenKind::Number => Ok(LocatedValue::new_number(token.to_loc())),
-            TokenKind::String => Ok(LocatedValue::new_string(token.to_loc())),
-            TokenKind::ArrayStart => self.get_array(token.to_loc()),
-            TokenKind::ObjectStart => self.get_object(token.to_loc()),
+            TokenKind::Null => Ok(LocatedValue::new_null(token.into_loc())),
+            TokenKind::Bool(b) => Ok(LocatedValue::new_bool(b, token.into_loc())),
+            TokenKind::Number => Ok(LocatedValue::new_number(token.into_loc())),
+            TokenKind::String => Ok(LocatedValue::new_string(token.into_loc())),
+            TokenKind::ArrayStart => self.get_array(token.as_loc()),
+            TokenKind::ObjectStart => self.get_object(token.as_loc()),
             _ => Err(ParseError::unexpected_token(
-                token.to_loc(),
+                token.into_loc(),
                 "Expected: value (i.e., null, Bool, Number, String, Array, or Object).",
             )),
         }
