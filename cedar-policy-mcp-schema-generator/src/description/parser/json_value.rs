@@ -210,7 +210,6 @@ impl LocatedValue {
         }
     }
 
-
     /// Returns if this `LocatedValue` is of kind String
     #[allow(dead_code, reason = "Added for completeness.")]
     pub(crate) fn is_string(&self) -> bool {

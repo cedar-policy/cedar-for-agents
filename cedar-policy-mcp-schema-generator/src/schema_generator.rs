@@ -37,7 +37,7 @@ use std::collections::{btree_map::Entry, BTreeMap};
 /// A type that allows constructing a Cedar Schema (Fragment)
 /// from an input Cedar Schema Stub that defines the Cedar Type of
 /// MCP principals, MCP Resources, and common MCP Contects.
-/// 
+///
 /// The Generator can then be populated with a number of tool / server
 /// descriptions to auto-generate Cedar actions corresponding one-to-one
 /// with each tool description.

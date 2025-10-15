@@ -101,10 +101,7 @@ impl DeserializationError {
 
     /// Construct a new `DeserizlizerError` signaling that input JSON file could not be read
     pub(crate) fn read_error(file_name: PathBuf, error: String) -> Self {
-        Self::ReadError(ReadError{
-            file_name,
-            error,
-        })
+        Self::ReadError(ReadError { file_name, error })
     }
 }
 
@@ -210,5 +207,5 @@ impl std::fmt::Display for ContentType {
 #[derive(Debug)]
 pub struct ReadError {
     file_name: PathBuf,
-    error: String
+    error: String,
 }

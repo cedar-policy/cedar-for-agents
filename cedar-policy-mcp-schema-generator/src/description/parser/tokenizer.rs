@@ -64,7 +64,7 @@ impl Token {
     pub(crate) fn to_str(&self) -> Option<&str> {
         self.loc.snippet().and_then(|s| {
             if s.len() >= 2 {
-                Some(&s[1..s.len()-1])
+                Some(&s[1..s.len() - 1])
             } else {
                 None
             }
@@ -360,64 +360,145 @@ mod test {
     #[test]
     fn tokenizes_comma() {
         let mut tokenizer = Tokenizer::new(",");
-        assert_matches!(tokenizer.get_token(), Ok(Token { kind: TokenKind::Comma, .. }));
-        assert_matches!(tokenizer.get_token(), Err(TokenizerError::UnexpectedEof( .. )));
+        assert_matches!(
+            tokenizer.get_token(),
+            Ok(Token {
+                kind: TokenKind::Comma,
+                ..
+            })
+        );
+        assert_matches!(
+            tokenizer.get_token(),
+            Err(TokenizerError::UnexpectedEof(..))
+        );
     }
 
     #[test]
     fn tokenizes_colon() {
         let mut tokenizer = Tokenizer::new(":");
-        assert_matches!(tokenizer.get_token(), Ok(Token { kind: TokenKind::Colon, .. }));
-        assert_matches!(tokenizer.get_token(), Err(TokenizerError::UnexpectedEof( .. )));
+        assert_matches!(
+            tokenizer.get_token(),
+            Ok(Token {
+                kind: TokenKind::Colon,
+                ..
+            })
+        );
+        assert_matches!(
+            tokenizer.get_token(),
+            Err(TokenizerError::UnexpectedEof(..))
+        );
     }
 
     #[test]
     fn tokenizes_array_begin() {
         let mut tokenizer = Tokenizer::new("[");
-        assert_matches!(tokenizer.get_token(), Ok(Token { kind: TokenKind::ArrayStart, .. }));
-        assert_matches!(tokenizer.get_token(), Err(TokenizerError::UnexpectedEof( .. )));
+        assert_matches!(
+            tokenizer.get_token(),
+            Ok(Token {
+                kind: TokenKind::ArrayStart,
+                ..
+            })
+        );
+        assert_matches!(
+            tokenizer.get_token(),
+            Err(TokenizerError::UnexpectedEof(..))
+        );
     }
 
     #[test]
     fn tokenizes_array_end() {
         let mut tokenizer = Tokenizer::new("]");
-        assert_matches!(tokenizer.get_token(), Ok(Token { kind: TokenKind::ArrayEnd, .. }));
-        assert_matches!(tokenizer.get_token(), Err(TokenizerError::UnexpectedEof( .. )));
+        assert_matches!(
+            tokenizer.get_token(),
+            Ok(Token {
+                kind: TokenKind::ArrayEnd,
+                ..
+            })
+        );
+        assert_matches!(
+            tokenizer.get_token(),
+            Err(TokenizerError::UnexpectedEof(..))
+        );
     }
 
     #[test]
     fn tokenizes_object_begin() {
         let mut tokenizer = Tokenizer::new("{");
-        assert_matches!(tokenizer.get_token(), Ok(Token { kind: TokenKind::ObjectStart, .. }));
-        assert_matches!(tokenizer.get_token(), Err(TokenizerError::UnexpectedEof( .. )));
+        assert_matches!(
+            tokenizer.get_token(),
+            Ok(Token {
+                kind: TokenKind::ObjectStart,
+                ..
+            })
+        );
+        assert_matches!(
+            tokenizer.get_token(),
+            Err(TokenizerError::UnexpectedEof(..))
+        );
     }
 
     #[test]
     fn tokenizes_object_end() {
         let mut tokenizer = Tokenizer::new("}");
-        assert_matches!(tokenizer.get_token(), Ok(Token { kind: TokenKind::ObjectEnd, .. }));
-        assert_matches!(tokenizer.get_token(), Err(TokenizerError::UnexpectedEof( .. )));
+        assert_matches!(
+            tokenizer.get_token(),
+            Ok(Token {
+                kind: TokenKind::ObjectEnd,
+                ..
+            })
+        );
+        assert_matches!(
+            tokenizer.get_token(),
+            Err(TokenizerError::UnexpectedEof(..))
+        );
     }
 
     #[test]
     fn tokenize_true() {
         let mut tokenizer = Tokenizer::new("true");
-        assert_matches!(tokenizer.get_token(), Ok(Token { kind: TokenKind::Bool(true), .. }));
-        assert_matches!(tokenizer.get_token(), Err(TokenizerError::UnexpectedEof( .. )));
+        assert_matches!(
+            tokenizer.get_token(),
+            Ok(Token {
+                kind: TokenKind::Bool(true),
+                ..
+            })
+        );
+        assert_matches!(
+            tokenizer.get_token(),
+            Err(TokenizerError::UnexpectedEof(..))
+        );
     }
 
     #[test]
     fn tokenize_false() {
         let mut tokenizer = Tokenizer::new("false");
-        assert_matches!(tokenizer.get_token(), Ok(Token { kind: TokenKind::Bool(false), .. }));
-        assert_matches!(tokenizer.get_token(), Err(TokenizerError::UnexpectedEof( .. )));
+        assert_matches!(
+            tokenizer.get_token(),
+            Ok(Token {
+                kind: TokenKind::Bool(false),
+                ..
+            })
+        );
+        assert_matches!(
+            tokenizer.get_token(),
+            Err(TokenizerError::UnexpectedEof(..))
+        );
     }
 
     #[test]
     fn tokenize_null() {
         let mut tokenizer = Tokenizer::new("null");
-        assert_matches!(tokenizer.get_token(), Ok(Token { kind: TokenKind::Null, .. }));
-        assert_matches!(tokenizer.get_token(), Err(TokenizerError::UnexpectedEof( .. )));
+        assert_matches!(
+            tokenizer.get_token(),
+            Ok(Token {
+                kind: TokenKind::Null,
+                ..
+            })
+        );
+        assert_matches!(
+            tokenizer.get_token(),
+            Err(TokenizerError::UnexpectedEof(..))
+        );
     }
 
     macro_rules! test_tokenize_number {
@@ -425,10 +506,21 @@ mod test {
             #[test]
             fn $test_name() {
                 let mut tokenizer = Tokenizer::new($input);
-                let token = tokenizer.get_token().expect(&format!("Failed to tokenize `{}`", $input));
-                assert_matches!(token, Token { kind: TokenKind::Number, .. });
+                let token = tokenizer
+                    .get_token()
+                    .expect(&format!("Failed to tokenize `{}`", $input));
+                assert_matches!(
+                    token,
+                    Token {
+                        kind: TokenKind::Number,
+                        ..
+                    }
+                );
                 assert_eq!(token.to_number_str(), Some($input));
-                assert_matches!(tokenizer.get_token(), Err(TokenizerError::UnexpectedEof( .. )));
+                assert_matches!(
+                    tokenizer.get_token(),
+                    Err(TokenizerError::UnexpectedEof(..))
+                );
             }
         };
     }
@@ -457,7 +549,10 @@ mod test {
             #[test]
             fn $test_name() {
                 let mut tokenizer = Tokenizer::new($input);
-                assert_matches!(tokenizer.get_token(), Err(TokenizerError::InvalidNumberLiteral( .. )));
+                assert_matches!(
+                    tokenizer.get_token(),
+                    Err(TokenizerError::InvalidNumberLiteral(..))
+                );
             }
         };
     }
@@ -475,10 +570,21 @@ mod test {
             #[test]
             fn $test_name() {
                 let mut tokenizer = Tokenizer::new(&format!("\"{}\"", $input));
-                let token = tokenizer.get_token().expect(&format!("Failed to tokenize `{}`", $input));
-                assert_matches!(token, Token { kind: TokenKind::String, .. });
+                let token = tokenizer
+                    .get_token()
+                    .expect(&format!("Failed to tokenize `{}`", $input));
+                assert_matches!(
+                    token,
+                    Token {
+                        kind: TokenKind::String,
+                        ..
+                    }
+                );
                 assert_eq!(token.to_str(), Some($input));
-                assert_matches!(tokenizer.get_token(), Err(TokenizerError::UnexpectedEof( .. )));
+                assert_matches!(
+                    tokenizer.get_token(),
+                    Err(TokenizerError::UnexpectedEof(..))
+                );
             }
         };
     }
@@ -501,7 +607,10 @@ mod test {
             #[test]
             fn $test_name() {
                 let mut tokenizer = Tokenizer::new(&format!("\"{}\"", $input));
-                assert_matches!(tokenizer.get_token(), Err(TokenizerError::UnexpectedEscapeSequence( .. )));
+                assert_matches!(
+                    tokenizer.get_token(),
+                    Err(TokenizerError::UnexpectedEscapeSequence(..))
+                );
             }
         };
     }
@@ -521,7 +630,10 @@ mod test {
             #[test]
             fn $test_name() {
                 let mut tokenizer = Tokenizer::new($input);
-                assert_matches!(tokenizer.get_token(), Err(TokenizerError::UnexpectedEof( .. )));
+                assert_matches!(
+                    tokenizer.get_token(),
+                    Err(TokenizerError::UnexpectedEof(..))
+                );
             }
         };
     }
