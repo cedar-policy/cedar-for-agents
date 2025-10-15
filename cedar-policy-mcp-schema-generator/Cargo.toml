@@ -20,5 +20,8 @@ thiserror = "2.0"
 smol_str = "0.3"
 nonempty = "0.12"
 
+[dev-dependencies]
+cool_asserts = "2.0"
+
 [lints]
 workspace = true

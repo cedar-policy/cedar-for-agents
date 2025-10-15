@@ -26,6 +26,7 @@ use crate::description::{
 
 use std::collections::{HashMap, HashSet};
 
+/// Deserialize an MCP `list_tool` json response into a `ServerDescription`
 #[allow(clippy::needless_pass_by_value, reason = "Better interface")]
 pub(crate) fn server_description_from_json_value(
     json_value: LocatedValue,
@@ -81,6 +82,7 @@ pub(crate) fn server_description_from_json_value(
     }
 }
 
+/// Deserialize an MCP Tool Description json into a `ToolDescription`
 #[allow(clippy::needless_pass_by_value, reason = "Better interface")]
 pub(crate) fn tool_description_from_json_value(
     json_value: LocatedValue,

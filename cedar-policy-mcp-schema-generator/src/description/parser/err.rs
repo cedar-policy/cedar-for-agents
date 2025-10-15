@@ -18,23 +18,28 @@ use super::loc::Loc;
 use miette::Diagnostic;
 use thiserror::Error;
 
+/// Errors Representing JSON parsing errors.
 #[derive(Error, Debug, Diagnostic)]
 pub enum ParseError {
+    /// The parser encountered an error while tokenizing the input string
     #[error(transparent)]
     #[diagnostic(transparent)]
     TokenizerError(#[from] TokenizerError),
 
+    /// The parser encountered an unexpected token while parsing a JSON value
     #[error("Encountered unexpected token while parsing.")]
     #[diagnostic(transparent)]
     UnexpectedToken(LocationFound),
 
+    /// The parser encountered a JSON Object with duplicate keys
     #[error("Duplicate key found")]
     #[diagnostic(transparent)]
     DuplicateKey(DuplicateFound),
 }
 
 impl ParseError {
-    pub fn unexpected_token(loc: Loc, msg: &str) -> Self {
+    /// Create a new `ParseError` representing that the parser encountered an unexpected token
+    pub(crate) fn unexpected_token(loc: Loc, msg: &str) -> Self {
         Self::UnexpectedToken(LocationFound {
             src: loc,
             label: "Found".to_string(),
@@ -43,7 +48,8 @@ impl ParseError {
         })
     }
 
-    pub fn duplicate_key(first: miette::SourceSpan, second: Loc) -> Self {
+    /// Create a new `ParseError` rperesnting that the parser encountered a JSON object with duplicate keys
+    pub(crate) fn duplicate_key(first: miette::SourceSpan, second: Loc) -> Self {
         let loc = second;
         let second = (&loc).into();
         Self::DuplicateKey(DuplicateFound {
@@ -56,24 +62,31 @@ impl ParseError {
     }
 }
 
+/// Errors representing issues encountered while tokenizing a JSON string
 #[derive(Error, Debug, Diagnostic)]
 pub enum TokenizerError {
+    /// The `Tokenizer` encountered end-of-file while trying to get a token
     #[error("Encountered EOF while parsing.")]
     #[diagnostic(transparent)]
     UnexpectedEof(LocationFound),
+    /// The `Tokenizer` encountered an unexpected character while trying to get a token
     #[error("Encountered unexpected token while parsing.")]
     #[diagnostic(transparent)]
     UnexpectedToken(LocationFound),
+    /// The `Tokenizer` encountered an unexpected escape sequence while trying tokenize a string literal
     #[error("Encountered unknown escape sequence while parsing string literal")]
     #[diagnostic(transparent)]
     UnexpectedEscapeSequence(LocationFound),
+    /// The `Tokenizer` encountered an character while trying tokenize a number literal
     #[error("Encountered invalid number literal")]
     #[diagnostic(transparent)]
     InvalidNumberLiteral(LocationFound),
 }
 
 impl TokenizerError {
-    pub fn unexpected_eof(loc: Loc, msg: &str) -> Self {
+    /// Construct a new `TokenizerError` representing that the `Tokenizer`
+    /// unexpectedly encountered the end-of-file while getting a token
+    pub(crate) fn unexpected_eof(loc: Loc, msg: &str) -> Self {
         Self::UnexpectedEof(LocationFound {
             src: loc,
             label: "End of Input".to_string(),
@@ -82,7 +95,9 @@ impl TokenizerError {
         })
     }
 
-    pub fn unexpected_token(loc: Loc, msg: &str) -> Self {
+    /// Construct a new `TokenizerError` representing that the `Tokenizer`
+    /// encountered an unexpected character while getting a token
+    pub(crate) fn unexpected_token(loc: Loc, msg: &str) -> Self {
         Self::UnexpectedToken(LocationFound {
             src: loc,
             label: "Found".to_string(),
@@ -91,7 +106,9 @@ impl TokenizerError {
         })
     }
 
-    pub fn unknown_escape_sequence(loc: Loc, msg: &str) -> Self {
+    /// Construct a new `TokenizerError` representing that the `Tokenizer`
+    /// encountered an unexpected escape sequence while getting a string literal token
+    pub(crate) fn unknown_escape_sequence(loc: Loc, msg: &str) -> Self {
         Self::UnexpectedEscapeSequence(LocationFound {
             src: loc,
             label: "Found".to_string(),
@@ -100,7 +117,9 @@ impl TokenizerError {
         })
     }
 
-    pub fn invalid_number(loc: Loc, msg: &str) -> Self {
+    /// Construct a new `TokenizerError` representing that the `Tokenizer`
+    /// encountered an unexpected character while getting a number literal token
+    pub(crate) fn invalid_number(loc: Loc, msg: &str) -> Self {
         Self::InvalidNumberLiteral(LocationFound {
             src: loc,
             label: "Found".to_string(),
@@ -110,6 +129,7 @@ impl TokenizerError {
     }
 }
 
+/// The source location of an error
 #[derive(Debug, Error)]
 #[error("Problem found.")]
 pub struct LocationFound {
@@ -141,6 +161,7 @@ impl Diagnostic for LocationFound {
     }
 }
 
+/// The source location of a duplicate key's error
 #[derive(Debug, Error)]
 #[error("Duplicates found.")]
 pub struct DuplicateFound {

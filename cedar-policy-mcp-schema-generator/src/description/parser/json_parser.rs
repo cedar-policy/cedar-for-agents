@@ -20,11 +20,14 @@ use super::loc::Loc;
 use super::tokenizer::{TokenKind, Tokenizer};
 use linked_hash_map::{Entry, LinkedHashMap};
 
+/// A Parser for JSON that lazily parses a stream of `LocatedValue`s
+#[derive(Debug)]
 pub(crate) struct JsonParser {
     tokenizer: Tokenizer,
 }
 
 impl JsonParser {
+    /// Create a new JSON Parser to parse the input string
     pub(crate) fn new(input: &str) -> Self {
         Self {
             tokenizer: Tokenizer::new(input),
@@ -159,6 +162,7 @@ impl JsonParser {
         }
     }
 
+    /// Get a single JSON Value (as a `LocatedValue`) from the Parser's input.
     pub(crate) fn get_value(&mut self) -> Result<LocatedValue, ParseError> {
         let token = self.tokenizer.get_token()?;
         match token.kind() {

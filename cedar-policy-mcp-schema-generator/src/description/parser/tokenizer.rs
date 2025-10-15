@@ -17,6 +17,7 @@
 use super::{err::TokenizerError, loc::Loc};
 use std::sync::Arc;
 
+/// The kind of accepted JSON Tokens / Lexemes
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum TokenKind {
     Null,
@@ -31,6 +32,7 @@ pub(crate) enum TokenKind {
     Colon,
 }
 
+/// A JSON `Token` with both its kind and location within the input string
 #[derive(Debug, Clone)]
 pub(crate) struct Token {
     kind: TokenKind,
@@ -38,19 +40,39 @@ pub(crate) struct Token {
 }
 
 impl Token {
+    /// Retrieve what `kind` of lexeme the `Token` represents
     pub(crate) fn kind(&self) -> TokenKind {
         self.kind
     }
 
+    /// Unwrap the `Token` and retrieve its location within the input string
     pub(crate) fn into_loc(self) -> Loc {
         self.loc
     }
 
+    /// Return a reference to the location of the `Token` within the input string
     pub(crate) fn as_loc(&self) -> &Loc {
         &self.loc
     }
+
+    #[cfg(test)]
+    pub(crate) fn to_number_str(&self) -> Option<&str> {
+        self.loc.snippet()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn to_str(&self) -> Option<&str> {
+        self.loc.snippet().and_then(|s| {
+            if s.len() >= 2 {
+                Some(&s[1..s.len()-1])
+            } else {
+                None
+            }
+        })
+    }
 }
 
+/// A Tokenizer that lazily tokenizes the input String
 #[derive(Debug, Clone)]
 pub(crate) struct Tokenizer {
     input: Arc<str>,
@@ -58,8 +80,8 @@ pub(crate) struct Tokenizer {
 }
 
 impl Tokenizer {
-    // Create a new tokenizer which lazily tokenizes the input str.
-    // All tokens track the portion of the input str that corresponds to the token.
+    /// Create a new tokenizer which lazily tokenizes the input str.
+    /// All tokens track the portion of the input str that corresponds to the token.
     pub(crate) fn new(input: &str) -> Self {
         Self {
             input: Arc::from(input),
@@ -279,7 +301,7 @@ impl Tokenizer {
         Ok(())
     }
 
-    // Parse any token from the input str
+    /// Retrieve one `Token` from the `Tokenizer`'s input string
     pub(crate) fn get_token(&mut self) -> Result<Token, TokenizerError> {
         let next = self.next_char()?;
         let start = self.cur_pos - 1;
@@ -328,4 +350,193 @@ impl Tokenizer {
             }
         }
     }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use cool_asserts::assert_matches;
+
+    #[test]
+    fn tokenizes_comma() {
+        let mut tokenizer = Tokenizer::new(",");
+        assert_matches!(tokenizer.get_token(), Ok(Token { kind: TokenKind::Comma, .. }));
+        assert_matches!(tokenizer.get_token(), Err(TokenizerError::UnexpectedEof( .. )));
+    }
+
+    #[test]
+    fn tokenizes_colon() {
+        let mut tokenizer = Tokenizer::new(":");
+        assert_matches!(tokenizer.get_token(), Ok(Token { kind: TokenKind::Colon, .. }));
+        assert_matches!(tokenizer.get_token(), Err(TokenizerError::UnexpectedEof( .. )));
+    }
+
+    #[test]
+    fn tokenizes_array_begin() {
+        let mut tokenizer = Tokenizer::new("[");
+        assert_matches!(tokenizer.get_token(), Ok(Token { kind: TokenKind::ArrayStart, .. }));
+        assert_matches!(tokenizer.get_token(), Err(TokenizerError::UnexpectedEof( .. )));
+    }
+
+    #[test]
+    fn tokenizes_array_end() {
+        let mut tokenizer = Tokenizer::new("]");
+        assert_matches!(tokenizer.get_token(), Ok(Token { kind: TokenKind::ArrayEnd, .. }));
+        assert_matches!(tokenizer.get_token(), Err(TokenizerError::UnexpectedEof( .. )));
+    }
+
+    #[test]
+    fn tokenizes_object_begin() {
+        let mut tokenizer = Tokenizer::new("{");
+        assert_matches!(tokenizer.get_token(), Ok(Token { kind: TokenKind::ObjectStart, .. }));
+        assert_matches!(tokenizer.get_token(), Err(TokenizerError::UnexpectedEof( .. )));
+    }
+
+    #[test]
+    fn tokenizes_object_end() {
+        let mut tokenizer = Tokenizer::new("}");
+        assert_matches!(tokenizer.get_token(), Ok(Token { kind: TokenKind::ObjectEnd, .. }));
+        assert_matches!(tokenizer.get_token(), Err(TokenizerError::UnexpectedEof( .. )));
+    }
+
+    #[test]
+    fn tokenize_true() {
+        let mut tokenizer = Tokenizer::new("true");
+        assert_matches!(tokenizer.get_token(), Ok(Token { kind: TokenKind::Bool(true), .. }));
+        assert_matches!(tokenizer.get_token(), Err(TokenizerError::UnexpectedEof( .. )));
+    }
+
+    #[test]
+    fn tokenize_false() {
+        let mut tokenizer = Tokenizer::new("false");
+        assert_matches!(tokenizer.get_token(), Ok(Token { kind: TokenKind::Bool(false), .. }));
+        assert_matches!(tokenizer.get_token(), Err(TokenizerError::UnexpectedEof( .. )));
+    }
+
+    #[test]
+    fn tokenize_null() {
+        let mut tokenizer = Tokenizer::new("null");
+        assert_matches!(tokenizer.get_token(), Ok(Token { kind: TokenKind::Null, .. }));
+        assert_matches!(tokenizer.get_token(), Err(TokenizerError::UnexpectedEof( .. )));
+    }
+
+    macro_rules! test_tokenize_number {
+        ($test_name:ident, $input:literal) => {
+            #[test]
+            fn $test_name() {
+                let mut tokenizer = Tokenizer::new($input);
+                let token = tokenizer.get_token().expect(&format!("Failed to tokenize `{}`", $input));
+                assert_matches!(token, Token { kind: TokenKind::Number, .. });
+                assert_eq!(token.to_number_str(), Some($input));
+                assert_matches!(tokenizer.get_token(), Err(TokenizerError::UnexpectedEof( .. )));
+            }
+        };
+    }
+
+    test_tokenize_number!(tokenize_int_zero, "0");
+    test_tokenize_number!(tokenize_neg_int, "-120");
+    test_tokenize_number!(tokenize_pos_int, "920");
+    test_tokenize_number!(tokenize_int_zero_exp, "0e1");
+    test_tokenize_number!(tokenize_int_zero_exp_pos, "0E+1");
+    test_tokenize_number!(tokenize_int_zero_exp_neg, "0e-1");
+    test_tokenize_number!(tokenize_int_pos_exp, "43e0");
+    test_tokenize_number!(tokenize_int_pos_exp_pos, "21E+9");
+    test_tokenize_number!(tokenize_int_pos_exp_neg, "21E-1");
+    test_tokenize_number!(tokenize_float_zero, "0.0");
+    test_tokenize_number!(tokenize_neg_float, "-1.000");
+    test_tokenize_number!(tokenize_pos_float, "93.120");
+    test_tokenize_number!(tokenize_float_zero_exp, "0.0E9");
+    test_tokenize_number!(tokenize_float_zero_exp_pos, "0.0e+2");
+    test_tokenize_number!(tokenize_float_zero_exp_neg, "0.0e-1");
+    test_tokenize_number!(tokenize_float_pos_exp, "10.0E0");
+    test_tokenize_number!(tokenize_float_pos_exp_pos, "21.0e+0");
+    test_tokenize_number!(tokenize_float_pos_exp_neg, "99.012e-91");
+
+    macro_rules! test_tokenize_invalid_number {
+        ($test_name:ident, $input:literal) => {
+            #[test]
+            fn $test_name() {
+                let mut tokenizer = Tokenizer::new($input);
+                assert_matches!(tokenizer.get_token(), Err(TokenizerError::InvalidNumberLiteral( .. )));
+            }
+        };
+    }
+
+    test_tokenize_invalid_number!(tokenize_fail_leading_zero, "01");
+    test_tokenize_invalid_number!(tokenize_fail_leading_zero_neg, "-01");
+    test_tokenize_invalid_number!(tokenize_fail_leading_zero_float, "01.0");
+    test_tokenize_invalid_number!(tokenize_fail_float_no_trailing_digits, "0.");
+    test_tokenize_invalid_number!(tokenize_fail_neg_but_not_number, "-a");
+    test_tokenize_invalid_number!(tokenize_fail_exp_no_number1, "-1e");
+    test_tokenize_invalid_number!(tokenize_fail_exp_no_number2, "1E");
+
+    macro_rules! test_tokenize_string {
+        ($test_name:ident, $input:literal) => {
+            #[test]
+            fn $test_name() {
+                let mut tokenizer = Tokenizer::new(&format!("\"{}\"", $input));
+                let token = tokenizer.get_token().expect(&format!("Failed to tokenize `{}`", $input));
+                assert_matches!(token, Token { kind: TokenKind::String, .. });
+                assert_eq!(token.to_str(), Some($input));
+                assert_matches!(tokenizer.get_token(), Err(TokenizerError::UnexpectedEof( .. )));
+            }
+        };
+    }
+
+    test_tokenize_string!(tokenize_empty_str, "");
+    test_tokenize_string!(tokenize_str1, "a;lkc");
+    test_tokenize_string!(tokenize_str2, "hellow world!");
+    test_tokenize_string!(tokenize_str3, "I'm a test!");
+    test_tokenize_string!(tokenize_str4, "Woohoo <3");
+    test_tokenize_string!(tokenize_quote_escape, "\\\"");
+    test_tokenize_string!(tokenize_whitespace_escape, " \\n\\r\\t\\f\\b");
+    test_tokenize_string!(tokenize_slash_escape, "\\\\\\/");
+    test_tokenize_string!(tokenize_unicode_escape1, "\\u0000");
+    test_tokenize_string!(tokenize_unicode_escape2, "\\uFFFF");
+    test_tokenize_string!(tokenize_unicode_escape3, "\\uaaaa");
+    test_tokenize_string!(tokenize_unicode_escape4, "\\u01Ac");
+
+    macro_rules! test_tokenize_invalid_escape {
+        ($test_name:ident, $input:literal) => {
+            #[test]
+            fn $test_name() {
+                let mut tokenizer = Tokenizer::new(&format!("\"{}\"", $input));
+                assert_matches!(tokenizer.get_token(), Err(TokenizerError::UnexpectedEscapeSequence( .. )));
+            }
+        };
+    }
+
+    test_tokenize_invalid_escape!(tokenize_invalid_escape1, "\\0");
+    test_tokenize_invalid_escape!(tokenize_invalid_escape2, "\\a");
+    test_tokenize_invalid_escape!(tokenize_invalid_escape3, "\\E");
+    test_tokenize_invalid_escape!(tokenize_invalid_escape4, "\\-");
+
+    test_tokenize_invalid_escape!(tokenize_invalid_unicode_escape1, "\\u0x09");
+    test_tokenize_invalid_escape!(tokenize_invalid_unicode_escape2, "\\uabaq");
+    test_tokenize_invalid_escape!(tokenize_invalid_unicode_escape3, "\\uABEZ");
+    test_tokenize_invalid_escape!(tokenize_invalid_unicode_escape4, "\\uNICODE");
+
+    macro_rules! test_tokenize_unexpected_eof {
+        ($test_name:ident, $input:literal) => {
+            #[test]
+            fn $test_name() {
+                let mut tokenizer = Tokenizer::new($input);
+                assert_matches!(tokenizer.get_token(), Err(TokenizerError::UnexpectedEof( .. )));
+            }
+        };
+    }
+
+    test_tokenize_unexpected_eof!(tokenize_eof_empty_str, "");
+    test_tokenize_unexpected_eof!(tokenize_eof_neg_number, "-");
+    test_tokenize_unexpected_eof!(tokenize_eof_str_literal1, "\"");
+    test_tokenize_unexpected_eof!(tokenize_eof_str_literal2, "\"abce");
+    test_tokenize_unexpected_eof!(tokenize_eof_str_literal3, "\"q0987l");
+    test_tokenize_unexpected_eof!(tokenize_eof_escape_sequence, "\"\\\"");
+    test_tokenize_unexpected_eof!(tokenize_eof_unicode_escape_sequence1, "\"\\u");
+    test_tokenize_unexpected_eof!(tokenize_eof_unicode_escape_sequence2, "\"\\u0");
+    test_tokenize_unexpected_eof!(tokenize_eof_unicode_escape_sequence3, "\"\\u01");
+    test_tokenize_unexpected_eof!(tokenize_eof_unicode_escape_sequence4, "\"\\u012");
+    test_tokenize_unexpected_eof!(tokenize_eof_true, "tru");
+    test_tokenize_unexpected_eof!(tokenize_eof_false, "fal");
+    test_tokenize_unexpected_eof!(tokenize_eof_null, "n");
 }

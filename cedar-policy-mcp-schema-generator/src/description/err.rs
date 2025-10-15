@@ -19,59 +19,53 @@ use miette::Diagnostic;
 use std::path::PathBuf;
 use thiserror::Error;
 
+/// The type of errors that may be encountered during deserialization of an MCP Server / Tool Description
 #[derive(Error, Debug, Diagnostic)]
 pub enum DeserializationError {
+    /// Deserializer encountered an error while parsing a JSON Value
     #[error(transparent)]
     #[diagnostic(transparent)]
     ParseError(#[from] super::parser::err::ParseError),
 
-    #[error("Encountered unexpected JSON type while deserializing {content_type}.")]
-    #[diagnostic(code(deserialization::unexpected_type), help("{msg}"))]
-    UnexpectedType {
-        #[source_code]
-        loc: Loc,
-        #[label("found")]
-        found: miette::SourceSpan,
-        msg: String,
-        content_type: ContentType,
-    },
+    /// Deserializer encountered an unexpected JSON type
+    #[error("Encountered unexpected JSON type while deserializing {}.", .0.content_type)]
+    #[diagnostic(transparent)]
+    UnexpectedType(LocationFound),
 
+    /// Deserializer did not find an expected attribute
     #[error(transparent)]
     #[diagnostic(transparent)]
     MissingExpectedAttribute(MissingExpectedAttributeError),
 
+    /// Deserializer found an unexpected value
     #[error("Unexpected value.")]
-    #[diagnostic(code(deserialization::unexpected_value), help("{msg}"))]
-    UnexpectedValue {
-        #[source_code]
-        loc: Loc,
-        #[label("found")]
-        found: miette::SourceSpan,
-        msg: String,
-        content_type: ContentType,
-    },
+    #[diagnostic(transparent)]
+    UnexpectedValue(LocationFound),
 
-    #[error("Error reading {file_name}: {error}")]
+    /// Deserializer could not open the provided JSON file
+    #[error("Error reading {}: {}", .0.file_name.display(), .0.error)]
     #[diagnostic()]
-    ReadError { file_name: PathBuf, error: String },
+    ReadError(ReadError),
 }
 
 impl DeserializationError {
+    /// Construct a new `DeserizlizerError` signaling an Unexpected JSON type was encountered while deserializing
     pub(crate) fn unexpected_type(
         json_value: &LocatedValue,
         msg: &str,
         content_type: ContentType,
     ) -> Self {
         let loc = json_value.as_loc().clone();
-        let found = (&loc).into();
-        Self::UnexpectedType {
-            loc,
-            found,
+        Self::UnexpectedType(LocationFound {
+            src: loc,
+            label: "Found".to_string(),
             msg: msg.to_string(),
+            code: "deserialization::unexpected_type".to_string(),
             content_type,
-        }
+        })
     }
 
+    /// Construct a new `DeserizlizerError` signaling an expected attribute is missing from a JSON Object
     pub(crate) fn missing_attribute(
         json_value: &LocatedValue,
         expected_key: &str,
@@ -89,50 +83,38 @@ impl DeserializationError {
         })
     }
 
+    /// Construct a new `DeserizlizerError` signaling an Unexpected JSON value was encountered while deserializing
     pub(crate) fn unexpected_value(
         json_value: &LocatedValue,
         msg: &str,
         content_type: ContentType,
     ) -> Self {
         let loc = json_value.as_loc().clone();
-        let found = (&loc).into();
-        Self::UnexpectedType {
-            loc,
-            found,
+        Self::UnexpectedType(LocationFound {
+            src: loc,
+            label: "Found".to_string(),
             msg: msg.to_string(),
+            code: "deserialization::unexpected_value".to_string(),
             content_type,
-        }
+        })
     }
-}
 
-#[derive(Debug, Clone, Copy)]
-pub enum ContentType {
-    ServerDescription,
-    ToolDescription,
-    ToolParameters,
-    Property,
-    PropertyType,
-}
-
-impl std::fmt::Display for ContentType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ServerDescription => write!(f, "MCP Server Description"),
-            Self::ToolDescription => write!(f, "MCP Tool Description"),
-            Self::ToolParameters => write!(f, "MCP Tool Input/Output Schema"),
-            Self::Property => write!(f, "JSON Schema Property Description"),
-            Self::PropertyType => write!(f, "JSON Schema Property Type"),
-        }
+    /// Construct a new `DeserizlizerError` signaling that input JSON file could not be read
+    pub(crate) fn read_error(file_name: PathBuf, error: String) -> Self {
+        Self::ReadError(ReadError{
+            file_name,
+            error,
+        })
     }
 }
 
 #[derive(Error, Debug)]
 #[error("Missing expected attribute")]
 pub struct MissingExpectedAttributeError {
-    pub loc: Loc,
-    pub expected_key: String,
-    pub aliases: Vec<String>,
-    pub existing_keys: Vec<miette::SourceSpan>,
+    loc: Loc,
+    expected_key: String,
+    aliases: Vec<String>,
+    existing_keys: Vec<miette::SourceSpan>,
 }
 
 impl Diagnostic for MissingExpectedAttributeError {
@@ -169,4 +151,64 @@ impl Diagnostic for MissingExpectedAttributeError {
             self.expected_key, aliases
         )))
     }
+}
+
+/// The source location of an error
+#[derive(Debug, Error)]
+#[error("Problem found.")]
+pub struct LocationFound {
+    src: Loc,
+    label: String,
+    msg: String,
+    code: String,
+    content_type: ContentType,
+}
+
+impl Diagnostic for LocationFound {
+    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(&self.code))
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        Some(&self.src)
+    }
+
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        Some(Box::new(std::iter::once(miette::LabeledSpan::new(
+            Some(self.label.clone()),
+            self.src.start(),
+            self.src.end() - self.src.start(),
+        ))))
+    }
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(&self.msg))
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ContentType {
+    ServerDescription,
+    ToolDescription,
+    ToolParameters,
+    Property,
+    PropertyType,
+}
+
+impl std::fmt::Display for ContentType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ServerDescription => write!(f, "MCP Server Description"),
+            Self::ToolDescription => write!(f, "MCP Tool Description"),
+            Self::ToolParameters => write!(f, "MCP Tool Input/Output Schema"),
+            Self::Property => write!(f, "JSON Schema Property Description"),
+            Self::PropertyType => write!(f, "JSON Schema Property Type"),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ReadError {
+    file_name: PathBuf,
+    error: String
 }

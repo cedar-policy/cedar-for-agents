@@ -34,6 +34,13 @@ use smol_str::{SmolStr, ToSmolStr};
 
 use std::collections::{btree_map::Entry, BTreeMap};
 
+/// A type that allows constructing a Cedar Schema (Fragment)
+/// from an input Cedar Schema Stub that defines the Cedar Type of
+/// MCP principals, MCP Resources, and common MCP Contects.
+/// 
+/// The Generator can then be populated with a number of tool / server
+/// descriptions to auto-generate Cedar actions corresponding one-to-one
+/// with each tool description.
 #[derive(Debug, Clone)]
 pub struct SchemaGenerator {
     fragment: Fragment<RawName>,
@@ -44,6 +51,7 @@ pub struct SchemaGenerator {
 }
 
 impl SchemaGenerator {
+    /// Create a `SchemaGenerator` from a Cedar Schema Fragment
     pub fn new(schema_stub: Fragment<RawName>) -> Result<Self, SchemaGeneratorError> {
         let (ns, namespace) = match schema_stub.0.iter().next() {
             Some((None, _)) => return Err(SchemaGeneratorError::GlobalNamespaceUsed),
@@ -136,10 +144,13 @@ impl SchemaGenerator {
         })
     }
 
+    /// Get the current Cedar Schema
     pub fn get_schema(&self) -> &Fragment<RawName> {
         &self.fragment
     }
 
+    /// Add a new action to the generated Cedar Schema
+    /// that corresponds to the input `ToolDescription`
     pub fn add_action_from_tool_description(
         &mut self,
         description: &ToolDescription,
@@ -155,6 +166,8 @@ impl SchemaGenerator {
         }
     }
 
+    /// Add a new action to the generated Cedar Schema
+    /// for each tool description within the `ServerDescription`
     pub fn add_actions_from_server_description(
         &mut self,
         description: &ServerDescription,
@@ -170,7 +183,7 @@ impl SchemaGenerator {
         }
     }
 
-    pub fn add_actions_from_server_description_inner(
+    fn add_actions_from_server_description_inner(
         &mut self,
         description: &ServerDescription,
     ) -> Result<(), SchemaGeneratorError> {
