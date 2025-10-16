@@ -302,13 +302,28 @@ mod tests {
 
     #[test]
     fn test_getbool() {
-        assert_matches!(LocatedValue::new_bool(true, new_loc("true")).get_bool(), Some(true));
-        assert_matches!(LocatedValue::new_bool(false, new_loc("false")).get_bool(), Some(false));
+        assert_matches!(
+            LocatedValue::new_bool(true, new_loc("true")).get_bool(),
+            Some(true)
+        );
+        assert_matches!(
+            LocatedValue::new_bool(false, new_loc("false")).get_bool(),
+            Some(false)
+        );
         assert_matches!(LocatedValue::new_null(new_loc("null")).get_bool(), None);
         assert_matches!(LocatedValue::new_number(new_loc("0.1")).get_bool(), None);
-        assert_matches!(LocatedValue::new_string(new_loc("my cool str")).get_bool(), None);
-        assert_matches!(LocatedValue::new_array(Vec::new(), new_loc("[]")).get_bool(), None);
-        assert_matches!(LocatedValue::new_object(LinkedHashMap::new(), new_loc("{}")).get_bool(), None);
+        assert_matches!(
+            LocatedValue::new_string(new_loc("my cool str")).get_bool(),
+            None
+        );
+        assert_matches!(
+            LocatedValue::new_array(Vec::new(), new_loc("[]")).get_bool(),
+            None
+        );
+        assert_matches!(
+            LocatedValue::new_object(LinkedHashMap::new(), new_loc("{}")).get_bool(),
+            None
+        );
     }
 
     #[test]
@@ -335,13 +350,34 @@ mod tests {
 
     #[test]
     fn test_get_numeric_str() {
-        assert_matches!(LocatedValue::new_bool(true, new_loc("true")).get_numeric_str(), None);
-        assert_matches!(LocatedValue::new_bool(false, new_loc("false")).get_numeric_str(), None);
-        assert_matches!(LocatedValue::new_null(new_loc("null")).get_numeric_str(), None);
-        assert_matches!(LocatedValue::new_number(new_loc("0.1")).get_numeric_str(), Some(..));
-        assert_matches!(LocatedValue::new_string(new_loc("my cool str")).get_numeric_str(), None);
-        assert_matches!(LocatedValue::new_array(Vec::new(), new_loc("[]")).get_numeric_str(), None);
-        assert_matches!(LocatedValue::new_object(LinkedHashMap::new(), new_loc("{}")).get_numeric_str(), None);
+        assert_matches!(
+            LocatedValue::new_bool(true, new_loc("true")).get_numeric_str(),
+            None
+        );
+        assert_matches!(
+            LocatedValue::new_bool(false, new_loc("false")).get_numeric_str(),
+            None
+        );
+        assert_matches!(
+            LocatedValue::new_null(new_loc("null")).get_numeric_str(),
+            None
+        );
+        assert_matches!(
+            LocatedValue::new_number(new_loc("0.1")).get_numeric_str(),
+            Some(..)
+        );
+        assert_matches!(
+            LocatedValue::new_string(new_loc("my cool str")).get_numeric_str(),
+            None
+        );
+        assert_matches!(
+            LocatedValue::new_array(Vec::new(), new_loc("[]")).get_numeric_str(),
+            None
+        );
+        assert_matches!(
+            LocatedValue::new_object(LinkedHashMap::new(), new_loc("{}")).get_numeric_str(),
+            None
+        );
     }
 
     #[test]
@@ -357,35 +393,80 @@ mod tests {
 
     #[test]
     fn test_get_str() {
-        assert_matches!(LocatedValue::new_bool(true, new_loc("true")).get_str(), None);
-        assert_matches!(LocatedValue::new_bool(false, new_loc("false")).get_str(), None);
+        assert_matches!(
+            LocatedValue::new_bool(true, new_loc("true")).get_str(),
+            None
+        );
+        assert_matches!(
+            LocatedValue::new_bool(false, new_loc("false")).get_str(),
+            None
+        );
         assert_matches!(LocatedValue::new_null(new_loc("null")).get_str(), None);
         assert_matches!(LocatedValue::new_number(new_loc("0.1")).get_str(), None);
-        assert_matches!(LocatedValue::new_string(new_loc("my cool str")).get_str(), Some(..));
-        assert_matches!(LocatedValue::new_array(Vec::new(), new_loc("[]")).get_str(), None);
-        assert_matches!(LocatedValue::new_object(LinkedHashMap::new(), new_loc("{}")).get_str(), None);
+        assert_matches!(
+            LocatedValue::new_string(new_loc("my cool str")).get_str(),
+            Some(..)
+        );
+        assert_matches!(
+            LocatedValue::new_array(Vec::new(), new_loc("[]")).get_str(),
+            None
+        );
+        assert_matches!(
+            LocatedValue::new_object(LinkedHashMap::new(), new_loc("{}")).get_str(),
+            None
+        );
     }
 
     #[test]
     fn test_get_string() {
-        assert_matches!(LocatedValue::new_bool(true, new_loc("true")).get_string(), None);
-        assert_matches!(LocatedValue::new_bool(false, new_loc("false")).get_string(), None);
+        assert_matches!(
+            LocatedValue::new_bool(true, new_loc("true")).get_string(),
+            None
+        );
+        assert_matches!(
+            LocatedValue::new_bool(false, new_loc("false")).get_string(),
+            None
+        );
         assert_matches!(LocatedValue::new_null(new_loc("null")).get_string(), None);
         assert_matches!(LocatedValue::new_number(new_loc("0.1")).get_string(), None);
-        assert_matches!(LocatedValue::new_string(new_loc("my cool str")).get_string(), Some(..));
-        assert_matches!(LocatedValue::new_array(Vec::new(), new_loc("[]")).get_string(), None);
-        assert_matches!(LocatedValue::new_object(LinkedHashMap::new(), new_loc("{}")).get_string(), None);
+        assert_matches!(
+            LocatedValue::new_string(new_loc("my cool str")).get_string(),
+            Some(..)
+        );
+        assert_matches!(
+            LocatedValue::new_array(Vec::new(), new_loc("[]")).get_string(),
+            None
+        );
+        assert_matches!(
+            LocatedValue::new_object(LinkedHashMap::new(), new_loc("{}")).get_string(),
+            None
+        );
     }
 
     #[test]
     fn test_get_smolstr() {
-        assert_matches!(LocatedValue::new_bool(true, new_loc("true")).get_smolstr(), None);
-        assert_matches!(LocatedValue::new_bool(false, new_loc("false")).get_smolstr(), None);
+        assert_matches!(
+            LocatedValue::new_bool(true, new_loc("true")).get_smolstr(),
+            None
+        );
+        assert_matches!(
+            LocatedValue::new_bool(false, new_loc("false")).get_smolstr(),
+            None
+        );
         assert_matches!(LocatedValue::new_null(new_loc("null")).get_smolstr(), None);
         assert_matches!(LocatedValue::new_number(new_loc("0.1")).get_smolstr(), None);
-        assert_matches!(LocatedValue::new_string(new_loc("my cool str")).get_smolstr(), Some(..));
-        assert_matches!(LocatedValue::new_array(Vec::new(), new_loc("[]")).get_smolstr(), None);
-        assert_matches!(LocatedValue::new_object(LinkedHashMap::new(), new_loc("{}")).get_smolstr(), None);
+        assert_matches!(
+            LocatedValue::new_string(new_loc("my cool str")).get_smolstr(),
+            Some(..)
+        );
+        assert_matches!(
+            LocatedValue::new_array(Vec::new(), new_loc("[]")).get_smolstr(),
+            None
+        );
+        assert_matches!(
+            LocatedValue::new_object(LinkedHashMap::new(), new_loc("{}")).get_smolstr(),
+            None
+        );
     }
 
     #[test]
@@ -401,13 +482,28 @@ mod tests {
 
     #[test]
     fn test_get_array() {
-        assert_matches!(LocatedValue::new_bool(true, new_loc("true")).get_array(), None);
-        assert_matches!(LocatedValue::new_bool(false, new_loc("false")).get_array(), None);
+        assert_matches!(
+            LocatedValue::new_bool(true, new_loc("true")).get_array(),
+            None
+        );
+        assert_matches!(
+            LocatedValue::new_bool(false, new_loc("false")).get_array(),
+            None
+        );
         assert_matches!(LocatedValue::new_null(new_loc("null")).get_array(), None);
         assert_matches!(LocatedValue::new_number(new_loc("0.1")).get_array(), None);
-        assert_matches!(LocatedValue::new_string(new_loc("my cool str")).get_array(), None);
-        assert_matches!(LocatedValue::new_array(Vec::new(), new_loc("[]")).get_array(), Some(..));
-        assert_matches!(LocatedValue::new_object(LinkedHashMap::new(), new_loc("{}")).get_array(), None);
+        assert_matches!(
+            LocatedValue::new_string(new_loc("my cool str")).get_array(),
+            None
+        );
+        assert_matches!(
+            LocatedValue::new_array(Vec::new(), new_loc("[]")).get_array(),
+            Some(..)
+        );
+        assert_matches!(
+            LocatedValue::new_object(LinkedHashMap::new(), new_loc("{}")).get_array(),
+            None
+        );
     }
 
     #[test]
@@ -423,13 +519,27 @@ mod tests {
 
     #[test]
     fn test_get_object() {
-        assert_matches!(LocatedValue::new_bool(true, new_loc("true")).get_object(), None);
-        assert_matches!(LocatedValue::new_bool(false, new_loc("false")).get_object(), None);
+        assert_matches!(
+            LocatedValue::new_bool(true, new_loc("true")).get_object(),
+            None
+        );
+        assert_matches!(
+            LocatedValue::new_bool(false, new_loc("false")).get_object(),
+            None
+        );
         assert_matches!(LocatedValue::new_null(new_loc("null")).get_object(), None);
         assert_matches!(LocatedValue::new_number(new_loc("0.1")).get_object(), None);
-        assert_matches!(LocatedValue::new_string(new_loc("my cool str")).get_object(), None);
-        assert_matches!(LocatedValue::new_array(Vec::new(), new_loc("[]")).get_object(), None);
-        assert_matches!(LocatedValue::new_object(LinkedHashMap::new(), new_loc("{}")).get_object(), Some(..));
+        assert_matches!(
+            LocatedValue::new_string(new_loc("my cool str")).get_object(),
+            None
+        );
+        assert_matches!(
+            LocatedValue::new_array(Vec::new(), new_loc("[]")).get_object(),
+            None
+        );
+        assert_matches!(
+            LocatedValue::new_object(LinkedHashMap::new(), new_loc("{}")).get_object(),
+            Some(..)
+        );
     }
-
 }

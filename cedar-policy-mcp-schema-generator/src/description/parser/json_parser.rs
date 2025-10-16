@@ -192,7 +192,12 @@ mod tests {
         let mut parser = JsonParser::new("true");
         let value = parser.get_value().expect("Failed to parse `true`");
         assert_matches!(value.get_bool(), Some(true));
-        assert_matches!(parser.get_value(), Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(..))));
+        assert_matches!(
+            parser.get_value(),
+            Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(
+                ..
+            )))
+        );
     }
 
     #[test]
@@ -200,7 +205,12 @@ mod tests {
         let mut parser = JsonParser::new("false");
         let value = parser.get_value().expect("Failed to parse `false`");
         assert_matches!(value.get_bool(), Some(false));
-        assert_matches!(parser.get_value(), Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(..))));
+        assert_matches!(
+            parser.get_value(),
+            Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(
+                ..
+            )))
+        );
     }
 
     #[test]
@@ -208,7 +218,12 @@ mod tests {
         let mut parser = JsonParser::new("null");
         let value = parser.get_value().expect("Failed to parse `null`");
         assert!(value.is_null());
-        assert_matches!(parser.get_value(), Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(..))));
+        assert_matches!(
+            parser.get_value(),
+            Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(
+                ..
+            )))
+        );
     }
 
     #[test]
@@ -216,7 +231,12 @@ mod tests {
         let mut parser = JsonParser::new("102");
         let value = parser.get_value().expect("Failed to parse `102`");
         assert_matches!(value.get_numeric_str(), Some("102"));
-        assert_matches!(parser.get_value(), Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(..))));
+        assert_matches!(
+            parser.get_value(),
+            Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(
+                ..
+            )))
+        );
     }
 
     #[test]
@@ -224,7 +244,12 @@ mod tests {
         let mut parser = JsonParser::new("-420");
         let value = parser.get_value().expect("Failed to parse `-420`");
         assert_matches!(value.get_numeric_str(), Some("-420"));
-        assert_matches!(parser.get_value(), Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(..))));
+        assert_matches!(
+            parser.get_value(),
+            Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(
+                ..
+            )))
+        );
     }
 
     #[test]
@@ -232,7 +257,12 @@ mod tests {
         let mut parser = JsonParser::new("90e+10");
         let value = parser.get_value().expect("Failed to parse `90e+10`");
         assert_matches!(value.get_numeric_str(), Some("90e+10"));
-        assert_matches!(parser.get_value(), Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(..))));
+        assert_matches!(
+            parser.get_value(),
+            Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(
+                ..
+            )))
+        );
     }
 
     #[test]
@@ -240,7 +270,12 @@ mod tests {
         let mut parser = JsonParser::new("0.000912");
         let value = parser.get_value().expect("Failed to parse `0.000912`");
         assert_matches!(value.get_numeric_str(), Some("0.000912"));
-        assert_matches!(parser.get_value(), Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(..))));
+        assert_matches!(
+            parser.get_value(),
+            Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(
+                ..
+            )))
+        );
     }
 
     #[test]
@@ -248,15 +283,27 @@ mod tests {
         let mut parser = JsonParser::new("-1092.0912");
         let value = parser.get_value().expect("Failed to parse `-1092.0912`");
         assert_matches!(value.get_numeric_str(), Some("-1092.0912"));
-        assert_matches!(parser.get_value(), Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(..))));
+        assert_matches!(
+            parser.get_value(),
+            Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(
+                ..
+            )))
+        );
     }
 
     #[test]
     fn parse_number_float_with_exponent() {
         let mut parser = JsonParser::new("648.917529e-982");
-        let value = parser.get_value().expect("Failed to parse `648.917529e-982`");
+        let value = parser
+            .get_value()
+            .expect("Failed to parse `648.917529e-982`");
         assert_matches!(value.get_numeric_str(), Some("648.917529e-982"));
-        assert_matches!(parser.get_value(), Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(..))));
+        assert_matches!(
+            parser.get_value(),
+            Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(
+                ..
+            )))
+        );
     }
 
     #[test]
@@ -264,15 +311,27 @@ mod tests {
         let mut parser = JsonParser::new("\"\"");
         let value = parser.get_value().expect("Failed to parse `\"\"`");
         assert_matches!(value.get_str(), Some(""));
-        assert_matches!(parser.get_value(), Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(..))));        
+        assert_matches!(
+            parser.get_value(),
+            Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(
+                ..
+            )))
+        );
     }
 
     #[test]
     fn parse_whitespace_string_literal() {
         let mut parser = JsonParser::new("    \"   \\t\\n\\r\\t  \"        ");
-        let value = parser.get_value().expect("Failed to parse `    \"   \\t\\n\\r\\t  \"        `");
+        let value = parser
+            .get_value()
+            .expect("Failed to parse `    \"   \\t\\n\\r\\t  \"        `");
         assert_matches!(value.get_str(), Some("   \\t\\n\\r\\t  "));
-        assert_matches!(parser.get_value(), Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(..))));        
+        assert_matches!(
+            parser.get_value(),
+            Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(
+                ..
+            )))
+        );
     }
 
     #[test]
@@ -280,7 +339,12 @@ mod tests {
         let mut parser = JsonParser::new("\"\\u0912\"");
         let value = parser.get_value().expect("Failed to parse `\"\\u0912\"`");
         assert_matches!(value.get_str(), Some("\\u0912"));
-        assert_matches!(parser.get_value(), Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(..))));        
+        assert_matches!(
+            parser.get_value(),
+            Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(
+                ..
+            )))
+        );
     }
 
     #[test]
@@ -289,44 +353,78 @@ mod tests {
         let value = parser.get_value().expect("Failed to parse `[]`");
         let arr = value.get_array().expect("Expected array");
         assert!(arr.is_empty());
-        assert_matches!(parser.get_value(), Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(..))));        
+        assert_matches!(
+            parser.get_value(),
+            Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(
+                ..
+            )))
+        );
     }
 
     #[test]
     fn parse_array_of_bools() {
         let mut parser = JsonParser::new("[true, false, true]");
-        let value = parser.get_value().expect("Failed to parse `[true, false, true]`");
+        let value = parser
+            .get_value()
+            .expect("Failed to parse `[true, false, true]`");
         let arr = value.get_array().expect("Expected array");
         assert!(arr.len() == 3);
         assert_matches!(arr.get(0).and_then(LocatedValue::get_bool), Some(true));
         assert_matches!(arr.get(1).and_then(LocatedValue::get_bool), Some(false));
         assert_matches!(arr.get(2).and_then(LocatedValue::get_bool), Some(true));
-        assert_matches!(parser.get_value(), Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(..))));
+        assert_matches!(
+            parser.get_value(),
+            Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(
+                ..
+            )))
+        );
     }
 
     #[test]
     fn parse_array_of_strs() {
         let mut parser = JsonParser::new("[\"\", \"bleh\"]");
-        let value = parser.get_value().expect("Failed to parse `[\"\", \"bleh\"]`");
+        let value = parser
+            .get_value()
+            .expect("Failed to parse `[\"\", \"bleh\"]`");
         let arr = value.get_array().expect("Expected array");
         assert!(arr.len() == 2);
         assert_matches!(arr.get(0).and_then(LocatedValue::get_str), Some(""));
         assert_matches!(arr.get(1).and_then(LocatedValue::get_str), Some("bleh"));
-        assert_matches!(parser.get_value(), Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(..))));
+        assert_matches!(
+            parser.get_value(),
+            Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(
+                ..
+            )))
+        );
     }
 
     #[test]
     fn parse_nested_mixed_array() {
         let mut parser = JsonParser::new("[[], null, [[]], {}, 0.1]");
-        let value = parser.get_value().expect("Failed to parse `[[], null, [[]], {}, 0.1]`");
+        let value = parser
+            .get_value()
+            .expect("Failed to parse `[[], null, [[]], {}, 0.1]`");
         let arr = value.get_array().expect("Expected array");
         assert!(arr.len() == 5);
         assert_matches!(arr.get(0).and_then(LocatedValue::get_array), Some([]));
         assert_matches!(arr.get(1).map(LocatedValue::is_null), Some(true));
         assert_matches!(arr.get(2).and_then(LocatedValue::get_array), Some([..]));
-        assert_matches!(arr.get(3).and_then(LocatedValue::get_object).map(LinkedHashMap::is_empty), Some(true));
-        assert_matches!(arr.get(4).and_then(LocatedValue::get_numeric_str), Some("0.1"));
-        assert_matches!(parser.get_value(), Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(..))));
+        assert_matches!(
+            arr.get(3)
+                .and_then(LocatedValue::get_object)
+                .map(LinkedHashMap::is_empty),
+            Some(true)
+        );
+        assert_matches!(
+            arr.get(4).and_then(LocatedValue::get_numeric_str),
+            Some("0.1")
+        );
+        assert_matches!(
+            parser.get_value(),
+            Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(
+                ..
+            )))
+        );
     }
 
     #[test]
@@ -335,19 +433,41 @@ mod tests {
         let value = parser.get_value().expect("Failed to parse `{}`");
         let obj = value.get_object().expect("Expected object");
         assert!(obj.is_empty());
-        assert_matches!(parser.get_value(), Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(..))));        
+        assert_matches!(
+            parser.get_value(),
+            Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(
+                ..
+            )))
+        );
     }
 
     #[test]
     fn parse_nested_object() {
         let mut parser = JsonParser::new("{\"hi\": {}, \"bye\": false, \"\": {}}");
-        let value = parser.get_value().expect("Failed to parse `{\"hi\": {}, \"bye\": false, \"\": {}}`");
+        let value = parser
+            .get_value()
+            .expect("Failed to parse `{\"hi\": {}, \"bye\": false, \"\": {}}`");
         let obj = value.get_object().expect("Expected object");
         assert!(obj.iter().count() == 3);
-        assert_matches!(obj.get("hi").and_then(LocatedValue::get_object).map(LinkedHashMap::is_empty), Some(true));
-        assert_matches!(obj.get("").and_then(LocatedValue::get_object).map(LinkedHashMap::is_empty), Some(true));
+        assert_matches!(
+            obj.get("hi")
+                .and_then(LocatedValue::get_object)
+                .map(LinkedHashMap::is_empty),
+            Some(true)
+        );
+        assert_matches!(
+            obj.get("")
+                .and_then(LocatedValue::get_object)
+                .map(LinkedHashMap::is_empty),
+            Some(true)
+        );
         assert_matches!(obj.get("bye").and_then(LocatedValue::get_bool), Some(false));
-        assert_matches!(parser.get_value(), Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(..))));
+        assert_matches!(
+            parser.get_value(),
+            Err(ParseError::TokenizerError(TokenizerError::UnexpectedEof(
+                ..
+            )))
+        );
     }
 
     #[test]
@@ -383,7 +503,7 @@ mod tests {
     #[test]
     fn parse_fail_object_duplicate_keys() {
         let mut parser = JsonParser::new("{\"hi\": true, \"hi\": false}");
-        assert_matches!(parser.get_value(), Err(ParseError::DuplicateKey(..)))        
+        assert_matches!(parser.get_value(), Err(ParseError::DuplicateKey(..)))
     }
 
     #[test]
