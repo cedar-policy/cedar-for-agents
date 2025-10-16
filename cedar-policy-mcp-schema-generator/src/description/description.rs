@@ -291,3 +291,119 @@ impl ServerDescription {
         Self::from_json_str(&contents)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use cool_asserts::assert_matches;
+    use smol_str::ToSmolStr;
+
+    #[test]
+    fn test_property() {
+        let property = Property::new("Prop".into(), true, PropertyType::Bool, Some("Banana".to_string()));
+        assert!(property.name() == "Prop");
+        assert!(property.is_required());
+        assert_matches!(property.property_type(), PropertyType::Bool);
+        assert_matches!(property.description(), Some("Banana"));
+    }
+
+    #[test]
+    fn test_type_def() {
+        let type_def = PropertyTypeDef::new("my_type".into(), PropertyType::Datetime, Some("My Type".to_string()));
+        assert!(type_def.name() == "my_type");
+        assert_matches!(type_def.property_type(), PropertyType::Datetime);
+        assert_matches!(type_def.description(), Some("My Type"));
+    }
+
+    #[test]
+    fn test_parameters() {
+        let props = vec![Property::new("first".into(), true, PropertyType::Bool, None), Property::new("second".into(), false, PropertyType::Float, None)];
+        let type_defs = vec![("my_bool".to_smolstr(), PropertyTypeDef::new("my_bool".into(), PropertyType::Bool, None)), ("my_int".to_smolstr(), PropertyTypeDef::new("my_int".into(), PropertyType::Integer, None))].into_iter().collect();
+        let params = Parameters::new(props, type_defs);
+
+        assert_matches!(params.properties().map(Property::name).collect::<Vec<_>>(), ["first", "second"]);
+        assert_matches!(params.properties().map(Property::is_required).collect::<Vec<_>>(), [true, false]);
+        assert_matches!(params.properties().map(Property::property_type).collect::<Vec<_>>(), [PropertyType::Bool, PropertyType::Float]);
+        assert_matches!(params.properties().map(Property::description).collect::<Vec<_>>(), [None, None]);
+
+        let type_defs = params.type_definitions().cloned().collect::<Vec<_>>();
+        assert!(type_defs.len() == 2);
+        if type_defs.get(0).map(PropertyTypeDef::name) == Some("my_bool") {
+            assert_matches!(type_defs.iter().map(PropertyTypeDef::name).collect::<Vec<_>>(), ["my_bool", "my_int"]);
+            assert_matches!(type_defs.iter().map(PropertyTypeDef::property_type).collect::<Vec<_>>(), [PropertyType::Bool, PropertyType::Integer]);
+            assert_matches!(type_defs.iter().map(PropertyTypeDef::description).collect::<Vec<_>>(), [None, None]);
+        } else {
+            assert_matches!(type_defs.iter().map(PropertyTypeDef::name).collect::<Vec<_>>(), ["my_int", "my_bool"]);
+            assert_matches!(type_defs.iter().map(PropertyTypeDef::property_type).collect::<Vec<_>>(), [PropertyType::Integer, PropertyType::Bool]);
+            assert_matches!(type_defs.iter().map(PropertyTypeDef::description).collect::<Vec<_>>(), [None, None]);
+        }
+    }
+
+    #[test]
+    fn test_tool_from_json_str_simple() {
+        let tool_description = r#"{
+            "name": "check_task_status",
+            "description": "Check if a task is ready for work",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string"}
+                },
+                "required": ["task_id"]
+            }
+        }"#;
+        let tool = ToolDescription::from_json_str(tool_description).expect("Failed to parse MCP Description");
+        assert!(tool.name() == "check_task_status");
+        assert_matches!(tool.description(), Some("Check if a task is ready for work"));
+        assert!(tool.type_definitions().count() == 0);
+        assert!(tool.inputs().type_definitions().count() == 0);
+        assert!(tool.outputs().properties().count() == 0);
+        assert!(tool.outputs().type_definitions().count() == 0);
+
+        let inputs = tool.inputs().properties().cloned().collect::<Vec<_>>();
+        assert!(inputs.len() == 1);
+
+        assert_matches!(inputs.get(0).map(Property::name), Some("task_id"));
+        assert_matches!(inputs.get(0).map(Property::is_required), Some(true));
+        assert_matches!(inputs.get(0).map(Property::property_type), Some(PropertyType::String));
+        assert_matches!(inputs.get(0).and_then(Property::description), None);
+    }
+
+    #[test]
+    fn test_server_from_json_str_simple() {
+        let server_description = r#"{
+            "result": {
+                "tools": [{
+                    "name": "check_task_status",
+                    "description": "Check if a task is ready for work",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "task_id": {"type": "string"}
+                        },
+                        "required": ["task_id"]
+                    }
+                }]
+            }
+        }"#;
+        let tools = ServerDescription::from_json_str(server_description).expect("Failed to parse server description");
+        assert!(tools.type_definitions().count() == 0);
+        assert!(tools.tool_descriptions().count() == 1);
+
+        let tool = tools.tool_descriptions().next().unwrap();
+        assert!(tool.name() == "check_task_status");
+        assert_matches!(tool.description(), Some("Check if a task is ready for work"));
+        assert!(tool.type_definitions().count() == 0);
+        assert!(tool.inputs().type_definitions().count() == 0);
+        assert!(tool.outputs().properties().count() == 0);
+        assert!(tool.outputs().type_definitions().count() == 0);
+
+        let inputs = tool.inputs().properties().cloned().collect::<Vec<_>>();
+        assert!(inputs.len() == 1);
+
+        assert_matches!(inputs.get(0).map(Property::name), Some("task_id"));
+        assert_matches!(inputs.get(0).map(Property::is_required), Some(true));
+        assert_matches!(inputs.get(0).map(Property::property_type), Some(PropertyType::String));
+        assert_matches!(inputs.get(0).and_then(Property::description), None);
+    }
+}
