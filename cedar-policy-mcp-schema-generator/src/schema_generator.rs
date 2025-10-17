@@ -655,11 +655,8 @@ impl SchemaGenerator {
                     let attr_name = property.name().to_smolstr();
                     let ty_name = property.name().parse()?;
 
-                    let ty = self.cedar_type_from_property_type(
-                        namespace,
-                        ty_name,
-                        property.property_type(),
-                    )?;
+                    let ty =
+                        self.cedar_type_from_property_type(&ns, ty_name, property.property_type())?;
                     let ty = TypeOfAttribute {
                         ty,
                         annotations: Annotations::new(),
