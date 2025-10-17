@@ -187,8 +187,8 @@ namespace MyMcpServer {
   };
 
   action "allocate_time" appliesTo {
-    principal: [McpServer],
-    resource: [Agent, User],
+    principal: [Agent, User],
+    resource: [McpServer],
     context: {
   "inputs": {
     "hours_needed": __cedar::Long,
@@ -203,8 +203,8 @@ namespace MyMcpServer {
   };
 
   action "check_task_status" appliesTo {
-    principal: [McpServer],
-    resource: [Agent, User],
+    principal: [Agent, User],
+    resource: [McpServer],
     context: {
   "inputs": {
     "task_id": __cedar::String
@@ -218,8 +218,8 @@ namespace MyMcpServer {
   };
 
   action "start_work" appliesTo {
-    principal: [McpServer],
-    resource: [Agent, User],
+    principal: [Agent, User],
+    resource: [McpServer],
     context: {
   "inputs": {
     "slot_id": __cedar::String,
