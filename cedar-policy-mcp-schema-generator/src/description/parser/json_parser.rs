@@ -194,9 +194,7 @@ mod tests {
         assert_matches!(value.get_bool(), Some(true));
         assert_matches!(
             parser.get_value(),
-            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(
-                ..
-            )))
+            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(..)))
         );
     }
 
@@ -207,9 +205,7 @@ mod tests {
         assert_matches!(value.get_bool(), Some(false));
         assert_matches!(
             parser.get_value(),
-            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(
-                ..
-            )))
+            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(..)))
         );
     }
 
@@ -220,9 +216,7 @@ mod tests {
         assert!(value.is_null());
         assert_matches!(
             parser.get_value(),
-            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(
-                ..
-            )))
+            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(..)))
         );
     }
 
@@ -233,9 +227,7 @@ mod tests {
         assert_matches!(value.get_numeric_str(), Some("102"));
         assert_matches!(
             parser.get_value(),
-            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(
-                ..
-            )))
+            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(..)))
         );
     }
 
@@ -246,9 +238,7 @@ mod tests {
         assert_matches!(value.get_numeric_str(), Some("-420"));
         assert_matches!(
             parser.get_value(),
-            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(
-                ..
-            )))
+            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(..)))
         );
     }
 
@@ -259,9 +249,7 @@ mod tests {
         assert_matches!(value.get_numeric_str(), Some("90e+10"));
         assert_matches!(
             parser.get_value(),
-            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(
-                ..
-            )))
+            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(..)))
         );
     }
 
@@ -272,9 +260,7 @@ mod tests {
         assert_matches!(value.get_numeric_str(), Some("0.000912"));
         assert_matches!(
             parser.get_value(),
-            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(
-                ..
-            )))
+            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(..)))
         );
     }
 
@@ -285,9 +271,7 @@ mod tests {
         assert_matches!(value.get_numeric_str(), Some("-1092.0912"));
         assert_matches!(
             parser.get_value(),
-            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(
-                ..
-            )))
+            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(..)))
         );
     }
 
@@ -300,9 +284,7 @@ mod tests {
         assert_matches!(value.get_numeric_str(), Some("648.917529e-982"));
         assert_matches!(
             parser.get_value(),
-            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(
-                ..
-            )))
+            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(..)))
         );
     }
 
@@ -313,9 +295,7 @@ mod tests {
         assert_matches!(value.get_str(), Some(""));
         assert_matches!(
             parser.get_value(),
-            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(
-                ..
-            )))
+            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(..)))
         );
     }
 
@@ -328,9 +308,7 @@ mod tests {
         assert_matches!(value.get_str(), Some("   \\t\\n\\r\\t  "));
         assert_matches!(
             parser.get_value(),
-            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(
-                ..
-            )))
+            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(..)))
         );
     }
 
@@ -341,9 +319,7 @@ mod tests {
         assert_matches!(value.get_str(), Some("\\u0912"));
         assert_matches!(
             parser.get_value(),
-            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(
-                ..
-            )))
+            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(..)))
         );
     }
 
@@ -355,9 +331,7 @@ mod tests {
         assert!(arr.is_empty());
         assert_matches!(
             parser.get_value(),
-            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(
-                ..
-            )))
+            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(..)))
         );
     }
 
@@ -374,9 +348,7 @@ mod tests {
         assert_matches!(arr.get(2).and_then(LocatedValue::get_bool), Some(true));
         assert_matches!(
             parser.get_value(),
-            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(
-                ..
-            )))
+            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(..)))
         );
     }
 
@@ -392,9 +364,7 @@ mod tests {
         assert_matches!(arr.get(1).and_then(LocatedValue::get_str), Some("bleh"));
         assert_matches!(
             parser.get_value(),
-            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(
-                ..
-            )))
+            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(..)))
         );
     }
 
@@ -421,9 +391,7 @@ mod tests {
         );
         assert_matches!(
             parser.get_value(),
-            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(
-                ..
-            )))
+            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(..)))
         );
     }
 
@@ -435,9 +403,7 @@ mod tests {
         assert!(obj.is_empty());
         assert_matches!(
             parser.get_value(),
-            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(
-                ..
-            )))
+            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(..)))
         );
     }
 
@@ -464,9 +430,7 @@ mod tests {
         assert_matches!(obj.get("bye").and_then(LocatedValue::get_bool), Some(false));
         assert_matches!(
             parser.get_value(),
-            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(
-                ..
-            )))
+            Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(..)))
         );
     }
 

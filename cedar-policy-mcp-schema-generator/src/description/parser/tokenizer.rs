@@ -367,10 +367,7 @@ mod test {
                 ..
             })
         );
-        assert_matches!(
-            tokenizer.get_token(),
-            Err(TokenizeError::UnexpectedEof(..))
-        );
+        assert_matches!(tokenizer.get_token(), Err(TokenizeError::UnexpectedEof(..)));
     }
 
     #[test]
@@ -383,10 +380,7 @@ mod test {
                 ..
             })
         );
-        assert_matches!(
-            tokenizer.get_token(),
-            Err(TokenizeError::UnexpectedEof(..))
-        );
+        assert_matches!(tokenizer.get_token(), Err(TokenizeError::UnexpectedEof(..)));
     }
 
     #[test]
@@ -399,10 +393,7 @@ mod test {
                 ..
             })
         );
-        assert_matches!(
-            tokenizer.get_token(),
-            Err(TokenizeError::UnexpectedEof(..))
-        );
+        assert_matches!(tokenizer.get_token(), Err(TokenizeError::UnexpectedEof(..)));
     }
 
     #[test]
@@ -415,10 +406,7 @@ mod test {
                 ..
             })
         );
-        assert_matches!(
-            tokenizer.get_token(),
-            Err(TokenizeError::UnexpectedEof(..))
-        );
+        assert_matches!(tokenizer.get_token(), Err(TokenizeError::UnexpectedEof(..)));
     }
 
     #[test]
@@ -431,10 +419,7 @@ mod test {
                 ..
             })
         );
-        assert_matches!(
-            tokenizer.get_token(),
-            Err(TokenizeError::UnexpectedEof(..))
-        );
+        assert_matches!(tokenizer.get_token(), Err(TokenizeError::UnexpectedEof(..)));
     }
 
     #[test]
@@ -447,10 +432,7 @@ mod test {
                 ..
             })
         );
-        assert_matches!(
-            tokenizer.get_token(),
-            Err(TokenizeError::UnexpectedEof(..))
-        );
+        assert_matches!(tokenizer.get_token(), Err(TokenizeError::UnexpectedEof(..)));
     }
 
     #[test]
@@ -463,10 +445,7 @@ mod test {
                 ..
             })
         );
-        assert_matches!(
-            tokenizer.get_token(),
-            Err(TokenizeError::UnexpectedEof(..))
-        );
+        assert_matches!(tokenizer.get_token(), Err(TokenizeError::UnexpectedEof(..)));
     }
 
     #[test]
@@ -479,10 +458,7 @@ mod test {
                 ..
             })
         );
-        assert_matches!(
-            tokenizer.get_token(),
-            Err(TokenizeError::UnexpectedEof(..))
-        );
+        assert_matches!(tokenizer.get_token(), Err(TokenizeError::UnexpectedEof(..)));
     }
 
     #[test]
@@ -495,10 +471,7 @@ mod test {
                 ..
             })
         );
-        assert_matches!(
-            tokenizer.get_token(),
-            Err(TokenizeError::UnexpectedEof(..))
-        );
+        assert_matches!(tokenizer.get_token(), Err(TokenizeError::UnexpectedEof(..)));
     }
 
     macro_rules! test_tokenize_number {
@@ -517,10 +490,7 @@ mod test {
                     }
                 );
                 assert_eq!(token.to_number_str(), Some($input));
-                assert_matches!(
-                    tokenizer.get_token(),
-                    Err(TokenizeError::UnexpectedEof(..))
-                );
+                assert_matches!(tokenizer.get_token(), Err(TokenizeError::UnexpectedEof(..)));
             }
         };
     }
@@ -581,10 +551,7 @@ mod test {
                     }
                 );
                 assert_eq!(token.to_str(), Some($input));
-                assert_matches!(
-                    tokenizer.get_token(),
-                    Err(TokenizeError::UnexpectedEof(..))
-                );
+                assert_matches!(tokenizer.get_token(), Err(TokenizeError::UnexpectedEof(..)));
             }
         };
     }
@@ -630,10 +597,7 @@ mod test {
             #[test]
             fn $test_name() {
                 let mut tokenizer = Tokenizer::new($input);
-                assert_matches!(
-                    tokenizer.get_token(),
-                    Err(TokenizeError::UnexpectedEof(..))
-                );
+                assert_matches!(tokenizer.get_token(), Err(TokenizeError::UnexpectedEof(..)));
             }
         };
     }
