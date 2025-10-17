@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use super::{err::TokenizerError, loc::Loc};
+use super::{err::TokenizeError, loc::Loc};
 use std::sync::Arc;
 
 /// The kind of accepted JSON Tokens / Lexemes
@@ -103,7 +103,7 @@ impl Tokenizer {
 
     // Consume the next byte (ignoring any whitespace)
     // Returns EOF error if no such character is available
-    fn next_char(&mut self) -> Result<u8, TokenizerError> {
+    fn next_char(&mut self) -> Result<u8, TokenizeError> {
         loop {
             match self.input.as_bytes().get(self.cur_pos) {
                 Some(b' ') | Some(b'\t') | Some(b'\n') | Some(b'\r') => self.eat_char(),
@@ -120,7 +120,7 @@ impl Tokenizer {
                     };
                     let loc = Loc::new((pos, 0), self.input.clone());
                     let msg = "Expected more input.";
-                    return Err(TokenizerError::unexpected_eof(loc, msg));
+                    return Err(TokenizeError::unexpected_eof(loc, msg));
                 }
             }
         }
@@ -129,12 +129,12 @@ impl Tokenizer {
     // Consumes the the identifier `ident` from input str
     // Returns error if the next `ident.len()` characters
     // is not equal to `ident`
-    fn consume_ident(&mut self, ident: &str) -> Result<(), TokenizerError> {
+    fn consume_ident(&mut self, ident: &str) -> Result<(), TokenizeError> {
         self.cur_pos -= 1;
         if self.cur_pos + ident.len() > self.input.len() {
             let loc = Loc::new((self.input.len() - 1, 0), self.input.clone());
             let msg = format!("Encountered end of input while trying to read {ident}");
-            return Err(TokenizerError::unexpected_eof(loc, msg.as_str()));
+            return Err(TokenizeError::unexpected_eof(loc, msg.as_str()));
         }
         if self.input[self.cur_pos..].starts_with(ident) {
             self.cur_pos += ident.len();
@@ -142,13 +142,13 @@ impl Tokenizer {
         } else {
             let loc = Loc::new((self.cur_pos, ident.len()), self.input.clone());
             let msg = format!("Expected {ident}");
-            Err(TokenizerError::unexpected_token(loc, msg.as_str()))
+            Err(TokenizeError::unexpected_token(loc, msg.as_str()))
         }
     }
 
     // Helper function for `consume_esape_sequence` to
     // consume a hex digit (to handle unicode escape sequences)
-    fn eat_hex_digit(&mut self) -> Result<(), TokenizerError> {
+    fn eat_hex_digit(&mut self) -> Result<(), TokenizeError> {
         match self.input.as_bytes().get(self.cur_pos) {
             Some(b'0'..=b'9') | Some(b'a'..=b'f') | Some(b'A'..=b'F') => {
                 self.eat_char();
@@ -157,19 +157,19 @@ impl Tokenizer {
             Some(_) => {
                 let loc = Loc::new((self.cur_pos, 1), self.input.clone());
                 let msg = "Expected valid unicode escape sequence";
-                Err(TokenizerError::unknown_escape_sequence(loc, msg))
+                Err(TokenizeError::unknown_escape_sequence(loc, msg))
             }
             None => {
                 let loc = Loc::new((self.cur_pos - 1, 0), self.input.clone());
                 let msg = "Expected valid unicode escape sequence";
-                Err(TokenizerError::unexpected_eof(loc, msg))
+                Err(TokenizeError::unexpected_eof(loc, msg))
             }
         }
     }
 
     // Helper function for `consume_str_literal` which
     // consumes an escape sequence assuming first '\' has already been consumed
-    fn consume_escape_sequence(&mut self) -> Result<(), TokenizerError> {
+    fn consume_escape_sequence(&mut self) -> Result<(), TokenizeError> {
         match self.input.as_bytes().get(self.cur_pos) {
             Some(b'"') | Some(b'\\') | Some(b'/') | Some(b'b') | Some(b'f') | Some(b'n')
             | Some(b'r') | Some(b't') => {
@@ -187,18 +187,18 @@ impl Tokenizer {
             Some(_) => {
                 let loc = Loc::new((self.cur_pos - 1, 2), self.input.clone());
                 let msg = "Expected valid escape sequence";
-                Err(TokenizerError::unknown_escape_sequence(loc, msg))
+                Err(TokenizeError::unknown_escape_sequence(loc, msg))
             }
             None => {
                 let loc = Loc::new((self.cur_pos - 1, 1), self.input.clone());
                 let msg = "Expected valid escape sequence";
-                Err(TokenizerError::unexpected_eof(loc, msg))
+                Err(TokenizeError::unexpected_eof(loc, msg))
             }
         }
     }
 
     // Consumes a str literal assuming opening '"' has already been consumed
-    fn consume_str_literal(&mut self) -> Result<(), TokenizerError> {
+    fn consume_str_literal(&mut self) -> Result<(), TokenizeError> {
         loop {
             match self.input.as_bytes().get(self.cur_pos) {
                 Some(b'"') => {
@@ -214,20 +214,20 @@ impl Tokenizer {
                 Some(b) if *b < 0x20 => {
                     let loc = Loc::new((self.cur_pos, 1), self.input.clone());
                     let msg = "String literals cannot include control characters";
-                    return Err(TokenizerError::unexpected_token(loc, msg));
+                    return Err(TokenizeError::unexpected_token(loc, msg));
                 }
                 Some(_) => self.eat_char(),
                 None => {
                     let loc = Loc::new((self.cur_pos - 1, 0), self.input.clone());
                     let msg = "Found end of input while parsing string literal";
-                    return Err(TokenizerError::unexpected_eof(loc, msg));
+                    return Err(TokenizeError::unexpected_eof(loc, msg));
                 }
             }
         }
     }
 
     // Consumes a positive number literal
-    fn consume_number_literal(&mut self) -> Result<(), TokenizerError> {
+    fn consume_number_literal(&mut self) -> Result<(), TokenizeError> {
         // Integral Part
         match self.input.as_bytes().get(self.cur_pos) {
             Some(b'0') => {
@@ -235,7 +235,7 @@ impl Tokenizer {
                 if matches!(self.input.as_bytes().get(self.cur_pos), Some(b'0'..=b'9')) {
                     let loc = Loc::new((self.cur_pos - 1, 1), self.input.clone());
                     let msg = "Number literals cannot include leading 0s";
-                    return Err(TokenizerError::invalid_number(loc, msg));
+                    return Err(TokenizeError::invalid_number(loc, msg));
                 }
             }
             Some(b'1'..=b'9') => {
@@ -246,12 +246,12 @@ impl Tokenizer {
             Some(_) => {
                 let loc = Loc::new((self.cur_pos, 1), self.input.clone());
                 let msg = "Unexpected character in number literal";
-                return Err(TokenizerError::invalid_number(loc, msg));
+                return Err(TokenizeError::invalid_number(loc, msg));
             }
             None => {
                 let loc = Loc::new((self.cur_pos - 1, 0), self.input.clone());
                 let msg = "Found end of input while parsing number literal";
-                return Err(TokenizerError::unexpected_eof(loc, msg));
+                return Err(TokenizeError::unexpected_eof(loc, msg));
             }
         }
 
@@ -263,7 +263,7 @@ impl Tokenizer {
             if !matches!(self.input.as_bytes().get(self.cur_pos), Some(b'0'..=b'9')) {
                 let loc = Loc::new((self.cur_pos - 1, 1), self.input.clone());
                 let msg = "Number literals must have at least one digit (0-9) following the decimal point";
-                return Err(TokenizerError::invalid_number(loc, msg));
+                return Err(TokenizeError::invalid_number(loc, msg));
             }
 
             while matches!(self.input.as_bytes().get(self.cur_pos), Some(b'0'..=b'9')) {
@@ -290,7 +290,7 @@ impl Tokenizer {
             if !matches!(self.input.as_bytes().get(self.cur_pos), Some(b'0'..=b'9')) {
                 let loc = Loc::new((self.cur_pos - 1, 1), self.input.clone());
                 let msg = "Number literals must have at least one digit (0-9) following exponent";
-                return Err(TokenizerError::invalid_number(loc, msg));
+                return Err(TokenizeError::invalid_number(loc, msg));
             }
 
             while matches!(self.input.as_bytes().get(self.cur_pos), Some(b'0'..=b'9')) {
@@ -302,7 +302,7 @@ impl Tokenizer {
     }
 
     /// Retrieve one `Token` from the `Tokenizer`'s input string
-    pub(crate) fn get_token(&mut self) -> Result<Token, TokenizerError> {
+    pub(crate) fn get_token(&mut self) -> Result<Token, TokenizeError> {
         let next = self.next_char()?;
         let start = self.cur_pos - 1;
 
@@ -346,7 +346,7 @@ impl Tokenizer {
             _ => {
                 let loc = Loc::new((self.cur_pos - 1, 1), self.input.clone());
                 let msg = "Expected one of `null`, `true`, `false`, `:`, `,`, `[`, `]`, `{`, `}`, or string or number literal";
-                Err(TokenizerError::unexpected_token(loc, msg))
+                Err(TokenizeError::unexpected_token(loc, msg))
             }
         }
     }
@@ -369,7 +369,7 @@ mod test {
         );
         assert_matches!(
             tokenizer.get_token(),
-            Err(TokenizerError::UnexpectedEof(..))
+            Err(TokenizeError::UnexpectedEof(..))
         );
     }
 
@@ -385,7 +385,7 @@ mod test {
         );
         assert_matches!(
             tokenizer.get_token(),
-            Err(TokenizerError::UnexpectedEof(..))
+            Err(TokenizeError::UnexpectedEof(..))
         );
     }
 
@@ -401,7 +401,7 @@ mod test {
         );
         assert_matches!(
             tokenizer.get_token(),
-            Err(TokenizerError::UnexpectedEof(..))
+            Err(TokenizeError::UnexpectedEof(..))
         );
     }
 
@@ -417,7 +417,7 @@ mod test {
         );
         assert_matches!(
             tokenizer.get_token(),
-            Err(TokenizerError::UnexpectedEof(..))
+            Err(TokenizeError::UnexpectedEof(..))
         );
     }
 
@@ -433,7 +433,7 @@ mod test {
         );
         assert_matches!(
             tokenizer.get_token(),
-            Err(TokenizerError::UnexpectedEof(..))
+            Err(TokenizeError::UnexpectedEof(..))
         );
     }
 
@@ -449,7 +449,7 @@ mod test {
         );
         assert_matches!(
             tokenizer.get_token(),
-            Err(TokenizerError::UnexpectedEof(..))
+            Err(TokenizeError::UnexpectedEof(..))
         );
     }
 
@@ -465,7 +465,7 @@ mod test {
         );
         assert_matches!(
             tokenizer.get_token(),
-            Err(TokenizerError::UnexpectedEof(..))
+            Err(TokenizeError::UnexpectedEof(..))
         );
     }
 
@@ -481,7 +481,7 @@ mod test {
         );
         assert_matches!(
             tokenizer.get_token(),
-            Err(TokenizerError::UnexpectedEof(..))
+            Err(TokenizeError::UnexpectedEof(..))
         );
     }
 
@@ -497,7 +497,7 @@ mod test {
         );
         assert_matches!(
             tokenizer.get_token(),
-            Err(TokenizerError::UnexpectedEof(..))
+            Err(TokenizeError::UnexpectedEof(..))
         );
     }
 
@@ -519,7 +519,7 @@ mod test {
                 assert_eq!(token.to_number_str(), Some($input));
                 assert_matches!(
                     tokenizer.get_token(),
-                    Err(TokenizerError::UnexpectedEof(..))
+                    Err(TokenizeError::UnexpectedEof(..))
                 );
             }
         };
@@ -551,7 +551,7 @@ mod test {
                 let mut tokenizer = Tokenizer::new($input);
                 assert_matches!(
                     tokenizer.get_token(),
-                    Err(TokenizerError::InvalidNumberLiteral(..))
+                    Err(TokenizeError::InvalidNumberLiteral(..))
                 );
             }
         };
@@ -583,7 +583,7 @@ mod test {
                 assert_eq!(token.to_str(), Some($input));
                 assert_matches!(
                     tokenizer.get_token(),
-                    Err(TokenizerError::UnexpectedEof(..))
+                    Err(TokenizeError::UnexpectedEof(..))
                 );
             }
         };
@@ -609,7 +609,7 @@ mod test {
                 let mut tokenizer = Tokenizer::new(&format!("\"{}\"", $input));
                 assert_matches!(
                     tokenizer.get_token(),
-                    Err(TokenizerError::UnexpectedEscapeSequence(..))
+                    Err(TokenizeError::UnexpectedEscapeSequence(..))
                 );
             }
         };
@@ -632,7 +632,7 @@ mod test {
                 let mut tokenizer = Tokenizer::new($input);
                 assert_matches!(
                     tokenizer.get_token(),
-                    Err(TokenizerError::UnexpectedEof(..))
+                    Err(TokenizeError::UnexpectedEof(..))
                 );
             }
         };

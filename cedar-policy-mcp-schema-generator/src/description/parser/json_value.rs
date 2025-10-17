@@ -33,7 +33,7 @@ enum ValueKind {
     Object(LinkedHashMap<LocatedString, LocatedValue>),
 }
 
-/// A String Literal represented by it's location in the input String
+/// A String Literal represented by its location in the input String
 #[derive(Debug, Clone)]
 pub(crate) struct LocatedString {
     loc: Loc,

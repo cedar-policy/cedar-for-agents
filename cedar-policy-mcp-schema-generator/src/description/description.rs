@@ -22,7 +22,7 @@ use super::deserializer;
 use super::err::DeserializationError;
 use super::parser;
 
-/// The type a `Property` Can take
+/// The type a `Property` can take
 #[derive(Debug, Clone)]
 pub enum PropertyType {
     Bool,
@@ -56,7 +56,8 @@ pub enum PropertyType {
     },
 }
 
-/// Representation of an input/output Property
+/// Representation of an input (or output) `Property`
+/// I.e., an attribute of an JSON Object Schema type
 #[derive(Debug, Clone)]
 pub struct Property {
     pub(crate) name: SmolStr,
@@ -101,7 +102,7 @@ impl Property {
     }
 }
 
-/// Representation of a TypeDef used for defining properties
+/// Representation of a TypeDef used for defining `Property`s
 #[derive(Debug, Clone)]
 pub struct PropertyTypeDef {
     pub(crate) name: SmolStr,

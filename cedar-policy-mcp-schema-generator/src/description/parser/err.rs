@@ -24,7 +24,7 @@ pub enum ParseError {
     /// The parser encountered an error while tokenizing the input string
     #[error(transparent)]
     #[diagnostic(transparent)]
-    TokenizerError(#[from] TokenizerError),
+    TokenizeError(#[from] TokenizeError),
 
     /// The parser encountered an unexpected token while parsing a JSON value
     #[error("Encountered unexpected token while parsing.")]
@@ -64,7 +64,7 @@ impl ParseError {
 
 /// Errors representing issues encountered while tokenizing a JSON string
 #[derive(Error, Debug, Diagnostic)]
-pub enum TokenizerError {
+pub enum TokenizeError {
     /// The `Tokenizer` encountered end-of-file while trying to get a token
     #[error("Encountered EOF while parsing.")]
     #[diagnostic(transparent)]
@@ -83,8 +83,8 @@ pub enum TokenizerError {
     InvalidNumberLiteral(LocationFound),
 }
 
-impl TokenizerError {
-    /// Construct a new `TokenizerError` representing that the `Tokenizer`
+impl TokenizeError {
+    /// Construct a new `TokenizeError` representing that the `Tokenizer`
     /// unexpectedly encountered the end-of-file while getting a token
     pub(crate) fn unexpected_eof(loc: Loc, msg: &str) -> Self {
         Self::UnexpectedEof(LocationFound {
@@ -95,7 +95,7 @@ impl TokenizerError {
         })
     }
 
-    /// Construct a new `TokenizerError` representing that the `Tokenizer`
+    /// Construct a new `TokenizeError` representing that the `Tokenizer`
     /// encountered an unexpected character while getting a token
     pub(crate) fn unexpected_token(loc: Loc, msg: &str) -> Self {
         Self::UnexpectedToken(LocationFound {
@@ -106,7 +106,7 @@ impl TokenizerError {
         })
     }
 
-    /// Construct a new `TokenizerError` representing that the `Tokenizer`
+    /// Construct a new `TokenizeError` representing that the `Tokenizer`
     /// encountered an unexpected escape sequence while getting a string literal token
     pub(crate) fn unknown_escape_sequence(loc: Loc, msg: &str) -> Self {
         Self::UnexpectedEscapeSequence(LocationFound {
@@ -117,7 +117,7 @@ impl TokenizerError {
         })
     }
 
-    /// Construct a new `TokenizerError` representing that the `Tokenizer`
+    /// Construct a new `TokenizeError` representing that the `Tokenizer`
     /// encountered an unexpected character while getting a number literal token
     pub(crate) fn invalid_number(loc: Loc, msg: &str) -> Self {
         Self::InvalidNumberLiteral(LocationFound {
