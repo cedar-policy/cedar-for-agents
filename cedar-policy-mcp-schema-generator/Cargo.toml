@@ -1,0 +1,27 @@
+[package]
+name = "cedar-policy-mcp-schema-generator"
+description = "Auto-Generates Cedar schemas from an MCP server's tool descriptions."
+version = "0.1.0"
+
+#inherit rest from workspace
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+categories.workspace = true
+keywords.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+cedar-policy-core = "4.6.0"
+miette = { version = "7.6.0", features = ["fancy"] }
+linked-hash-map = "0.5.6"
+thiserror = "2.0"
+smol_str = "0.3"
+nonempty = "0.12"
+
+[dev-dependencies]
+cool_asserts = "2.0"
+
+[lints]
+workspace = true

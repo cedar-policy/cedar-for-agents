@@ -1,0 +1,54 @@
+name: Feature request
+description: Suggest an idea for Cedar For Agents
+labels: [pending-triage, feature-request]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to submit a feature request! Try to include as much information as you can.
+
+  - type: dropdown
+    attributes:
+      label: Category
+      description: What component of Cedar For Agents does this feature relate to?
+      multiple: true
+      options:
+        - MCP Schema Generation
+        - User level API features/changes
+        - CLI features/changes
+        - Error message improvements
+        - Documentation and code comments
+        - Internal refactors/changes -- consider "Internal improvement" instead of "Feature request"
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Describe the feature you'd like to request
+      description: |
+        A clear and concise description of what you want to happen. Please include **any related issues**, documentation, etc.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Describe alternatives you've considered
+      description: |
+        A clear and concise description of any alternative solutions or features you've considered.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Additional context
+      description: |
+        Add any other use cases or context about the feature request here. Please include any prototype/sandbox, workaround, reference implementation, etc.
+
+  - type: checkboxes
+    attributes:
+      label: Is this something that you'd be interested in working on?
+      options:
+        - label: 👋 I may be able to implement this feature request
+        - label: ⚠️ This feature might incur a breaking change
