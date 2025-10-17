@@ -288,8 +288,8 @@ impl SchemaGenerator {
         let action = ActionType {
             attributes: None,
             applies_to: Some(ApplySpec {
-                resource_types: self.users.clone(),
-                principal_types: self.resources.clone(),
+                resource_types: self.resources.clone(),
+                principal_types: self.users.clone(),
                 context: AttributesOrContext(Type::Type {
                     ty: TypeVariant::Record(RecordType {
                         attributes: ctx_attrs,
