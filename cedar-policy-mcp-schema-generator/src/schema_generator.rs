@@ -288,8 +288,8 @@ impl SchemaGenerator {
         let action = ActionType {
             attributes: None,
             applies_to: Some(ApplySpec {
-                resource_types: self.users.clone(),
-                principal_types: self.resources.clone(),
+                resource_types: self.resources.clone(),
+                principal_types: self.users.clone(),
                 context: AttributesOrContext(Type::Type {
                     ty: TypeVariant::Record(RecordType {
                         attributes: ctx_attrs,
@@ -655,11 +655,8 @@ impl SchemaGenerator {
                     let attr_name = property.name().to_smolstr();
                     let ty_name = property.name().parse()?;
 
-                    let ty = self.cedar_type_from_property_type(
-                        namespace,
-                        ty_name,
-                        property.property_type(),
-                    )?;
+                    let ty =
+                        self.cedar_type_from_property_type(&ns, ty_name, property.property_type())?;
                     let ty = TypeOfAttribute {
                         ty,
                         annotations: Annotations::new(),
