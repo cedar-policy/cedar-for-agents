@@ -106,15 +106,7 @@ namespace MyMcpServer {
     entity User {
         id: String, 
         username: String,
-        name?: String, 
-        givenName?: String,
         // other custom attributes for User
-    };
-
-    @mcp_principal("Agent")
-    entity Agent {
-        agentName: String,
-        // other custom attributes for the Agent
     };
     
     // This is a common type that describes generic contextual
@@ -133,6 +125,9 @@ namespace MyMcpServer {
     // Generator requires at least one resource type
     @mcp_resource("McpServer")
     entity McpServer;
+
+    @mcp_action("parent_action")
+    action parent_action;
 }
 ```
 
@@ -164,76 +159,59 @@ The above example program will output the following Cedar Schema that keeps the 
 
 ```cedarschema
 namespace MyMcpServer {
-  @mcp_context("session")
   type CommonContext = {
     "currentTimestamp": datetime,
     "ipaddr": ipaddr
   };
 
-  @mcp_principal("Agent")
-  entity Agent = {
-    "agentName": String
+  type allocate_timeInput = {
+    "hours_needed": Long,
+    "priority"?: Long
   };
 
-  @mcp_resource("McpServer")
+  type check_task_statusInput = {
+    "task_id": String
+  };
+
+  type start_workInput = {
+    "slot_id": String,
+    "task_id": String
+  };
+
   entity McpServer;
 
-  @mcp_principal("User")
   entity User = {
-    "givenName"?: String,
     "id": String,
-    "name"?: String,
     "username": String
   };
 
-  action "allocate_time" appliesTo {
-    principal: [Agent, User],
+  action "allocate_time" in [Action::"parent_action"] appliesTo {
+    principal: [User],
     resource: [McpServer],
     context: {
-  "inputs": {
-    "hours_needed": __cedar::Long,
-    "priority"?: __cedar::Long
-  },
-  "outputs"?: {
-    "slot_id": __cedar::String,
-    "time_available": __cedar::Bool
-  },
+  "input": allocate_timeInput,
   "session": CommonContext
 }
   };
 
-  action "check_task_status" appliesTo {
-    principal: [Agent, User],
+  action "check_task_status" in [Action::"parent_action"] appliesTo {
+    principal: [User],
     resource: [McpServer],
     context: {
-  "inputs": {
-    "task_id": __cedar::String
-  },
-  "outputs"?: {
-    "priority": __cedar::Long,
-    "status": MyMcpServer::check_task_status::Outputs::status
-  },
+  "input": check_task_statusInput,
   "session": CommonContext
 }
   };
 
-  action "start_work" appliesTo {
-    principal: [Agent, User],
+  action "parent_action";
+
+  action "start_work" in [Action::"parent_action"] appliesTo {
+    principal: [User],
     resource: [McpServer],
     context: {
-  "inputs": {
-    "slot_id": __cedar::String,
-    "task_id": __cedar::String
-  },
-  "outputs"?: {
-    "work_started": __cedar::Bool
-  },
+  "input": start_workInput,
   "session": CommonContext
 }
   };
-}
-
-namespace MyMcpServer::check_task_status::Outputs {
-  entity status enum ["started", "paused", "failed", "completed"];
 }
 ```
