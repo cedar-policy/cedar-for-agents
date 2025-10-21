@@ -21,9 +21,9 @@ use cedar_policy_core::ast::{InternalName, Name, UnreservedId};
 use cedar_policy_core::est::Annotations;
 use cedar_policy_core::validator::{
     json_schema::{
-        ActionType, ApplySpec, AttributesOrContext, CommonType, CommonTypeId, EntityType,
-        EntityTypeKind, Fragment, NamespaceDefinition, RecordType, StandardEntityType, Type,
-        TypeOfAttribute, TypeVariant,
+        ActionEntityUID, ActionType, ApplySpec, AttributesOrContext, CommonType, CommonTypeId,
+        EntityType, EntityTypeKind, Fragment, NamespaceDefinition, RecordType, StandardEntityType,
+        Type, TypeOfAttribute, TypeVariant,
     },
     RawName,
 };
@@ -33,6 +33,60 @@ use nonempty::NonEmpty;
 use smol_str::{SmolStr, ToSmolStr};
 
 use std::collections::{btree_map::Entry, BTreeMap};
+
+/// A type reserved to configure how the schema generator functions
+#[derive(Debug, Clone)]
+pub struct SchemaGeneratorConfig {
+    include_outputs: bool,
+    objects_as_records: bool,
+    erase_annotations: bool,
+}
+
+impl SchemaGeneratorConfig {
+    /// Default configuration of Schema Generator
+    pub fn default() -> Self {
+        Self {
+            include_outputs: false,
+            objects_as_records: false,
+            erase_annotations: true,
+        }
+    }
+
+    /// Updates config to set `include_outputs` to `val` (default: false)
+    /// if `include_outputs` is set to `true`, then the schema generator
+    /// will generate actions for each tool whose context includes both the
+    /// input and output parameters of the MCP tool.
+    pub fn include_outputs(self, val: bool) -> Self {
+        Self {
+            include_outputs: val,
+            ..self
+        }
+    }
+
+    /// Updates config to set `objects_as_records` to `val` (default: false)
+    /// If `objects_as_records` is set to `false`, then all objects will be
+    /// represented as an entity type. If `objects_as_records` is set to `true`,
+    /// then any object that does not allow for "additionalProperties" will be
+    /// encoded in cedar as a record type. Note, in both settings, objects with
+    /// "additionalProperties" will be encoded as an entity type with tags.
+    pub fn objects_as_records(self, val: bool) -> Self {
+        Self {
+            objects_as_records: val,
+            ..self
+        }
+    }
+
+    /// Updates config to set `erase_annoations` to `val` (default: true)
+    /// If `erase_annoations` is set to `true`, then all `mcp_principal`,
+    /// `mcp_resource`, `mcp_context`, and `mcp_acation` annotations
+    /// will be erased in the output schema fragment.
+    pub fn erase_annotations(self, val: bool) -> Self {
+        Self {
+            erase_annotations: val,
+            ..self
+        }
+    }
+}
 
 /// A type that allows constructing a Cedar Schema (Fragment)
 /// from an input Cedar Schema Stub that defines the Cedar Type of
@@ -48,11 +102,21 @@ pub struct SchemaGenerator {
     users: Vec<RawName>,
     resources: Vec<RawName>,
     contexts: BTreeMap<SmolStr, RawName>,
+    actions: Option<Vec<ActionEntityUID<RawName>>>,
+    config: SchemaGeneratorConfig,
 }
 
 impl SchemaGenerator {
-    /// Create a `SchemaGenerator` from a Cedar Schema Fragment
+    /// Create a `SchemaGenerator` from a Cedar Schema Fragment using default configuration
     pub fn new(schema_stub: Fragment<RawName>) -> Result<Self, SchemaGeneratorError> {
+        Self::new_with_config(schema_stub, SchemaGeneratorConfig::default())
+    }
+
+    /// Create a `SchemaGenerator` from a Cedar Schema Fragment using specified configuration
+    pub fn new_with_config(
+        schema_stub: Fragment<RawName>,
+        config: SchemaGeneratorConfig,
+    ) -> Result<Self, SchemaGeneratorError> {
         let (ns, namespace) = match schema_stub.0.iter().next() {
             Some((None, _)) => return Err(SchemaGeneratorError::GlobalNamespaceUsed),
             Some((Some(namespace), ns)) => (ns, namespace.clone()),
@@ -135,12 +199,39 @@ impl SchemaGenerator {
             }))
             .collect();
 
+        #[allow(clippy::unwrap_used, reason = "`mcp_action` is a valid AnyId")]
+        // PANIC SAFETY: converting "mcp_action" into an AnyId should not error
+        let actions = ns
+            .actions
+            .iter()
+            .filter_map(|(name, action)| {
+                action
+                    .annotations
+                    .0
+                    .get(&"mcp_action".parse().unwrap())
+                    .map(|_| ActionEntityUID::new(None, name.clone()))
+            })
+            .collect::<Vec<_>>();
+        let actions = if actions.is_empty() {
+            None
+        } else {
+            Some(actions)
+        };
+
+        let fragment = if config.erase_annotations {
+            erase_mcp_annotations(schema_stub)
+        } else {
+            schema_stub
+        };
+
         Ok(Self {
-            fragment: schema_stub,
+            fragment,
             namespace: Some(namespace),
             users,
             resources,
             contexts,
+            actions,
+            config,
         })
     }
 
@@ -226,21 +317,7 @@ impl SchemaGenerator {
             self.add_commontype(&namespace, ty, ty_name, true)?;
         }
 
-        #[allow(clippy::unwrap_used, reason = "`Inputs` is a valid Name")]
-        // PANIC SAFETY: "Inputs" is a valid Name
-        let input_ns: Name = "Inputs".parse().unwrap();
-        let input_ns = Some(input_ns.qualify_with_name(namespace.as_ref()));
-        self.add_namespace(input_ns.clone());
-
-        #[allow(clippy::unwrap_used, reason = "`Outputs` is a valid Name")]
-        // PANIC SAFETY: "Outputs" is a valid Name
-        let output_ns: Name = "Outputs".parse().unwrap();
-        let output_ns = Some(output_ns.qualify_with_name(namespace.as_ref()));
-        self.add_namespace(output_ns.clone());
-
-        let inputs = self.record_from_parameters(description.inputs(), &input_ns)?;
-        let outputs = self.record_from_parameters(description.outputs(), &output_ns)?;
-
+        // Shared Common (input Context Types)
         let mut ctx_attrs = self
             .contexts
             .iter()
@@ -261,11 +338,35 @@ impl SchemaGenerator {
             })
             .collect::<BTreeMap<_, _>>();
 
+        // Create a `toolnameInput` type to capture inputs to mcp tool
+        #[allow(clippy::unwrap_used, reason = "`Input` is a valid Name")]
+        // PANIC SAFETY: "Input" is a valid Name
+        let input_ns: Name = "Input".parse().unwrap();
+        let input_ns = Some(input_ns.qualify_with_name(namespace.as_ref()));
+
+        self.add_namespace(input_ns.clone());
+        let inputs = self.record_from_parameters(description.inputs(), &input_ns)?;
+        self.drop_namespace_if_empty(&input_ns);
+
+        let input_type = Type::Type {
+            ty: TypeVariant::Record(inputs),
+            loc: None,
+        };
+        let tool_input_ty_name: UnreservedId =
+            format!("{}Input", description.name()).as_str().parse()?;
+        let parent_namespace = self.namespace.clone();
+        self.add_commontype(
+            &parent_namespace,
+            input_type,
+            tool_input_ty_name.clone(),
+            true,
+        )?;
+
         ctx_attrs.insert(
-            "inputs".to_smolstr(),
+            "input".to_smolstr(),
             TypeOfAttribute {
-                ty: Type::Type {
-                    ty: TypeVariant::Record(inputs),
+                ty: Type::CommonTypeRef {
+                    type_name: RawName::new_from_unreserved(tool_input_ty_name, None),
                     loc: None,
                 },
                 annotations: Annotations::new(),
@@ -273,17 +374,40 @@ impl SchemaGenerator {
             },
         );
 
-        ctx_attrs.insert(
-            "outputs".to_smolstr(),
-            TypeOfAttribute {
-                ty: Type::Type {
-                    ty: TypeVariant::Record(outputs),
-                    loc: None,
+        if self.config.include_outputs {
+            #[allow(clippy::unwrap_used, reason = "`Outputs` is a valid Name")]
+            // PANIC SAFETY: "Outputs" is a valid Name
+            let output_ns: Name = "Outputs".parse().unwrap();
+            let output_ns = Some(output_ns.qualify_with_name(namespace.as_ref()));
+
+            self.add_namespace(output_ns.clone());
+            let outputs = self.record_from_parameters(description.outputs(), &output_ns)?;
+            self.drop_namespace_if_empty(&output_ns);
+
+            let output_type = Type::Type {
+                ty: TypeVariant::Record(outputs),
+                loc: None,
+            };
+            let tool_output_ty_name: UnreservedId =
+                format!("{}Output", description.name()).as_str().parse()?;
+            self.add_commontype(
+                &parent_namespace,
+                output_type,
+                tool_output_ty_name.clone(),
+                true,
+            )?;
+            ctx_attrs.insert(
+                "output".to_smolstr(),
+                TypeOfAttribute {
+                    ty: Type::CommonTypeRef {
+                        type_name: RawName::new_from_unreserved(tool_output_ty_name, None),
+                        loc: None,
+                    },
+                    annotations: Annotations::new(),
+                    required: false,
                 },
-                annotations: Annotations::new(),
-                required: false,
-            },
-        );
+            );
+        }
 
         let action = ActionType {
             attributes: None,
@@ -298,7 +422,7 @@ impl SchemaGenerator {
                     loc: None,
                 }),
             }),
-            member_of: None,
+            member_of: self.actions.clone(),
             annotations: Annotations::new(),
             loc: None,
         };
@@ -312,8 +436,6 @@ impl SchemaGenerator {
             .actions
             .insert(description.name().to_smolstr(), action);
 
-        self.drop_namespace_if_empty(&input_ns);
-        self.drop_namespace_if_empty(&output_ns);
         self.drop_namespace_if_empty(&namespace);
 
         Ok(())
@@ -485,11 +607,45 @@ impl SchemaGenerator {
         ty_name: UnreservedId,
         property_type: &PropertyType,
     ) -> Result<Type<RawName>, SchemaGeneratorError> {
-        // PANIC SAFETY: by construction namespace should exist
+        // PANIC SAFETY: `Bool` is a valid `RawName`
+        #[allow(clippy::unwrap_used, reason = "`Bool` is a valid `RawName`")]
+        let bool = TypeVariant::EntityOrCommon {
+            type_name: "Bool".parse().unwrap(),
+        };
+        // PANIC SAFETY: `Long` is a valid `RawName`
+        #[allow(clippy::unwrap_used, reason = "`Long` is a valid `RawName`")]
+        let long = TypeVariant::EntityOrCommon {
+            type_name: "Long".parse().unwrap(),
+        };
+        // PANIC SAFETY: `String` is a valid `RawName`
+        #[allow(clippy::unwrap_used, reason = "`String` is a valid `RawName`")]
+        let string = TypeVariant::EntityOrCommon {
+            type_name: "String".parse().unwrap(),
+        };
+        // PANIC SAFETY: `decimal` is a valid `RawName`
+        #[allow(clippy::unwrap_used, reason = "`decimal` is a valid `RawName`")]
+        let decimal = TypeVariant::EntityOrCommon {
+            type_name: "decimal".parse().unwrap(),
+        };
+        // PANIC SAFETY: `datetime` is a valid `RawName`
+        #[allow(clippy::unwrap_used, reason = "`datetime` is a valid `RawName`")]
+        let datetime = TypeVariant::EntityOrCommon {
+            type_name: "datetime".parse().unwrap(),
+        };
+        // PANIC SAFETY: `duration` is a valid `RawName`
+        #[allow(clippy::unwrap_used, reason = "`duration` is a valid `RawName`")]
+        let duration = TypeVariant::EntityOrCommon {
+            type_name: "duration".parse().unwrap(),
+        };
+        // PANIC SAFETY: `ipaddr` is a valid `RawName`
+        #[allow(clippy::unwrap_used, reason = "`ipaddr` is a valid `RawName`")]
+        let ipaddr = TypeVariant::EntityOrCommon {
+            type_name: "ipaddr".parse().unwrap(),
+        };
 
         let variant = match property_type {
-            PropertyType::Bool => TypeVariant::Boolean,
-            PropertyType::Integer => TypeVariant::Long,
+            PropertyType::Bool => bool,
+            PropertyType::Integer => long,
             PropertyType::Float => {
                 #[allow(clippy::unwrap_used, reason = "`Float` is a valid UnreservedId")]
                 // PANIC SAFETY: `"Float"` should not be a reserved id
@@ -508,35 +664,11 @@ impl SchemaGenerator {
                 let name = RawName::from_name(name.qualify_with_name(self.namespace.as_ref()));
                 TypeVariant::Entity { name }
             }
-            PropertyType::String => TypeVariant::String,
-            PropertyType::Decimal => {
-                #[allow(clippy::unwrap_used, reason = "`decimal` is a valid UnreservedId")]
-                // PANIC SAFETY: `decimal` is a valid UnreservedId
-                TypeVariant::Extension {
-                    name: "decimal".parse().unwrap(),
-                }
-            }
-            PropertyType::Datetime => {
-                #[allow(clippy::unwrap_used, reason = "`datetime` is a valid UnreservedId")]
-                // PANIC SAFETY: `datetime` is a valid UnreservedId
-                TypeVariant::Extension {
-                    name: "datetime".parse().unwrap(),
-                }
-            }
-            PropertyType::Duration => {
-                #[allow(clippy::unwrap_used, reason = "`duration` is a valid UnreservedId")]
-                // PANIC SAFETY: `duration` is a valid UnreservedId
-                TypeVariant::Extension {
-                    name: "duration".parse().unwrap(),
-                }
-            }
-            PropertyType::IpAddr => {
-                #[allow(clippy::unwrap_used, reason = "`ipaddr` is a valid UnreservedId")]
-                // PANIC SAFETY: `ipaddr` is a valid UnreservedId
-                TypeVariant::Extension {
-                    name: "ipaddr".parse().unwrap(),
-                }
-            }
+            PropertyType::String => string,
+            PropertyType::Decimal => decimal,
+            PropertyType::Datetime => datetime,
+            PropertyType::Duration => duration,
+            PropertyType::IpAddr => ipaddr,
             PropertyType::Null => {
                 #[allow(clippy::unwrap_used, reason = "`Null` is a valid UnreservedId")]
                 // PANIC SAFETY: `"Null"` should not be a reserved id
@@ -616,7 +748,7 @@ impl SchemaGenerator {
                         // PANIC SAFETY: TypeChoice{i} should not fail to parse
                         let proj_tyname: UnreservedId =
                             format!("TypeChoice{i}").as_str().parse().unwrap();
-                        let proj = format!("type_choice{i}").to_smolstr();
+                        let proj = format!("typeChoice{i}").to_smolstr();
                         let ty = self.cedar_type_from_property_type(&ns, proj_tyname, ptype)?;
                         let ty = TypeOfAttribute {
                             ty,
@@ -666,23 +798,36 @@ impl SchemaGenerator {
                     attributes.insert(attr_name, ty);
                 }
 
-                let ty = EntityType {
-                    kind: EntityTypeKind::Standard(StandardEntityType {
-                        member_of_types: Vec::new(),
-                        shape: AttributesOrContext(Type::Type {
-                            ty: TypeVariant::Record(RecordType {
-                                attributes,
-                                additional_attributes: tags.is_some(),
-                            }),
-                            loc: None,
+                // Encode as record if possible and allowed
+                if self.config.objects_as_records && tags.is_none() {
+                    let ty = Type::Type {
+                        ty: TypeVariant::Record(RecordType {
+                            attributes,
+                            additional_attributes: false,
                         }),
-                        tags,
-                    }),
-                    annotations: Annotations::new(),
-                    loc: None,
-                };
+                        loc: None,
+                    };
+                    self.add_commontype(namespace, ty, ty_name.clone(), true)?;
+                } else {
+                    // otherwise encode as EntityType
+                    let ty = EntityType {
+                        kind: EntityTypeKind::Standard(StandardEntityType {
+                            member_of_types: Vec::new(),
+                            shape: AttributesOrContext(Type::Type {
+                                ty: TypeVariant::Record(RecordType {
+                                    attributes,
+                                    additional_attributes: tags.is_some(),
+                                }),
+                                loc: None,
+                            }),
+                            tags,
+                        }),
+                        annotations: Annotations::new(),
+                        loc: None,
+                    };
 
-                self.add_entitytype(namespace, ty, ty_name.clone(), true)?;
+                    self.add_entitytype(namespace, ty, ty_name.clone(), true)?;
+                }
 
                 self.drop_namespace_if_empty(&ns);
                 let name = RawName::new_from_unreserved(ty_name, None);
@@ -770,4 +915,78 @@ fn get_refname(namespace: Option<Name>, ty_name: &CommonTypeId) -> RawName {
             ty_name.to_string().parse().unwrap()
         }
     }
+}
+
+fn erase_mcp_annotations(schema_stub: Fragment<RawName>) -> Fragment<RawName> {
+    let ns = schema_stub
+        .0
+        .into_iter()
+        .map(|(name, nsdef)| {
+            let common_types = nsdef
+                .common_types
+                .into_iter()
+                .map(|(ty_name, ty)| {
+                    let ty = CommonType {
+                        annotations: Annotations(
+                            ty.annotations
+                                .0
+                                .into_iter()
+                                .filter(|(anno, _)| anno.as_ref() != "mcp_context")
+                                .collect(),
+                        ),
+                        ..ty
+                    };
+                    (ty_name, ty)
+                })
+                .collect();
+            let entity_types = nsdef
+                .entity_types
+                .into_iter()
+                .map(|(ty_name, ty)| {
+                    let ty = EntityType {
+                        annotations: Annotations(
+                            ty.annotations
+                                .0
+                                .into_iter()
+                                .filter(|(anno, _)| {
+                                    anno.as_ref() != "mcp_context"
+                                        && anno.as_ref() != "mcp_resource"
+                                        && anno.as_ref() != "mcp_principal"
+                                })
+                                .collect(),
+                        ),
+                        ..ty
+                    };
+                    (ty_name, ty)
+                })
+                .collect();
+            let actions = nsdef
+                .actions
+                .into_iter()
+                .map(|(name, act)| {
+                    let act = ActionType {
+                        annotations: Annotations(
+                            act.annotations
+                                .0
+                                .into_iter()
+                                .filter(|(anno, _)| anno.as_ref() != "mcp_action")
+                                .collect(),
+                        ),
+                        ..act
+                    };
+                    (name, act)
+                })
+                .collect();
+            (
+                name,
+                NamespaceDefinition {
+                    common_types,
+                    entity_types,
+                    actions,
+                    ..nsdef
+                },
+            )
+        })
+        .collect();
+    Fragment(ns)
 }
