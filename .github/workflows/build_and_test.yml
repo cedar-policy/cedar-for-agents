@@ -51,19 +51,26 @@ jobs:
       - uses: actions/checkout@v4
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: cargo install cargo-audit --locked
-      - run: ./panic_safety.sh
+      - run: ./rust/panic_safety.sh
       - run: cargo doc --all-features --no-deps
+        working-directory: rust/
 
       # All targets are run with the same `RUSTFLAGS
       - run: cargo build --verbose
+        working-directory: rust/
       - run: cargo test --verbose
+        working-directory: rust/
       - run: cargo test --verbose --benches
+        working-directory: rust/
       - run: cargo test --verbose --no-default-features
+        working-directory: rust/
       - run: cargo audit --deny warnings # For some reason this hangs if you don't cargo build first
+        working-directory: rust/
 
       - name: Create a coverage report
         if: ${{ inputs.collect_coverage }} && ${{ matrix.toolchain }} == 'stable'
-        uses: ./.github/actions/create_coverage_reports
+        uses: ../.github/actions/create_coverage_reports
+        working-directory: rust/
         with:
           retention-days: ${{ inputs.retention-days }}
 
@@ -85,6 +92,7 @@ jobs:
       # `unwrap_used`. They aren't detected by `panic_safety.sh` which only
       # looks for comments where we've added an `allow` directive for clippy.
       - run: cargo clippy --all-features
+        working-directory: rust/
 
   # Run `cargo fmt` independently so that tests are executed even if you forgot
   # to format before pushing.
@@ -100,6 +108,7 @@ jobs:
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: rustup component add rustfmt
       - run: cargo fmt --all --check
+        working-directory: rust/
 
   cargo-deny:
     name: cargo deny
@@ -107,6 +116,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          working-directory: rust/
 
   # See https://doc.rust-lang.org/cargo/guide/continuous-integration.html#verifying-rust-version
   msrv:
@@ -115,3 +126,4 @@ jobs:
     - uses: actions/checkout@v4
     - uses: taiki-e/install-action@cargo-hack
     - run: cargo hack check --rust-version --workspace --all-targets --ignore-private --all-features
+      working-directory: rust/
