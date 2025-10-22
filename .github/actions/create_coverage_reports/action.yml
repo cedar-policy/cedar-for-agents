@@ -33,6 +33,7 @@ runs:
       run: |
         mkdir -p ./target/raw_coverage
         find . -path ./target/raw_coverage -prune -o -name "*.profraw" -type f -exec mv "{}" ./target/raw_coverage  \;
+      working-directory: rust/
     # Note: source-based branch coverage is not supported for Rust
     # (see http://github.com/rust-lang/rust/issues/79649)
     - name: Build coverage report
@@ -55,12 +56,13 @@ runs:
             --excl-stop '^}$' \
             --ignore-not-existing \
             -o ./target/coverage/
+      working-directory: rust/
     - name: Upload HTML coverage report
       uses: actions/upload-artifact@v4
       id: upload-artifact
       with:
         name: ${{ inputs.artifact-prefix }}_html
-        path: target/coverage/html
+        path: rust/target/coverage/html
         retention-days: ${{ inputs.retention-days }}
     - name: Create directory for cobertura report
       shell: bash
@@ -68,11 +70,12 @@ runs:
         mkdir -p target/coverage/cobertura
         mv target/coverage/cobertura.xml target/coverage/cobertura/
         echo $REPORT_LOCATION > target/coverage/cobertura/report_location.txt
+      working-directory: rust/
       env:
         REPORT_LOCATION: ${{ steps.upload-artifact.outputs.artifact-url }}
     - name: Upload cobertura coverage report
       uses: actions/upload-artifact@v4
       with:
         name: ${{ inputs.artifact-prefix }}_cobertura
-        path: target/coverage/cobertura
+        path: rust/target/coverage/cobertura
         retention-days: ${{ inputs.retention-days }}
