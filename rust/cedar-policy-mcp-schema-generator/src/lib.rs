@@ -24,4 +24,4 @@ pub use description::{
 };
 
 pub use err::SchemaGeneratorError;
-pub use schema_generator::SchemaGenerator;
+pub use schema_generator::{SchemaGenerator, SchemaGeneratorConfig};
