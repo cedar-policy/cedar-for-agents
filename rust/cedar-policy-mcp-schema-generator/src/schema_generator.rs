@@ -40,6 +40,7 @@ pub struct SchemaGeneratorConfig {
     include_outputs: bool,
     objects_as_records: bool,
     erase_annotations: bool,
+    flatten_namespaces: bool,
 }
 
 impl SchemaGeneratorConfig {
@@ -49,6 +50,7 @@ impl SchemaGeneratorConfig {
             include_outputs: false,
             objects_as_records: false,
             erase_annotations: true,
+            flatten_namespaces: false,
         }
     }
 
@@ -76,13 +78,29 @@ impl SchemaGeneratorConfig {
         }
     }
 
-    /// Updates config to set `erase_annoations` to `val` (default: true)
-    /// If `erase_annoations` is set to `true`, then all `mcp_principal`,
+    /// Updates config to set `erase_annotations` to `val` (default: true)
+    /// If `erase_annotations` is set to `true`, then all `mcp_principal`,
     /// `mcp_resource`, `mcp_context`, and `mcp_acation` annotations
     /// will be erased in the output schema fragment.
     pub fn erase_annotations(self, val: bool) -> Self {
         Self {
             erase_annotations: val,
+            ..self
+        }
+    }
+
+    /// Updates config to set `flatten_namespaces` to `val` (default: false)
+    ///
+    /// If `flatten_namespaces` is set to `true` then the fragment returned
+    /// by `SchemaGenerator::get_schema` will contain only the input namespace
+    ///
+    /// This is accomplished by converting every name `Foo::Bar::Baz` to `Foo_Bar_Baz`.
+    /// Note, this process may result in a malformed schema if this renaming process
+    /// produces conflicting names. For example, if the produced schema (without flattened names)
+    /// would contain the names `Foo::Bar_Baz` and `Foo_Bar::Baz`.
+    pub fn flatten_namespaces(self, val: bool) -> Self {
+        Self {
+            flatten_namespaces: val,
             ..self
         }
     }
@@ -418,7 +436,7 @@ impl SchemaGenerator {
                 loc: None,
             };
             let tool_output_ty_name: UnreservedId =
-                format!("{}Output", description.name()).as_str().parse()?;
+                format!("{}Output", description.name()).parse()?;
             self.add_commontype(
                 &parent_namespace,
                 output_type,
@@ -470,6 +488,62 @@ impl SchemaGenerator {
         Ok(())
     }
 
+    // This function should only be called when name is prefixed by `{self.namespace}::`
+    // Converts `{self.namespace}::Foo::Bar::Baz` to `{self.namespace}::Foo_Bar_Baz`.
+    fn flatten_internalname(&self, name: InternalName) -> InternalName {
+        if self.config.flatten_namespaces {
+            let name = name.to_string();
+            let name = if self.namespace.is_some() {
+                // PANIC SAFETY: by assumption name should include at least one "::"
+                #[allow(
+                    clippy::unwrap_used,
+                    reason = "by assumption name should include at least one \"::\""
+                )]
+                name.split_once("::").unwrap().1.to_string()
+            } else {
+                name
+            };
+            let name = name.replace("::", "_");
+            // PANIC SAFETY: name should still parse after converting "::" to "_"
+            #[allow(
+                clippy::unwrap_used,
+                reason = "name should still parse after converting \"::\" to \"_\""
+            )]
+            let name: InternalName = name.parse().unwrap();
+            name.qualify_with_name(self.namespace.as_ref())
+        } else {
+            name
+        }
+    }
+
+    // This function should only be called when name is prefixed by `{self.namespace}::`
+    // Converts `{self.namespace}::Foo::Bar::Baz` to `{self.namespace}::Foo_Bar_Baz`.
+    fn flatten_rawname(&self, name: RawName) -> RawName {
+        if self.config.flatten_namespaces {
+            RawName::from_name(self.flatten_internalname(name.qualify_with(None)))
+        } else {
+            name
+        }
+    }
+
+    // This function should only be called when namespace is prefixed by `{self.namespace}::`
+    // If `namespace` is `{self.namespace}::Foo::Bar::Baz` then this function returns the id `Foo_Bar_Baz_id`.
+    fn flatten_unreserved_id(&self, id: UnreservedId, namespace: &Option<Name>) -> UnreservedId {
+        if self.config.flatten_namespaces {
+            let name = Name::unqualified_name(id).qualify_with_name(namespace.as_ref());
+            let name = name.qualify_with(None);
+            let name = self.flatten_internalname(name);
+            // PANIC SAFETY: the basename should be unreserved because the original id used to construct it is unreserved
+            #[allow(
+                clippy::unwrap_used,
+                reason = "the basename should be unreserved because the original id used to construct it is unreserved"
+            )]
+            UnreservedId::try_from(name.basename().clone()).unwrap()
+        } else {
+            id
+        }
+    }
+
     fn add_namespace(&mut self, namespace: Option<Name>) {
         self.fragment
             .0
@@ -508,6 +582,15 @@ impl SchemaGenerator {
         ty_name: UnreservedId,
         error_if_exists: bool,
     ) -> Result<(), SchemaGeneratorError> {
+        let (namespace, ty_name) = if self.config.flatten_namespaces {
+            (
+                &self.namespace,
+                self.flatten_unreserved_id(ty_name, namespace),
+            )
+        } else {
+            (namespace, ty_name)
+        };
+
         let ty_rawname = RawName::new_from_unreserved(ty_name.clone(), None);
         match ty {
             Type::CommonTypeRef { type_name, loc: _ }
@@ -561,6 +644,15 @@ impl SchemaGenerator {
         ty_name: UnreservedId,
         error_if_exists: bool,
     ) -> Result<(), SchemaGeneratorError> {
+        let (namespace, ty_name) = if self.config.flatten_namespaces {
+            (
+                &self.namespace,
+                self.flatten_unreserved_id(ty_name, namespace),
+            )
+        } else {
+            (namespace, ty_name)
+        };
+
         #[allow(
             clippy::unwrap_used,
             reason = "This function is only called on namespaces appearing in fragment"
@@ -631,7 +723,6 @@ impl SchemaGenerator {
                 type_def.property_type(),
                 &common_types,
             )?;
-
             self.add_commontype(namespace, ty, ty_name, true)?;
         }
 
@@ -762,7 +853,9 @@ impl SchemaGenerator {
                 self.add_entitytype(namespace, ty, ty_name.clone(), true)?;
                 let name = RawName::new_from_unreserved(ty_name, None);
                 let name = RawName::from_name(name.qualify_with_name(namespace.as_ref()));
-                TypeVariant::Entity { name }
+                TypeVariant::Entity {
+                    name: self.flatten_rawname(name),
+                }
             }
             PropertyType::Array { element_ty } => {
                 let ty = self.cedar_type_from_property_type(
@@ -919,7 +1012,9 @@ impl SchemaGenerator {
                 self.drop_namespace_if_empty(&ns);
                 let name = RawName::new_from_unreserved(ty_name, None);
                 let name = RawName::from_name(name.qualify_with_name(namespace.as_ref()));
-                TypeVariant::Entity { name }
+                TypeVariant::Entity {
+                    name: self.flatten_rawname(name),
+                }
             }
             PropertyType::Ref { name } => match common_types.get(name) {
                 None => {
@@ -932,7 +1027,7 @@ impl SchemaGenerator {
                 Some(name) => {
                     return Ok(Type::Type {
                         ty: TypeVariant::EntityOrCommon {
-                            type_name: name.clone(),
+                            type_name: self.flatten_rawname(name.clone()),
                         },
                         loc: None,
                     })
@@ -948,24 +1043,10 @@ impl SchemaGenerator {
 }
 
 fn get_refname(namespace: &Option<Name>, ty_name: &CommonTypeId) -> RawName {
-    match namespace {
-        Some(name) => {
-            #[allow(
-                clippy::unwrap_used,
-                reason = "Parsing the combined namespace and type_name should still parse"
-            )]
-            // PANIC SAFETY: Combining a namespace & CommonTypeId should parese as a RawName
-            format!("{name}::{}", ty_name).parse().unwrap()
-        }
-        None => {
-            #[allow(
-                clippy::unwrap_used,
-                reason = "Parsing a valid typename's string representation should parse"
-            )]
-            // PANIC SAFETY: Parsing a valid typename's string representation should parse
-            ty_name.to_string().parse().unwrap()
-        }
-    }
+    RawName::from_name(
+        RawName::new_from_unreserved(ty_name.as_ref().clone(), None)
+            .qualify_with_name(namespace.as_ref()),
+    )
 }
 
 // If Type is an entity or common type qualified by namespace, then unquality it;
@@ -1044,12 +1125,7 @@ fn unqualify_name(namespace: &Option<Name>, name: RawName) -> RawName {
     match namespace {
         None => name,
         Some(ns) => {
-            // PANIC SAFETY: Parsing rawname as internal name should be safe
-            #[allow(
-                clippy::unwrap_used,
-                reason = "Parsing rawname as internal name should be safe"
-            )]
-            let internal_name = name.to_smolstr().parse::<InternalName>().unwrap();
+            let internal_name = name.qualify_with(None);
             if internal_name.namespace() == ns.to_string() {
                 RawName::from_name(internal_name.basename().clone().into())
             } else {

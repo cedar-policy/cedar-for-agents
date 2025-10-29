@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 
-use cedar_policy_mcp_schema_generator::{SchemaGenerator, ServerDescription};
+use cedar_policy_mcp_schema_generator::{
+    SchemaGenerator, SchemaGeneratorConfig, ServerDescription,
+};
 use miette::Result;
 
 use cedar_policy_core::extensions::Extensions;
@@ -30,8 +32,11 @@ fn main() -> Result<()> {
     // PANIC SAFETY: not part of the library
     let schema_file = std::fs::File::open("tool.cedarschema").unwrap();
     let schema = Fragment::from_cedarschema_file(schema_file, Extensions::all_available())?.0;
-    let mut generator = SchemaGenerator::new(schema)?;
+
+    let config = SchemaGeneratorConfig::default().flatten_namespaces(true);
+
+    let mut generator = SchemaGenerator::new_with_config(schema, config)?;
     generator.add_actions_from_server_description(&description)?;
-    println!("{}", generator.get_schema().clone().to_cedarschema()?);
+    println!("{}", generator.get_schema().to_cedarschema()?);
     Ok(())
 }
