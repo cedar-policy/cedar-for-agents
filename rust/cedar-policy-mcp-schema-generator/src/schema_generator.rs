@@ -248,7 +248,7 @@ impl SchemaGenerator {
     ) -> Result<(), SchemaGeneratorError> {
         // Keep a copy of schema fragment in case we have an error
         let fragment = self.fragment.clone();
-        match self.add_action_from_tool_description_inner(description) {
+        match self.add_action_from_tool_description_inner(description, BTreeMap::new()) {
             Ok(_) => Ok(()),
             Err(e) => {
                 self.fragment = fragment;
@@ -281,6 +281,16 @@ impl SchemaGenerator {
         // Clone once and reuse to avoid borrow issues
         let namespace = self.namespace.clone();
 
+        // Populate a map from type ref names to fully qualified type name
+        // This makes type resolution simpler and will allow for mutually recursive type defs
+        let mut common_types = BTreeMap::new();
+        for type_def in description.type_definitions() {
+            let type_name = CommonTypeId::new(type_def.name().parse()?)?;
+            let type_name = get_refname(&namespace, &type_name);
+            let ref_name = type_def.name.to_smolstr();
+            common_types.insert(ref_name, type_name);
+        }
+
         // Preemptively add all typedefs as commontypes
         for type_def in description.type_definitions() {
             let ty_name = type_def.name().parse::<UnreservedId>()?;
@@ -288,12 +298,13 @@ impl SchemaGenerator {
                 &namespace,
                 ty_name.clone(),
                 type_def.property_type(),
+                &common_types,
             )?;
             self.add_commontype(&namespace, ty, ty_name, true)?;
         }
 
         for tool_description in description.tool_descriptions() {
-            self.add_action_from_tool_description_inner(tool_description)?
+            self.add_action_from_tool_description_inner(tool_description, common_types.clone())?
         }
         Ok(())
     }
@@ -301,10 +312,23 @@ impl SchemaGenerator {
     fn add_action_from_tool_description_inner(
         &mut self,
         description: &ToolDescription,
+        mut common_types: BTreeMap<SmolStr, RawName>,
     ) -> Result<(), SchemaGeneratorError> {
         let namespace: Name = description.name().parse()?;
         let namespace = Some(namespace.qualify_with_name(self.namespace.as_ref()));
         self.add_namespace(namespace.clone());
+
+
+        // Populate a map from type ref names to fully qualified type name
+        // This makes type resolution simpler and will allow for mutually recursive type defs
+        for type_def in description.type_definitions() {
+            let type_name = CommonTypeId::new(type_def.name().parse()?)?;
+            let type_name = get_refname(&namespace, &type_name);
+            let ref_name = type_def.name.to_smolstr();
+            // Resolution rules are that defs defined closer to use are preferred
+            // So we can just overwrite here if a name is redefined
+            common_types.insert(ref_name, type_name);
+        }
 
         // Preemptively add all typedefs as commontypes
         for type_def in description.type_definitions() {
@@ -313,6 +337,7 @@ impl SchemaGenerator {
                 &namespace,
                 ty_name.clone(),
                 type_def.property_type(),
+                &common_types
             )?;
             self.add_commontype(&namespace, ty, ty_name, true)?;
         }
@@ -345,7 +370,7 @@ impl SchemaGenerator {
         let input_ns = Some(input_ns.qualify_with_name(namespace.as_ref()));
 
         self.add_namespace(input_ns.clone());
-        let inputs = self.record_from_parameters(description.inputs(), &input_ns)?;
+        let inputs = self.record_from_parameters(description.inputs(), &input_ns, common_types.clone())?;
         self.drop_namespace_if_empty(&input_ns);
 
         let input_type = Type::Type {
@@ -381,7 +406,7 @@ impl SchemaGenerator {
             let output_ns = Some(output_ns.qualify_with_name(namespace.as_ref()));
 
             self.add_namespace(output_ns.clone());
-            let outputs = self.record_from_parameters(description.outputs(), &output_ns)?;
+            let outputs = self.record_from_parameters(description.outputs(), &output_ns, common_types.clone())?;
             self.drop_namespace_if_empty(&output_ns);
 
             let output_type = Type::Type {
@@ -479,6 +504,14 @@ impl SchemaGenerator {
         ty_name: UnreservedId,
         error_if_exists: bool,
     ) -> Result<(), SchemaGeneratorError> {
+        let ty_rawname = RawName::new_from_unreserved(ty_name.clone(), None);
+        match ty {
+            Type::CommonTypeRef { type_name, loc: _ } if unqualify_name(namespace, type_name.clone()) == ty_rawname => return Ok(()),
+            Type::Type { ty: TypeVariant::Entity { name }, loc: _ } if unqualify_name(namespace, name.clone()) == ty_rawname => return Ok(()),
+            Type::Type { ty: TypeVariant::EntityOrCommon { type_name }, loc: _ } if unqualify_name(namespace, type_name.clone()) == ty_rawname => return Ok(()),
+            _ => ()
+        }
+
         let ty_name = CommonTypeId::new(ty_name)?;
         #[allow(
             clippy::unwrap_used,
@@ -562,7 +595,19 @@ impl SchemaGenerator {
         &mut self,
         parameters: &Parameters,
         namespace: &Option<Name>,
+        mut common_types: BTreeMap<SmolStr, RawName>,
     ) -> Result<RecordType<RawName>, SchemaGeneratorError> {
+        // Populate a map from type ref names to fully qualified type name
+        // This makes type resolution simpler and will allow for mutually recursive type defs
+        for type_def in parameters.type_definitions() {
+            let type_name = CommonTypeId::new(type_def.name().parse()?)?;
+            let type_name = get_refname(&namespace, &type_name);
+            let ref_name = type_def.name.to_smolstr();
+            // Resolution rules are that defs defined closer to use are preferred
+            // So we can just overwrite here if a name is redefined
+            common_types.insert(ref_name, type_name);
+        }
+
         // Preemptively add all typedefs as commontypes
         for type_def in parameters.type_definitions() {
             let ty_name = type_def.name().parse::<UnreservedId>()?;
@@ -570,7 +615,9 @@ impl SchemaGenerator {
                 namespace,
                 ty_name.clone(),
                 type_def.property_type(),
+                &common_types,
             )?;
+
             self.add_commontype(namespace, ty, ty_name, true)?;
         }
 
@@ -581,7 +628,7 @@ impl SchemaGenerator {
             let ty_name = property.name().parse()?;
 
             let ty =
-                self.cedar_type_from_property_type(namespace, ty_name, property.property_type())?;
+                self.cedar_type_from_property_type(namespace, ty_name, property.property_type(), &common_types)?;
             let ty = TypeOfAttribute {
                 ty,
                 annotations: Annotations::new(),
@@ -606,6 +653,7 @@ impl SchemaGenerator {
         namespace: &Option<Name>,
         ty_name: UnreservedId,
         property_type: &PropertyType,
+        common_types: &BTreeMap<SmolStr, RawName>,
     ) -> Result<Type<RawName>, SchemaGeneratorError> {
         // PANIC SAFETY: `Bool` is a valid `RawName`
         #[allow(clippy::unwrap_used, reason = "`Bool` is a valid `RawName`")]
@@ -700,7 +748,7 @@ impl SchemaGenerator {
             }
             PropertyType::Array { element_ty } => {
                 let ty =
-                    self.cedar_type_from_property_type(namespace, ty_name, element_ty.as_ref())?;
+                    self.cedar_type_from_property_type(namespace, ty_name, element_ty.as_ref(), common_types)?;
                 TypeVariant::Set {
                     element: Box::new(ty),
                 }
@@ -718,9 +766,9 @@ impl SchemaGenerator {
                         let proj_tyname: UnreservedId =
                             format!("Proj{i}").as_str().parse().unwrap();
                         let proj = format!("proj{i}").to_smolstr();
-                        let ty = self.cedar_type_from_property_type(&ns, proj_tyname, ptype)?;
+                        let ty = self.cedar_type_from_property_type(&ns, proj_tyname, ptype, common_types)?;
                         let ty = TypeOfAttribute {
-                            ty,
+                            ty: unqualify_type(namespace, ty),
                             annotations: Annotations::new(),
                             required: true,
                         };
@@ -749,9 +797,9 @@ impl SchemaGenerator {
                         let proj_tyname: UnreservedId =
                             format!("TypeChoice{i}").as_str().parse().unwrap();
                         let proj = format!("typeChoice{i}").to_smolstr();
-                        let ty = self.cedar_type_from_property_type(&ns, proj_tyname, ptype)?;
+                        let ty = self.cedar_type_from_property_type(&ns, proj_tyname, ptype, common_types)?;
                         let ty = TypeOfAttribute {
-                            ty,
+                            ty: unqualify_type(namespace, ty),
                             annotations: Annotations::new(),
                             required: false,
                         };
@@ -776,7 +824,7 @@ impl SchemaGenerator {
 
                 let tags = match additional_properties {
                     Some(ptype) => {
-                        Some(self.cedar_type_from_property_type(&ns, tag_name, ptype.as_ref())?)
+                        Some(self.cedar_type_from_property_type(&ns, tag_name, ptype.as_ref(), common_types)?)
                     }
                     None => None,
                 };
@@ -788,9 +836,9 @@ impl SchemaGenerator {
                     let ty_name = property.name().parse()?;
 
                     let ty =
-                        self.cedar_type_from_property_type(&ns, ty_name, property.property_type())?;
+                        self.cedar_type_from_property_type(&ns, ty_name, property.property_type(), common_types)?;
                     let ty = TypeOfAttribute {
-                        ty,
+                        ty: unqualify_type(namespace, ty),
                         annotations: Annotations::new(),
                         required: property.is_required(),
                     };
@@ -835,12 +883,18 @@ impl SchemaGenerator {
                 TypeVariant::Entity { name }
             }
             PropertyType::Ref { name } => {
-                let ty_name = CommonTypeId::new(name.parse::<UnreservedId>()?)?;
-                let name = self.find_common_types(&ty_name, namespace.clone())?;
-                return Ok(Type::CommonTypeRef {
-                    type_name: name,
-                    loc: None,
-                });
+                match common_types.get(name) {
+                    None => {
+                        let ns = match namespace {
+                            None => "".into(),
+                            Some(name) => format!("{}", name)
+                        };
+                        return Err(SchemaGeneratorError::undefined_ref(name.to_string(), ns))
+                    }
+                    Some(name) => {
+                        return Ok(Type::Type { ty: TypeVariant::EntityOrCommon { type_name: name.clone() }, loc: None })
+                    }
+                }
             }
         };
 
@@ -849,54 +903,9 @@ impl SchemaGenerator {
             loc: None,
         })
     }
-
-    fn find_common_types(
-        &self,
-        ty_name: &CommonTypeId,
-        namespace: Option<Name>,
-    ) -> Result<RawName, SchemaGeneratorError> {
-        for ns in get_containing_namespaces(namespace.clone()) {
-            match self.fragment.0.get(&ns) {
-                None => (),
-                Some(nsdef) => {
-                    if nsdef.common_types.contains_key(ty_name) {
-                        if ns == namespace {
-                            return Ok(get_refname(None, ty_name));
-                        }
-                        return Ok(get_refname(ns, ty_name));
-                    }
-                }
-            }
-        }
-        let ns = match namespace {
-            Some(name) => format!("{name}"),
-            None => String::new(),
-        };
-        Err(SchemaGeneratorError::undefined_ref(ty_name.to_string(), ns))
-    }
 }
 
-fn get_containing_namespaces(namespace: Option<Name>) -> Vec<Option<Name>> {
-    let mut ns = Vec::new();
-
-    #[allow(clippy::unwrap_used, reason = "Subnames of a name should parse")]
-    if let Some(name) = namespace {
-        let mut name = name;
-        while !name.is_unqualified() {
-            ns.push(Some(name.clone()));
-            let internal_name: InternalName = name.into();
-            // PANIC SAFETY: namespace of name should parse
-            name = internal_name.namespace().parse().unwrap();
-        }
-        ns.push(Some(name));
-    }
-
-    ns.push(None);
-
-    ns
-}
-
-fn get_refname(namespace: Option<Name>, ty_name: &CommonTypeId) -> RawName {
+fn get_refname(namespace: &Option<Name>, ty_name: &CommonTypeId) -> RawName {
     match namespace {
         Some(name) => {
             #[allow(
@@ -913,6 +922,55 @@ fn get_refname(namespace: Option<Name>, ty_name: &CommonTypeId) -> RawName {
             )]
             // PANIC SAFETY: Parsing a valid typename's string representation should parse
             ty_name.to_string().parse().unwrap()
+        }
+    }
+}
+
+// If Type is an entity or common type qualified by namespace, then unquality it;
+// otherwise return the original type
+fn unqualify_type(namespace: &Option<Name>, ty: Type<RawName>) -> Type<RawName> {
+    match ty {
+        Type::CommonTypeRef { 
+            type_name,
+            loc 
+        } => Type::CommonTypeRef { type_name: unqualify_name(namespace, type_name), loc },
+        Type::Type { ty: TypeVariant::Entity { name }, loc } => {
+            Type::Type { ty: TypeVariant::Entity { name: unqualify_name(namespace, name) }, loc }
+        }
+        Type::Type { ty: TypeVariant::EntityOrCommon { type_name }, loc } => {
+            Type::Type { ty: TypeVariant::EntityOrCommon { type_name: unqualify_name(namespace, type_name) }, loc }
+        }
+        Type::Type { ty: TypeVariant::Record(RecordType { attributes, additional_attributes }), loc } => {
+            let attributes = attributes.into_iter().map(|(name, ty)| {
+                (name, TypeOfAttribute {
+                    ty: unqualify_type(namespace, ty.ty),
+                    annotations: ty.annotations,
+                    required: ty.required
+                })
+            }).collect();
+            Type::Type { ty: TypeVariant::Record(RecordType { attributes, additional_attributes }), loc}
+        }
+        Type::Type { ty: TypeVariant::Set { element }, loc  } => {
+            let element = unqualify_type(namespace, element.as_ref().clone());
+            Type::Type { ty: TypeVariant::Set { element: Box::new(element) }, loc}
+        }
+        ty => ty
+    }
+}
+
+// If name is qualified with namespace then return unqualified name
+fn unqualify_name(namespace: &Option<Name>, name: RawName) -> RawName {
+    match namespace {
+        None => name,
+        Some(ns) => {
+            // PANIC SAFETY: Parsing rawname as internal name should be safe
+            #[allow(clippy::unwrap_used, reason="Parsing rawname as internal name should be safe")]
+            let internal_name = name.to_smolstr().parse::<InternalName>().unwrap();
+            if internal_name.namespace() == ns.to_string() {
+                RawName::from_name(internal_name.basename().clone().into())
+            } else {
+                name
+            }
         }
     }
 }

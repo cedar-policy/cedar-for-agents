@@ -1,0 +1,31 @@
+// Requires exactly one namespace
+namespace MyMcpServer {
+
+    @mcp_principal("User")
+    entity User {
+        id: String, 
+        username: String,
+        // other custom attributes for User
+    };
+    
+    // This is a common type that describes generic contextual
+    // attributes that are relevant for every tool call.
+    // The annotation @mcp_tool_context tells the schema generator to 
+    // add a required field "session : CommonContext" to each tool's context.
+
+    @mcp_context("session")
+    type CommonContext = {
+        currentTimestamp: datetime,
+        ipaddr: ipaddr,
+    };
+  
+    // Resource entity i.e. the receiver of the call
+    // The McpServer entity should always be the resource entity,
+    // Generator requires at least one resource type
+    @mcp_resource("McpServer")
+    entity McpServer;
+
+    // The parent action of all tool actions (optional, multiple allowed)
+    @mcp_action("call_tool")
+    action call_tool;
+}
