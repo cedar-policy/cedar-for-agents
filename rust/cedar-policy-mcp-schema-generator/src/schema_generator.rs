@@ -318,7 +318,6 @@ impl SchemaGenerator {
         let namespace = Some(namespace.qualify_with_name(self.namespace.as_ref()));
         self.add_namespace(namespace.clone());
 
-
         // Populate a map from type ref names to fully qualified type name
         // This makes type resolution simpler and will allow for mutually recursive type defs
         for type_def in description.type_definitions() {
@@ -337,7 +336,7 @@ impl SchemaGenerator {
                 &namespace,
                 ty_name.clone(),
                 type_def.property_type(),
-                &common_types
+                &common_types,
             )?;
             self.add_commontype(&namespace, ty, ty_name, true)?;
         }
@@ -370,7 +369,8 @@ impl SchemaGenerator {
         let input_ns = Some(input_ns.qualify_with_name(namespace.as_ref()));
 
         self.add_namespace(input_ns.clone());
-        let inputs = self.record_from_parameters(description.inputs(), &input_ns, common_types.clone())?;
+        let inputs =
+            self.record_from_parameters(description.inputs(), &input_ns, common_types.clone())?;
         self.drop_namespace_if_empty(&input_ns);
 
         let input_type = Type::Type {
@@ -406,7 +406,11 @@ impl SchemaGenerator {
             let output_ns = Some(output_ns.qualify_with_name(namespace.as_ref()));
 
             self.add_namespace(output_ns.clone());
-            let outputs = self.record_from_parameters(description.outputs(), &output_ns, common_types.clone())?;
+            let outputs = self.record_from_parameters(
+                description.outputs(),
+                &output_ns,
+                common_types.clone(),
+            )?;
             self.drop_namespace_if_empty(&output_ns);
 
             let output_type = Type::Type {
@@ -506,10 +510,20 @@ impl SchemaGenerator {
     ) -> Result<(), SchemaGeneratorError> {
         let ty_rawname = RawName::new_from_unreserved(ty_name.clone(), None);
         match ty {
-            Type::CommonTypeRef { type_name, loc: _ } if unqualify_name(namespace, type_name.clone()) == ty_rawname => return Ok(()),
-            Type::Type { ty: TypeVariant::Entity { name }, loc: _ } if unqualify_name(namespace, name.clone()) == ty_rawname => return Ok(()),
-            Type::Type { ty: TypeVariant::EntityOrCommon { type_name }, loc: _ } if unqualify_name(namespace, type_name.clone()) == ty_rawname => return Ok(()),
-            _ => ()
+            Type::CommonTypeRef { type_name, loc: _ }
+                if unqualify_name(namespace, type_name.clone()) == ty_rawname =>
+            {
+                return Ok(())
+            }
+            Type::Type {
+                ty: TypeVariant::Entity { name },
+                loc: _,
+            } if unqualify_name(namespace, name.clone()) == ty_rawname => return Ok(()),
+            Type::Type {
+                ty: TypeVariant::EntityOrCommon { type_name },
+                loc: _,
+            } if unqualify_name(namespace, type_name.clone()) == ty_rawname => return Ok(()),
+            _ => (),
         }
 
         let ty_name = CommonTypeId::new(ty_name)?;
@@ -627,8 +641,12 @@ impl SchemaGenerator {
             let attr_name = property.name().to_smolstr();
             let ty_name = property.name().parse()?;
 
-            let ty =
-                self.cedar_type_from_property_type(namespace, ty_name, property.property_type(), &common_types)?;
+            let ty = self.cedar_type_from_property_type(
+                namespace,
+                ty_name,
+                property.property_type(),
+                &common_types,
+            )?;
             let ty = TypeOfAttribute {
                 ty,
                 annotations: Annotations::new(),
@@ -747,8 +765,12 @@ impl SchemaGenerator {
                 TypeVariant::Entity { name }
             }
             PropertyType::Array { element_ty } => {
-                let ty =
-                    self.cedar_type_from_property_type(namespace, ty_name, element_ty.as_ref(), common_types)?;
+                let ty = self.cedar_type_from_property_type(
+                    namespace,
+                    ty_name,
+                    element_ty.as_ref(),
+                    common_types,
+                )?;
                 TypeVariant::Set {
                     element: Box::new(ty),
                 }
@@ -766,7 +788,12 @@ impl SchemaGenerator {
                         let proj_tyname: UnreservedId =
                             format!("Proj{i}").as_str().parse().unwrap();
                         let proj = format!("proj{i}").to_smolstr();
-                        let ty = self.cedar_type_from_property_type(&ns, proj_tyname, ptype, common_types)?;
+                        let ty = self.cedar_type_from_property_type(
+                            &ns,
+                            proj_tyname,
+                            ptype,
+                            common_types,
+                        )?;
                         let ty = TypeOfAttribute {
                             ty: unqualify_type(namespace, ty),
                             annotations: Annotations::new(),
@@ -797,7 +824,12 @@ impl SchemaGenerator {
                         let proj_tyname: UnreservedId =
                             format!("TypeChoice{i}").as_str().parse().unwrap();
                         let proj = format!("typeChoice{i}").to_smolstr();
-                        let ty = self.cedar_type_from_property_type(&ns, proj_tyname, ptype, common_types)?;
+                        let ty = self.cedar_type_from_property_type(
+                            &ns,
+                            proj_tyname,
+                            ptype,
+                            common_types,
+                        )?;
                         let ty = TypeOfAttribute {
                             ty: unqualify_type(namespace, ty),
                             annotations: Annotations::new(),
@@ -823,9 +855,12 @@ impl SchemaGenerator {
                 let tag_name = format!("{ty_name}Tag").parse()?;
 
                 let tags = match additional_properties {
-                    Some(ptype) => {
-                        Some(self.cedar_type_from_property_type(&ns, tag_name, ptype.as_ref(), common_types)?)
-                    }
+                    Some(ptype) => Some(self.cedar_type_from_property_type(
+                        &ns,
+                        tag_name,
+                        ptype.as_ref(),
+                        common_types,
+                    )?),
                     None => None,
                 };
 
@@ -835,8 +870,12 @@ impl SchemaGenerator {
                     let attr_name = property.name().to_smolstr();
                     let ty_name = property.name().parse()?;
 
-                    let ty =
-                        self.cedar_type_from_property_type(&ns, ty_name, property.property_type(), common_types)?;
+                    let ty = self.cedar_type_from_property_type(
+                        &ns,
+                        ty_name,
+                        property.property_type(),
+                        common_types,
+                    )?;
                     let ty = TypeOfAttribute {
                         ty: unqualify_type(namespace, ty),
                         annotations: Annotations::new(),
@@ -882,20 +921,23 @@ impl SchemaGenerator {
                 let name = RawName::from_name(name.qualify_with_name(namespace.as_ref()));
                 TypeVariant::Entity { name }
             }
-            PropertyType::Ref { name } => {
-                match common_types.get(name) {
-                    None => {
-                        let ns = match namespace {
-                            None => "".into(),
-                            Some(name) => format!("{}", name)
-                        };
-                        return Err(SchemaGeneratorError::undefined_ref(name.to_string(), ns))
-                    }
-                    Some(name) => {
-                        return Ok(Type::Type { ty: TypeVariant::EntityOrCommon { type_name: name.clone() }, loc: None })
-                    }
+            PropertyType::Ref { name } => match common_types.get(name) {
+                None => {
+                    let ns = match namespace {
+                        None => "".into(),
+                        Some(name) => format!("{}", name),
+                    };
+                    return Err(SchemaGeneratorError::undefined_ref(name.to_string(), ns));
                 }
-            }
+                Some(name) => {
+                    return Ok(Type::Type {
+                        ty: TypeVariant::EntityOrCommon {
+                            type_name: name.clone(),
+                        },
+                        loc: None,
+                    })
+                }
+            },
         };
 
         Ok(Type::Type {
@@ -930,31 +972,70 @@ fn get_refname(namespace: &Option<Name>, ty_name: &CommonTypeId) -> RawName {
 // otherwise return the original type
 fn unqualify_type(namespace: &Option<Name>, ty: Type<RawName>) -> Type<RawName> {
     match ty {
-        Type::CommonTypeRef { 
-            type_name,
-            loc 
-        } => Type::CommonTypeRef { type_name: unqualify_name(namespace, type_name), loc },
-        Type::Type { ty: TypeVariant::Entity { name }, loc } => {
-            Type::Type { ty: TypeVariant::Entity { name: unqualify_name(namespace, name) }, loc }
-        }
-        Type::Type { ty: TypeVariant::EntityOrCommon { type_name }, loc } => {
-            Type::Type { ty: TypeVariant::EntityOrCommon { type_name: unqualify_name(namespace, type_name) }, loc }
-        }
-        Type::Type { ty: TypeVariant::Record(RecordType { attributes, additional_attributes }), loc } => {
-            let attributes = attributes.into_iter().map(|(name, ty)| {
-                (name, TypeOfAttribute {
-                    ty: unqualify_type(namespace, ty.ty),
-                    annotations: ty.annotations,
-                    required: ty.required
+        Type::CommonTypeRef { type_name, loc } => Type::CommonTypeRef {
+            type_name: unqualify_name(namespace, type_name),
+            loc,
+        },
+        Type::Type {
+            ty: TypeVariant::Entity { name },
+            loc,
+        } => Type::Type {
+            ty: TypeVariant::Entity {
+                name: unqualify_name(namespace, name),
+            },
+            loc,
+        },
+        Type::Type {
+            ty: TypeVariant::EntityOrCommon { type_name },
+            loc,
+        } => Type::Type {
+            ty: TypeVariant::EntityOrCommon {
+                type_name: unqualify_name(namespace, type_name),
+            },
+            loc,
+        },
+        Type::Type {
+            ty:
+                TypeVariant::Record(RecordType {
+                    attributes,
+                    additional_attributes,
+                }),
+            loc,
+        } => {
+            let attributes = attributes
+                .into_iter()
+                .map(|(name, ty)| {
+                    (
+                        name,
+                        TypeOfAttribute {
+                            ty: unqualify_type(namespace, ty.ty),
+                            annotations: ty.annotations,
+                            required: ty.required,
+                        },
+                    )
                 })
-            }).collect();
-            Type::Type { ty: TypeVariant::Record(RecordType { attributes, additional_attributes }), loc}
+                .collect();
+            Type::Type {
+                ty: TypeVariant::Record(RecordType {
+                    attributes,
+                    additional_attributes,
+                }),
+                loc,
+            }
         }
-        Type::Type { ty: TypeVariant::Set { element }, loc  } => {
+        Type::Type {
+            ty: TypeVariant::Set { element },
+            loc,
+        } => {
             let element = unqualify_type(namespace, element.as_ref().clone());
-            Type::Type { ty: TypeVariant::Set { element: Box::new(element) }, loc}
+            Type::Type {
+                ty: TypeVariant::Set {
+                    element: Box::new(element),
+                },
+                loc,
+            }
         }
-        ty => ty
+        ty => ty,
     }
 }
 
@@ -964,7 +1045,10 @@ fn unqualify_name(namespace: &Option<Name>, name: RawName) -> RawName {
         None => name,
         Some(ns) => {
             // PANIC SAFETY: Parsing rawname as internal name should be safe
-            #[allow(clippy::unwrap_used, reason="Parsing rawname as internal name should be safe")]
+            #[allow(
+                clippy::unwrap_used,
+                reason = "Parsing rawname as internal name should be safe"
+            )]
             let internal_name = name.to_smolstr().parse::<InternalName>().unwrap();
             if internal_name.namespace() == ns.to_string() {
                 RawName::from_name(internal_name.basename().clone().into())

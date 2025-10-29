@@ -16,32 +16,50 @@
 
 use std::io::Read;
 
-use cedar_policy_mcp_schema_generator::{
-    ServerDescription,
-    SchemaGenerator
-};
+use cedar_policy_mcp_schema_generator::{SchemaGenerator, ServerDescription};
 
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::validator::json_schema::Fragment;
 
 fn run_integration_test(tools_fname: &str, schema_fname: &str) {
-    let description = ServerDescription::from_json_file(tools_fname).expect("Failed to read tools file");
-    let stub_file = std::fs::File::open("examples/stub.cedarschema").expect("Failed to read schema file");
-    let input_schema = Fragment::from_cedarschema_file(stub_file, Extensions::all_available()).expect("Failed to parse input schema").0;
+    let description =
+        ServerDescription::from_json_file(tools_fname).expect("Failed to read tools file");
+    let stub_file =
+        std::fs::File::open("examples/stub.cedarschema").expect("Failed to read schema file");
+    let input_schema = Fragment::from_cedarschema_file(stub_file, Extensions::all_available())
+        .expect("Failed to parse input schema")
+        .0;
 
     let mut generator = SchemaGenerator::new(input_schema).expect("input schema file is malformed");
-    generator.add_actions_from_server_description(&description).expect("Failed to add tool actions to schema generator");
+    generator
+        .add_actions_from_server_description(&description)
+        .expect("Failed to add tool actions to schema generator");
 
     // Read expected schema file
-    let mut schema_file = std::fs::File::open(schema_fname).expect("Failed to read expected output file");
+    let mut schema_file =
+        std::fs::File::open(schema_fname).expect("Failed to read expected output file");
     let mut expected_schema = String::new();
-    let _ = schema_file.read_to_string(&mut expected_schema).expect("Failed to read expected schema file");
+    let _ = schema_file
+        .read_to_string(&mut expected_schema)
+        .expect("Failed to read expected schema file");
 
-    let actual_schema = generator.get_schema().clone().to_cedarschema().expect("Failed to resolve generated schema");
-    assert!(expected_schema == actual_schema, "{} != {}", expected_schema, actual_schema);
+    let actual_schema = generator
+        .get_schema()
+        .clone()
+        .to_cedarschema()
+        .expect("Failed to resolve generated schema");
+    assert!(
+        expected_schema == actual_schema,
+        "{} != {}",
+        expected_schema,
+        actual_schema
+    );
 }
 
 #[test]
 fn strands_agent() {
-    run_integration_test("examples/strands/strands_tools.json", "examples/strands/strands_tools.cedarschema");
+    run_integration_test(
+        "examples/strands/strands_tools.json",
+        "examples/strands/strands_tools.cedarschema",
+    );
 }
