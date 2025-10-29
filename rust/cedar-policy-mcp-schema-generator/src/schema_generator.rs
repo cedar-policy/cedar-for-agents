@@ -90,12 +90,13 @@ impl SchemaGeneratorConfig {
     }
 
     /// Updates config to set `flatten_namespaces` to `val` (default: false)
+    ///
     /// If `flatten_namespaces` is set to `true` then the fragment returned
-    /// by SchemaGenerator::get_schema will contain only the input namespace
+    /// by `SchemaGenerator::get_schema` will contain only the input namespace
     ///
     /// This is accomplished by converting every name `Foo::Bar::Baz` to `Foo_Bar_Baz`.
     /// Note, this process may result in a malformed schema if this renaming process
-    /// produces conflicting names. For example, in the produced schema (without flattened names)
+    /// produces conflicting names. For example, if the produced schema (without flattened names)
     /// would contain the names `Foo::Bar_Baz` and `Foo_Bar::Baz`.
     pub fn flatten_namespaces(self, val: bool) -> Self {
         Self {
