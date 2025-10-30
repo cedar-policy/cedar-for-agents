@@ -1217,8 +1217,6 @@ fn erase_mcp_annotations(schema_stub: Fragment<RawName>) -> Fragment<RawName> {
 
 #[cfg(test)]
 mod test {
-    use crate::schema_generator;
-
     use super::*;
     use cedar_policy_core::extensions::Extensions;
     use cool_asserts::assert_matches;
