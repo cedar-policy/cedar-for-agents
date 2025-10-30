@@ -162,7 +162,7 @@ impl SchemaGenerator {
             })
             .collect::<Vec<_>>();
         if users.is_empty() {
-            return Err(SchemaGeneratorError::NoPrincipalTypes)
+            return Err(SchemaGeneratorError::NoPrincipalTypes);
         }
 
         #[allow(clippy::unwrap_used, reason = "`mcp_resource` is a valid AnyId")]
@@ -183,7 +183,7 @@ impl SchemaGenerator {
             })
             .collect::<Vec<_>>();
         if resources.is_empty() {
-            return Err(SchemaGeneratorError::NoResourceTypes)
+            return Err(SchemaGeneratorError::NoResourceTypes);
         }
 
         #[allow(clippy::unwrap_used, reason = "`mcp_context` is a valid AnyId")]
@@ -1267,8 +1267,8 @@ mod test {
 }"#;
         let tool = ToolDescription::from_json_str(tool).expect("Failed to parse tool description");
 
-        let mut schema_generator = SchemaGenerator::new(schema_stub)
-            .expect("Failed to create schema generator");
+        let mut schema_generator =
+            SchemaGenerator::new(schema_stub).expect("Failed to create schema generator");
         schema_generator
             .add_action_from_tool_description(&tool)
             .expect("Failed to add tool description");
@@ -1285,7 +1285,7 @@ mod test {
             .expect("Expected namespace Test to exist");
 
         assert!(root_nsdef.actions.contains_key("check_task_status"));
-    }        
+    }
 
     #[test]
     fn test_outputs() {
@@ -1479,7 +1479,10 @@ mod test {
             .expect("Failed to parse schema")
             .0;
 
-        assert_matches!(SchemaGenerator::new(schema_stub), Err(SchemaGeneratorError::GlobalNamespaceUsed));        
+        assert_matches!(
+            SchemaGenerator::new(schema_stub),
+            Err(SchemaGeneratorError::GlobalNamespaceUsed)
+        );
     }
 
     #[test]
@@ -1494,7 +1497,10 @@ namespace Test2 {
             .expect("Failed to parse schema")
             .0;
 
-        assert_matches!(SchemaGenerator::new(schema_stub), Err(SchemaGeneratorError::WrongNumberOfNamespaces));
+        assert_matches!(
+            SchemaGenerator::new(schema_stub),
+            Err(SchemaGeneratorError::WrongNumberOfNamespaces)
+        );
     }
 
     #[test]
@@ -1504,7 +1510,10 @@ namespace Test2 {
             .expect("Failed to parse schema")
             .0;
 
-        assert_matches!(SchemaGenerator::new(schema_stub), Err(SchemaGeneratorError::WrongNumberOfNamespaces));
+        assert_matches!(
+            SchemaGenerator::new(schema_stub),
+            Err(SchemaGeneratorError::WrongNumberOfNamespaces)
+        );
     }
 
     #[test]
@@ -1524,7 +1533,10 @@ namespace Test2 {
             .expect("Failed to parse schema")
             .0;
 
-        assert_matches!(SchemaGenerator::new(schema_stub), Err(SchemaGeneratorError::NoPrincipalTypes));
+        assert_matches!(
+            SchemaGenerator::new(schema_stub),
+            Err(SchemaGeneratorError::NoPrincipalTypes)
+        );
     }
 
     #[test]
@@ -1544,7 +1556,10 @@ namespace Test2 {
             .expect("Failed to parse schema")
             .0;
 
-        assert_matches!(SchemaGenerator::new(schema_stub), Err(SchemaGeneratorError::NoResourceTypes));
+        assert_matches!(
+            SchemaGenerator::new(schema_stub),
+            Err(SchemaGeneratorError::NoResourceTypes)
+        );
     }
 
     #[test]
@@ -1588,9 +1603,13 @@ namespace Test2 {
 
         let tool = ToolDescription::from_json_str(tool).expect("Failed to parse tool description");
         let config = SchemaGeneratorConfig::default().erase_annotations(false);
-        let mut schema_generator = SchemaGenerator::new_with_config(schema_stub.clone(), config).expect("Failed to create schema generator");
+        let mut schema_generator = SchemaGenerator::new_with_config(schema_stub.clone(), config)
+            .expect("Failed to create schema generator");
 
-        assert_matches!(schema_generator.add_action_from_tool_description(&tool), Err(SchemaGeneratorError::ConflictingSchemaNameError(..)));
+        assert_matches!(
+            schema_generator.add_action_from_tool_description(&tool),
+            Err(SchemaGeneratorError::ConflictingSchemaNameError(..))
+        );
         assert_eq!(&schema_stub, schema_generator.get_schema());
     }
 
@@ -1633,11 +1652,16 @@ namespace Test2 {
     }
 }"#;
 
-        let tool = ServerDescription::from_json_str(tool).expect("Failed to parse tool description");
+        let tool =
+            ServerDescription::from_json_str(tool).expect("Failed to parse tool description");
         let config = SchemaGeneratorConfig::default().erase_annotations(false);
-        let mut schema_generator = SchemaGenerator::new_with_config(schema_stub.clone(), config).expect("Failed to create schema generator");
+        let mut schema_generator = SchemaGenerator::new_with_config(schema_stub.clone(), config)
+            .expect("Failed to create schema generator");
 
-        assert_matches!(schema_generator.add_actions_from_server_description(&tool), Err(SchemaGeneratorError::ConflictingSchemaNameError(..)));
+        assert_matches!(
+            schema_generator.add_actions_from_server_description(&tool),
+            Err(SchemaGeneratorError::ConflictingSchemaNameError(..))
+        );
         assert_eq!(&schema_stub, schema_generator.get_schema());
     }
 }
