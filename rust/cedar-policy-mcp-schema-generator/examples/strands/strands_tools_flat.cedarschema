@@ -1,0 +1,1264 @@
+namespace MyMcpServer {
+  type CommonContext = {
+    "currentTimestamp": datetime,
+    "ipaddr": ipaddr
+  };
+
+  type a2a_discover_agentInput = {
+    "url": String
+  };
+
+  type a2a_list_discovered_agentsInput = {  };
+
+  type a2a_send_messageInput = {
+    "message_id"?: String,
+    "message_text": String,
+    "target_agent_url": String
+  };
+
+  type agent_core_memoryInput = {
+    "action": String,
+    "content"?: String,
+    "max_results"?: Long,
+    "memory_record_id"?: String,
+    "next_token"?: String,
+    "query"?: String
+  };
+
+  type agent_graphInput = {
+    "action": MyMcpServer::agent_graph_Input_action,
+    "graph_id"?: String,
+    "message"?: MyMcpServer::agent_graph_Input_message,
+    "topology"?: MyMcpServer::agent_graph_Input_topology
+  };
+
+  type batchInput = {
+    "invocations": Set<MyMcpServer::batch_Input_invocations>
+  };
+
+  type browserInput = {
+    "browser_input": MyMcpServer::browser_Input_BrowserInput
+  };
+
+  type calculatorInput = {
+    "expression": String,
+    "force_numeric"?: Bool,
+    "mode"?: String,
+    "order"?: Long,
+    "point"?: String,
+    "precision"?: Long,
+    "scientific"?: Bool,
+    "variables"?: MyMcpServer::calculator_Input_variables,
+    "wrt"?: String
+  };
+
+  type code_interpreterInput = {
+    "code_interpreter_input": MyMcpServer::code_interpreter_Input_CodeInterpreterInput
+  };
+
+  type cronInput = {
+    "action": String,
+    "command"?: String,
+    "description"?: String,
+    "job_id"?: Long,
+    "schedule"?: String
+  };
+
+  type current_timeInput = {
+    "timezone"?: String
+  };
+
+  type diagramInput = {
+    "diagram_type": String,
+    "edges"?: Set<MyMcpServer::diagram_Input_edges>,
+    "elements"?: Set<MyMcpServer::diagram_Input_elements>,
+    "nodes"?: Set<MyMcpServer::diagram_Input_nodes>,
+    "open_diagram_flag"?: Bool,
+    "output_format"?: String,
+    "relationships"?: Set<MyMcpServer::diagram_Input_relationships>,
+    "style"?: MyMcpServer::diagram_Input_style,
+    "title"?: String
+  };
+
+  type editorInput = {
+    "command": String,
+    "file_text"?: String,
+    "fuzzy"?: Bool,
+    "insert_line"?: String,
+    "new_str"?: String,
+    "old_str"?: String,
+    "path": String,
+    "pattern"?: String,
+    "search_text"?: String,
+    "view_range"?: Set<Long>
+  };
+
+  type environmentInput = {
+    "action": MyMcpServer::environment_Input_action,
+    "masked"?: Bool,
+    "name"?: String,
+    "prefix"?: String,
+    "value"?: String
+  };
+
+  type file_readInput = {
+    "chunk_offset"?: Long,
+    "chunk_size"?: Long,
+    "comparison_path"?: String,
+    "context_lines"?: Long,
+    "diff_type"?: MyMcpServer::file_read_Input_diff_type,
+    "end_line"?: Long,
+    "format"?: MyMcpServer::file_read_Input_format,
+    "git_history"?: Bool,
+    "mode": MyMcpServer::file_read_Input_mode,
+    "neutral_name"?: String,
+    "num_revisions"?: Long,
+    "path": String,
+    "recursive"?: Bool,
+    "search_pattern"?: String,
+    "start_line"?: Long
+  };
+
+  type file_writeInput = {
+    "content": String,
+    "path": String
+  };
+
+  type generate_imageInput = {
+    "aspect_ratio"?: String,
+    "model_id"?: String,
+    "negative_prompt"?: String,
+    "output_format"?: String,
+    "prompt": String,
+    "region"?: String,
+    "seed"?: Long
+  };
+
+  type generate_image_stabilityInput = {
+    "aspect_ratio"?: MyMcpServer::generate_image_stability_Input_aspect_ratio,
+    "cfg_scale"?: MyMcpServer::Number,
+    "image"?: String,
+    "mode"?: MyMcpServer::generate_image_stability_Input_mode,
+    "negative_prompt"?: String,
+    "output_format"?: MyMcpServer::generate_image_stability_Input_output_format,
+    "prompt": String,
+    "return_type"?: MyMcpServer::generate_image_stability_Input_return_type,
+    "seed"?: Long,
+    "strength"?: MyMcpServer::Number,
+    "style_preset"?: MyMcpServer::generate_image_stability_Input_style_preset
+  };
+
+  type handoff_to_userInput = {
+    "breakout_of_loop"?: Bool,
+    "message": String
+  };
+
+  type http_requestInput = {
+    "allow_redirects"?: Bool,
+    "auth_env_var"?: String,
+    "auth_token"?: String,
+    "auth_type"?: MyMcpServer::http_request_Input_auth_type,
+    "aws_auth"?: MyMcpServer::http_request_Input_aws_auth,
+    "basic_auth"?: MyMcpServer::http_request_Input_basic_auth,
+    "body"?: String,
+    "convert_to_markdown"?: Bool,
+    "cookie"?: String,
+    "cookie_jar"?: String,
+    "digest_auth"?: MyMcpServer::http_request_Input_digest_auth,
+    "headers"?: MyMcpServer::http_request_Input_headers,
+    "jwt_config"?: MyMcpServer::http_request_Input_jwt_config,
+    "max_redirects"?: Long,
+    "method": String,
+    "metrics"?: Bool,
+    "session_config"?: MyMcpServer::http_request_Input_session_config,
+    "streaming"?: Bool,
+    "url": String,
+    "verify_ssl"?: Bool
+  };
+
+  type image_readerInput = {
+    "image_path": String
+  };
+
+  type journalInput = {
+    "action": MyMcpServer::journal_Input_action,
+    "content"?: String,
+    "date"?: String,
+    "task"?: String
+  };
+
+  type load_toolInput = {
+    "name": String,
+    "path": String
+  };
+
+  type mcp_clientInput = {
+    "action": String,
+    "args"?: Set<String>,
+    "arguments"?: MyMcpServer::mcp_client_Input_arguments,
+    "auth"?: String,
+    "command"?: String,
+    "connection_id"?: String,
+    "env"?: MyMcpServer::mcp_client_Input_env,
+    "headers"?: MyMcpServer::mcp_client_Input_headers,
+    "server_config"?: MyMcpServer::mcp_client_Input_server_config,
+    "server_url"?: String,
+    "sse_read_timeout"?: MyMcpServer::Number,
+    "terminate_on_close"?: Bool,
+    "timeout"?: MyMcpServer::Number,
+    "tool_args"?: MyMcpServer::mcp_client_Input_tool_args,
+    "tool_name"?: String,
+    "transport"?: String
+  };
+
+  type mem0_memoryInput = {
+    "action": MyMcpServer::mem0_memory_Input_action,
+    "agent_id"?: String,
+    "content"?: String,
+    "memory_id"?: String,
+    "metadata"?: MyMcpServer::mem0_memory_Input_metadata,
+    "query"?: String,
+    "user_id"?: String
+  };
+
+  type memoryInput = {
+    "STRANDS_KNOWLEDGE_BASE_ID"?: String,
+    "action": String,
+    "content"?: String,
+    "document_id"?: String,
+    "max_results"?: Long,
+    "min_score"?: MyMcpServer::Number,
+    "next_token"?: String,
+    "query"?: String,
+    "region_name"?: String,
+    "title"?: String
+  };
+
+  type nova_reelsInput = {
+    "action": String,
+    "dimension"?: String,
+    "fps"?: Long,
+    "image_path"?: String,
+    "invocation_arn"?: String,
+    "max_results"?: Long,
+    "region"?: String,
+    "s3_bucket"?: String,
+    "seed"?: Long,
+    "status_filter"?: String,
+    "text"?: String
+  };
+
+  type python_replInput = {
+    "code": String,
+    "interactive"?: Bool,
+    "reset_state"?: Bool
+  };
+
+  type retrieveInput = {
+    "knowledgeBaseId"?: String,
+    "numberOfResults"?: Long,
+    "profile_name"?: String,
+    "region"?: String,
+    "score"?: MyMcpServer::Number,
+    "text": String
+  };
+
+  type rssInput = {
+    "action": String,
+    "auth_password"?: String,
+    "auth_username"?: String,
+    "category"?: String,
+    "feed_id"?: String,
+    "headers"?: MyMcpServer::rss_Input_headers,
+    "include_content"?: Bool,
+    "max_entries"?: Long,
+    "query"?: String,
+    "update_interval"?: Long,
+    "url"?: String
+  };
+
+  type shellInput = {
+    "command": String,
+    "ignore_errors"?: Bool,
+    "non_interactive"?: Bool,
+    "parallel"?: Bool,
+    "timeout"?: Long,
+    "work_dir"?: String
+  };
+
+  type slackInput = {
+    "action": String,
+    "parameters"?: MyMcpServer::slack_Input_parameters
+  };
+
+  type slack_send_messageInput = {
+    "channel": String,
+    "text": String,
+    "thread_ts"?: String
+  };
+
+  type sleepInput = {
+    "seconds": String
+  };
+
+  type speakInput = {
+    "mode"?: MyMcpServer::speak_Input_mode,
+    "output_path"?: String,
+    "play_audio"?: Bool,
+    "text": String,
+    "voice_id"?: String
+  };
+
+  type stopInput = {
+    "reason"?: String
+  };
+
+  type swarmInput = {
+    "agents": Set<MyMcpServer::swarm_Input_agents>,
+    "execution_timeout"?: MyMcpServer::Number,
+    "max_handoffs"?: Long,
+    "max_iterations"?: Long,
+    "node_timeout"?: MyMcpServer::Number,
+    "repetitive_handoff_detection_window"?: Long,
+    "repetitive_handoff_min_unique_agents"?: Long,
+    "task": String
+  };
+
+  type tavily_crawlInput = {
+    "allow_external"?: Bool,
+    "categories"?: Set<MyMcpServer::tavily_crawl_Input_categories>,
+    "exclude_domains"?: Set<String>,
+    "exclude_paths"?: Set<String>,
+    "extract_depth"?: MyMcpServer::tavily_crawl_Input_extract_depth,
+    "format"?: MyMcpServer::tavily_crawl_Input_format,
+    "include_favicon"?: Bool,
+    "include_images"?: Bool,
+    "instructions"?: String,
+    "limit"?: Long,
+    "max_breadth"?: Long,
+    "max_depth"?: Long,
+    "select_domains"?: Set<String>,
+    "select_paths"?: Set<String>,
+    "url": String
+  };
+
+  type tavily_extractInput = {
+    "extract_depth"?: MyMcpServer::tavily_extract_Input_extract_depth,
+    "format"?: MyMcpServer::tavily_extract_Input_format,
+    "include_favicon"?: Bool,
+    "include_images"?: Bool,
+    "urls": String
+  };
+
+  type tavily_mapInput = {
+    "allow_external"?: Bool,
+    "categories"?: Set<MyMcpServer::tavily_map_Input_categories>,
+    "exclude_domains"?: Set<String>,
+    "exclude_paths"?: Set<String>,
+    "instructions"?: String,
+    "limit"?: Long,
+    "max_breadth"?: Long,
+    "max_depth"?: Long,
+    "select_domains"?: Set<String>,
+    "select_paths"?: Set<String>,
+    "url": String
+  };
+
+  type tavily_searchInput = {
+    "auto_parameters"?: Bool,
+    "chunks_per_source"?: Long,
+    "country"?: String,
+    "days"?: Long,
+    "end_date"?: String,
+    "exclude_domains"?: Set<String>,
+    "include_answer"?: String,
+    "include_domains"?: Set<String>,
+    "include_favicon"?: Bool,
+    "include_image_descriptions"?: Bool,
+    "include_images"?: Bool,
+    "include_raw_content"?: String,
+    "max_results"?: Long,
+    "query": String,
+    "search_depth"?: MyMcpServer::tavily_search_Input_search_depth,
+    "start_date"?: String,
+    "time_range"?: MyMcpServer::tavily_search_Input_time_range,
+    "topic"?: MyMcpServer::tavily_search_Input_topic
+  };
+
+  type thinkInput = {
+    "cycle_count": Long,
+    "model_provider"?: String,
+    "model_settings"?: MyMcpServer::think_Input_model_settings,
+    "system_prompt": String,
+    "thinking_system_prompt"?: String,
+    "thought": String,
+    "tools"?: Set<String>
+  };
+
+  type use_awsInput = {
+    "label": String,
+    "operation_name": String,
+    "parameters": MyMcpServer::use_aws_Input_parameters,
+    "profile_name"?: String,
+    "region": String,
+    "service_name": String
+  };
+
+  type use_computerInput = {
+    "action": String,
+    "app_name"?: String,
+    "click_type"?: String,
+    "drag_to_x"?: Long,
+    "drag_to_y"?: Long,
+    "focus_timeout"?: MyMcpServer::Number,
+    "hotkey_str"?: String,
+    "key"?: String,
+    "min_confidence"?: MyMcpServer::Number,
+    "modifier_keys"?: Set<String>,
+    "region"?: Set<Long>,
+    "screenshot_path"?: String,
+    "scroll_amount"?: Long,
+    "scroll_direction"?: String,
+    "send_screenshot"?: Bool,
+    "text"?: String,
+    "x"?: Long,
+    "y"?: Long
+  };
+
+  type use_llmInput = {
+    "prompt": String,
+    "system_prompt": String,
+    "tools"?: Set<String>
+  };
+
+  type workflowInput = {
+    "action": String,
+    "tasks"?: Set<MyMcpServer::workflow_Input_tasks>,
+    "workflow_id"?: String
+  };
+
+  entity McpServer;
+
+  entity Null;
+
+  entity Number;
+
+  entity User = {
+    "id": String,
+    "username": String
+  };
+
+  entity agent_graph_Input_action enum ["create", "list", "stop", "message", "status"];
+
+  entity agent_graph_Input_message = {
+    "content"?: String,
+    "target"?: String
+  };
+
+  entity agent_graph_Input_topology = {
+    "edges"?: Set<MyMcpServer::agent_graph_Input_topology_edges>,
+    "nodes"?: Set<MyMcpServer::agent_graph_Input_topology_nodes>,
+    "type"?: MyMcpServer::agent_graph_Input_topology_type
+  };
+
+  entity agent_graph_Input_topology_edges = {
+    "from"?: String,
+    "to"?: String
+  };
+
+  entity agent_graph_Input_topology_nodes = {
+    "id"?: String,
+    "role"?: String,
+    "system_prompt"?: String
+  };
+
+  entity agent_graph_Input_topology_type enum ["star", "mesh", "hierarchical"];
+
+  entity batch_Input_invocations = {
+    "arguments": MyMcpServer::batch_Input_invocations_arguments,
+    "name": String
+  };
+
+  entity batch_Input_invocations_arguments;
+
+  entity browser_Input_BackAction = {
+    "session_name": String,
+    "type": String
+  };
+
+  entity browser_Input_BrowserInput = {
+    "action": {
+      "typeChoice0"?: MyMcpServer::browser_Input_InitSessionAction,
+      "typeChoice1"?: MyMcpServer::browser_Input_ListLocalSessionsAction,
+      "typeChoice10"?: MyMcpServer::browser_Input_RefreshAction,
+      "typeChoice11"?: MyMcpServer::browser_Input_BackAction,
+      "typeChoice12"?: MyMcpServer::browser_Input_ForwardAction,
+      "typeChoice13"?: MyMcpServer::browser_Input_NewTabAction,
+      "typeChoice14"?: MyMcpServer::browser_Input_SwitchTabAction,
+      "typeChoice15"?: MyMcpServer::browser_Input_CloseTabAction,
+      "typeChoice16"?: MyMcpServer::browser_Input_ListTabsAction,
+      "typeChoice17"?: MyMcpServer::browser_Input_GetCookiesAction,
+      "typeChoice18"?: MyMcpServer::browser_Input_SetCookiesAction,
+      "typeChoice19"?: MyMcpServer::browser_Input_NetworkInterceptAction,
+      "typeChoice2"?: MyMcpServer::browser_Input_NavigateAction,
+      "typeChoice20"?: MyMcpServer::browser_Input_ExecuteCdpAction,
+      "typeChoice21"?: MyMcpServer::browser_Input_CloseAction,
+      "typeChoice3"?: MyMcpServer::browser_Input_ClickAction,
+      "typeChoice4"?: MyMcpServer::browser_Input_TypeAction,
+      "typeChoice5"?: MyMcpServer::browser_Input_EvaluateAction,
+      "typeChoice6"?: MyMcpServer::browser_Input_PressKeyAction,
+      "typeChoice7"?: MyMcpServer::browser_Input_GetTextAction,
+      "typeChoice8"?: MyMcpServer::browser_Input_GetHtmlAction,
+      "typeChoice9"?: MyMcpServer::browser_Input_ScreenshotAction
+    },
+    "wait_time"?: {
+      "typeChoice0"?: Long,
+      "typeChoice1"?: MyMcpServer::Null
+    }
+  };
+
+  entity browser_Input_ClickAction = {
+    "selector": String,
+    "session_name": String,
+    "type": String
+  };
+
+  entity browser_Input_CloseAction = {
+    "session_name": String,
+    "type": String
+  };
+
+  entity browser_Input_CloseTabAction = {
+    "session_name": String,
+    "tab_id"?: {
+      "typeChoice0"?: String,
+      "typeChoice1"?: MyMcpServer::Null
+    },
+    "type": String
+  };
+
+  entity browser_Input_EvaluateAction = {
+    "script": String,
+    "session_name": String,
+    "type": String
+  };
+
+  entity browser_Input_ExecuteCdpAction = {
+    "method": String,
+    "params"?: {
+      "typeChoice0"?: MyMcpServer::browser_Input_ExecuteCdpAction_params_TypeChoice0,
+      "typeChoice1"?: MyMcpServer::Null
+    },
+    "session_name": String,
+    "type": String
+  };
+
+  entity browser_Input_ExecuteCdpAction_params_TypeChoice0;
+
+  entity browser_Input_ForwardAction = {
+    "session_name": String,
+    "type": String
+  };
+
+  entity browser_Input_GetCookiesAction = {
+    "session_name": String,
+    "type": String
+  };
+
+  entity browser_Input_GetHtmlAction = {
+    "selector"?: {
+      "typeChoice0"?: String,
+      "typeChoice1"?: MyMcpServer::Null
+    },
+    "session_name": String,
+    "type": String
+  };
+
+  entity browser_Input_GetTextAction = {
+    "selector": String,
+    "session_name": String,
+    "type": String
+  };
+
+  entity browser_Input_InitSessionAction = {
+    "description": String,
+    "session_name": String,
+    "type": String
+  };
+
+  entity browser_Input_ListLocalSessionsAction = {
+    "type": String
+  };
+
+  entity browser_Input_ListTabsAction = {
+    "session_name": String,
+    "type": String
+  };
+
+  entity browser_Input_NavigateAction = {
+    "session_name": String,
+    "type": String,
+    "url": String
+  };
+
+  entity browser_Input_NetworkInterceptAction = {
+    "pattern": String,
+    "session_name": String,
+    "type": String
+  };
+
+  entity browser_Input_NewTabAction = {
+    "session_name": String,
+    "tab_id"?: {
+      "typeChoice0"?: String,
+      "typeChoice1"?: MyMcpServer::Null
+    },
+    "type": String
+  };
+
+  entity browser_Input_PressKeyAction = {
+    "key": String,
+    "session_name": String,
+    "type": String
+  };
+
+  entity browser_Input_RefreshAction = {
+    "session_name": String,
+    "type": String
+  };
+
+  entity browser_Input_ScreenshotAction = {
+    "path"?: {
+      "typeChoice0"?: String,
+      "typeChoice1"?: MyMcpServer::Null
+    },
+    "session_name": String,
+    "type": String
+  };
+
+  entity browser_Input_SetCookiesAction = {
+    "cookies": Set<MyMcpServer::browser_Input_SetCookiesAction_cookies>,
+    "session_name": String,
+    "type": String
+  };
+
+  entity browser_Input_SetCookiesAction_cookies;
+
+  entity browser_Input_SwitchTabAction = {
+    "session_name": String,
+    "tab_id": String,
+    "type": String
+  };
+
+  entity browser_Input_TypeAction = {
+    "selector": String,
+    "session_name": String,
+    "text": String,
+    "type": String
+  };
+
+  entity calculator_Input_variables;
+
+  entity code_interpreter_Input_CodeInterpreterInput = {
+    "action": {
+      "typeChoice0"?: MyMcpServer::code_interpreter_Input_InitSessionAction,
+      "typeChoice1"?: MyMcpServer::code_interpreter_Input_ListLocalSessionsAction,
+      "typeChoice2"?: MyMcpServer::code_interpreter_Input_ExecuteCodeAction,
+      "typeChoice3"?: MyMcpServer::code_interpreter_Input_ExecuteCommandAction,
+      "typeChoice4"?: MyMcpServer::code_interpreter_Input_ReadFilesAction,
+      "typeChoice5"?: MyMcpServer::code_interpreter_Input_ListFilesAction,
+      "typeChoice6"?: MyMcpServer::code_interpreter_Input_RemoveFilesAction,
+      "typeChoice7"?: MyMcpServer::code_interpreter_Input_WriteFilesAction
+    }
+  };
+
+  entity code_interpreter_Input_ExecuteCodeAction = {
+    "clear_context"?: Bool,
+    "code": String,
+    "language"?: MyMcpServer::code_interpreter_Input_LanguageType,
+    "session_name": String,
+    "type": String
+  };
+
+  entity code_interpreter_Input_ExecuteCommandAction = {
+    "command": String,
+    "session_name": String,
+    "type": String
+  };
+
+  entity code_interpreter_Input_FileContent = {
+    "path": String,
+    "text": String
+  };
+
+  entity code_interpreter_Input_InitSessionAction = {
+    "description": String,
+    "session_name": String,
+    "type": String
+  };
+
+  entity code_interpreter_Input_LanguageType enum ["python", "javascript", "typescript"];
+
+  entity code_interpreter_Input_ListFilesAction = {
+    "path"?: String,
+    "session_name": String,
+    "type": String
+  };
+
+  entity code_interpreter_Input_ListLocalSessionsAction = {
+    "type": String
+  };
+
+  entity code_interpreter_Input_ReadFilesAction = {
+    "paths": Set<String>,
+    "session_name": String,
+    "type": String
+  };
+
+  entity code_interpreter_Input_RemoveFilesAction = {
+    "paths": Set<String>,
+    "session_name": String,
+    "type": String
+  };
+
+  entity code_interpreter_Input_WriteFilesAction = {
+    "content": Set<MyMcpServer::code_interpreter_Input_FileContent>,
+    "session_name": String,
+    "type": String
+  };
+
+  entity diagram_Input_edges = {  } tags {
+  "typeChoice0"?: Long,
+  "typeChoice1"?: String
+};
+
+  entity diagram_Input_elements = {  } tags String;
+
+  entity diagram_Input_nodes = {  } tags String;
+
+  entity diagram_Input_relationships = {  } tags {
+  "typeChoice0"?: Long,
+  "typeChoice1"?: String
+};
+
+  entity diagram_Input_style;
+
+  entity environment_Input_action enum ["list", "get", "set", "delete", "validate"];
+
+  entity file_read_Input_diff_type enum ["unified"];
+
+  entity file_read_Input_format enum ["pdf", "csv", "doc", "docx", "xls", "xlsx", "html", "txt", "md"];
+
+  entity file_read_Input_mode enum ["find", "view", "lines", "chunk", "search", "stats", "preview", "diff", "time_machine", "document"];
+
+  entity generate_image_stability_Input_aspect_ratio enum ["16:9", "1:1", "21:9", "2:3", "3:2", "4:5", "5:4", "9:16", "9:21"];
+
+  entity generate_image_stability_Input_mode enum ["text-to-image", "image-to-image"];
+
+  entity generate_image_stability_Input_output_format enum ["jpeg", "png", "webp"];
+
+  entity generate_image_stability_Input_return_type enum ["json", "image"];
+
+  entity generate_image_stability_Input_style_preset enum ["3d-model", "analog-film", "anime", "cinematic", "comic-book", "digital-art", "enhance", "fantasy-art", "isometric", "line-art", "low-poly", "modeling-compound", "neon-punk", "origami", "photographic", "pixel-art", "tile-texture"];
+
+  entity http_request_Input_auth_type enum ["Bearer", "token", "basic", "digest", "jwt", "aws_sig_v4", "kerberos", "custom", "api_key"];
+
+  entity http_request_Input_aws_auth = {
+    "access_key"?: String,
+    "refresh_credentials"?: Bool,
+    "region"?: String,
+    "secret_key"?: String,
+    "service"?: String,
+    "session_token"?: String
+  };
+
+  entity http_request_Input_basic_auth = {
+    "password": String,
+    "username": String
+  };
+
+  entity http_request_Input_digest_auth = {
+    "password"?: String,
+    "realm"?: String,
+    "username"?: String
+  };
+
+  entity http_request_Input_headers;
+
+  entity http_request_Input_jwt_config = {
+    "algorithm"?: String,
+    "expiry"?: Long,
+    "secret"?: String
+  };
+
+  entity http_request_Input_session_config = {
+    "cookie_persistence"?: Bool,
+    "keep_alive"?: Bool,
+    "max_retries"?: Long,
+    "pool_size"?: Long
+  };
+
+  entity journal_Input_action enum ["write", "read", "list", "add_task"];
+
+  entity mcp_client_Input_arguments;
+
+  entity mcp_client_Input_env;
+
+  entity mcp_client_Input_headers;
+
+  entity mcp_client_Input_server_config;
+
+  entity mcp_client_Input_tool_args;
+
+  entity mem0_memory_Input_action enum ["store", "get", "list", "retrieve", "delete", "history"];
+
+  entity mem0_memory_Input_metadata;
+
+  entity rss_Input_headers;
+
+  entity slack_Input_parameters;
+
+  entity speak_Input_mode enum ["fast", "polly"];
+
+  entity swarm_Input_agents;
+
+  entity tavily_crawl_Input_categories enum ["Careers", "Blog", "Documentation", "About", "Pricing", "Community", "Developers", "Contact", "Media"];
+
+  entity tavily_crawl_Input_extract_depth enum ["basic", "advanced"];
+
+  entity tavily_crawl_Input_format enum ["markdown", "text"];
+
+  entity tavily_extract_Input_extract_depth enum ["basic", "advanced"];
+
+  entity tavily_extract_Input_format enum ["markdown", "text"];
+
+  entity tavily_map_Input_categories enum ["Careers", "Blog", "Documentation", "About", "Pricing", "Community", "Developers", "Contact", "Media"];
+
+  entity tavily_search_Input_search_depth enum ["basic", "advanced"];
+
+  entity tavily_search_Input_time_range enum ["day", "week", "month", "year", "d", "w", "m", "y"];
+
+  entity tavily_search_Input_topic enum ["general", "news"];
+
+  entity think_Input_model_settings;
+
+  entity use_aws_Input_parameters;
+
+  entity workflow_Input_tasks;
+
+  action "a2a_discover_agent" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": a2a_discover_agentInput,
+  "session": CommonContext
+}
+  };
+
+  action "a2a_list_discovered_agents" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": a2a_list_discovered_agentsInput,
+  "session": CommonContext
+}
+  };
+
+  action "a2a_send_message" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": a2a_send_messageInput,
+  "session": CommonContext
+}
+  };
+
+  action "agent_core_memory" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": agent_core_memoryInput,
+  "session": CommonContext
+}
+  };
+
+  action "agent_graph" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": agent_graphInput,
+  "session": CommonContext
+}
+  };
+
+  action "batch" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": batchInput,
+  "session": CommonContext
+}
+  };
+
+  action "browser" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": browserInput,
+  "session": CommonContext
+}
+  };
+
+  action "calculator" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": calculatorInput,
+  "session": CommonContext
+}
+  };
+
+  action "call_tool";
+
+  action "code_interpreter" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": code_interpreterInput,
+  "session": CommonContext
+}
+  };
+
+  action "cron" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": cronInput,
+  "session": CommonContext
+}
+  };
+
+  action "current_time" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": current_timeInput,
+  "session": CommonContext
+}
+  };
+
+  action "diagram" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": diagramInput,
+  "session": CommonContext
+}
+  };
+
+  action "editor" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": editorInput,
+  "session": CommonContext
+}
+  };
+
+  action "environment" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": environmentInput,
+  "session": CommonContext
+}
+  };
+
+  action "file_read" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": file_readInput,
+  "session": CommonContext
+}
+  };
+
+  action "file_write" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": file_writeInput,
+  "session": CommonContext
+}
+  };
+
+  action "generate_image" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": generate_imageInput,
+  "session": CommonContext
+}
+  };
+
+  action "generate_image_stability" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": generate_image_stabilityInput,
+  "session": CommonContext
+}
+  };
+
+  action "handoff_to_user" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": handoff_to_userInput,
+  "session": CommonContext
+}
+  };
+
+  action "http_request" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": http_requestInput,
+  "session": CommonContext
+}
+  };
+
+  action "image_reader" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": image_readerInput,
+  "session": CommonContext
+}
+  };
+
+  action "journal" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": journalInput,
+  "session": CommonContext
+}
+  };
+
+  action "load_tool" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": load_toolInput,
+  "session": CommonContext
+}
+  };
+
+  action "mcp_client" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": mcp_clientInput,
+  "session": CommonContext
+}
+  };
+
+  action "mem0_memory" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": mem0_memoryInput,
+  "session": CommonContext
+}
+  };
+
+  action "memory" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": memoryInput,
+  "session": CommonContext
+}
+  };
+
+  action "nova_reels" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": nova_reelsInput,
+  "session": CommonContext
+}
+  };
+
+  action "python_repl" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": python_replInput,
+  "session": CommonContext
+}
+  };
+
+  action "retrieve" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": retrieveInput,
+  "session": CommonContext
+}
+  };
+
+  action "rss" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": rssInput,
+  "session": CommonContext
+}
+  };
+
+  action "shell" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": shellInput,
+  "session": CommonContext
+}
+  };
+
+  action "slack" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": slackInput,
+  "session": CommonContext
+}
+  };
+
+  action "slack_send_message" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": slack_send_messageInput,
+  "session": CommonContext
+}
+  };
+
+  action "sleep" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": sleepInput,
+  "session": CommonContext
+}
+  };
+
+  action "speak" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": speakInput,
+  "session": CommonContext
+}
+  };
+
+  action "stop" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": stopInput,
+  "session": CommonContext
+}
+  };
+
+  action "swarm" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": swarmInput,
+  "session": CommonContext
+}
+  };
+
+  action "tavily_crawl" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": tavily_crawlInput,
+  "session": CommonContext
+}
+  };
+
+  action "tavily_extract" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": tavily_extractInput,
+  "session": CommonContext
+}
+  };
+
+  action "tavily_map" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": tavily_mapInput,
+  "session": CommonContext
+}
+  };
+
+  action "tavily_search" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": tavily_searchInput,
+  "session": CommonContext
+}
+  };
+
+  action "think" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": thinkInput,
+  "session": CommonContext
+}
+  };
+
+  action "use_aws" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": use_awsInput,
+  "session": CommonContext
+}
+  };
+
+  action "use_computer" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": use_computerInput,
+  "session": CommonContext
+}
+  };
+
+  action "use_llm" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": use_llmInput,
+  "session": CommonContext
+}
+  };
+
+  action "workflow" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": workflowInput,
+  "session": CommonContext
+}
+  };
+}

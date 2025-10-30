@@ -418,9 +418,9 @@ impl SchemaGenerator {
         );
 
         if self.config.include_outputs {
-            #[allow(clippy::unwrap_used, reason = "`Outputs` is a valid Name")]
+            #[allow(clippy::unwrap_used, reason = "`Output` is a valid Name")]
             // PANIC SAFETY: "Outputs" is a valid Name
-            let output_ns: Name = "Outputs".parse().unwrap();
+            let output_ns: Name = "Output".parse().unwrap();
             let output_ns = Some(output_ns.qualify_with_name(namespace.as_ref()));
 
             self.add_namespace(output_ns.clone());
@@ -1207,4 +1207,209 @@ fn erase_mcp_annotations(schema_stub: Fragment<RawName>) -> Fragment<RawName> {
         })
         .collect();
     Fragment(ns)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use cedar_policy_core::extensions::Extensions;
+
+    fn test_schema_stub() -> Fragment<RawName> {
+        let schema = r#"namespace Test {
+    @mcp_principal("User")
+    entity user;
+
+    @mcp_resource("McpServer")
+    entity resource;
+
+    @mcp_context("foo")
+    entity Foo;
+}"#;
+        Fragment::from_cedarschema_str(schema, Extensions::all_available())
+            .expect("Failed to parse schema")
+            .0
+    }
+
+    #[test]
+    fn test_outputs() {
+        let schema_stub = test_schema_stub();
+        let config = SchemaGeneratorConfig::default().include_outputs(true);
+
+        let tool = r#"{
+    "name": "check_task_status",
+    "description": "Check if a task is ready for work",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "task_id": {"type": "string"}
+        },
+        "required": ["task_id"]
+    },
+    "outputSchema": {
+        "type": "object",
+        "properties": {
+            "status": {
+                "type": "string",
+                "enum": ["started", "paused", "failed", "completed"]
+            },
+            "priority": {"type": "integer"}
+        },
+        "required": ["status", "priority"]
+    }
+}"#;
+        let tool = ToolDescription::from_json_str(tool).expect("Failed to parse tool description");
+
+        let mut schema_generator = SchemaGenerator::new_with_config(schema_stub, config)
+            .expect("Failed to create schema generator");
+        schema_generator
+            .add_action_from_tool_description(&tool)
+            .expect("Failed to add tool description");
+
+        let schema = schema_generator.get_schema();
+
+        assert!(schema.0.iter().count() == 2, "Expected only two namespaces");
+
+        let root_namespace = Some("Test".parse::<Name>().unwrap());
+        let output_namespace = Some("Test::check_task_status::Output".parse::<Name>().unwrap());
+
+        let root_nsdef = schema
+            .0
+            .get(&root_namespace)
+            .expect("Expected namespace Test to exist");
+        let output_nsdef = schema
+            .0
+            .get(&output_namespace)
+            .expect("Expected namespace Test::check_status::Output to exist");
+
+        assert!(root_nsdef.actions.contains_key("check_task_status"));
+        assert!(output_nsdef.actions.is_empty());
+        assert!(output_nsdef.common_types.is_empty());
+        assert!(output_nsdef.entity_types.iter().count() == 1);
+        assert!(output_nsdef
+            .entity_types
+            .contains_key(&"status".parse().unwrap()))
+    }
+
+    #[test]
+    fn test_objects_as_records() {
+        let schema_stub = test_schema_stub();
+        let config = SchemaGeneratorConfig::default().objects_as_records(true);
+
+        let tool = r#"{
+    "name": "test_tool",
+    "description": "A tool for testing purposes",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "test_dt": {"type": "string", "format": "date-time"},
+            "test_obj": {
+                "type": "object",
+                "properties": {
+                    "test1": {"type": "float"},
+                    "test2": {"type": "string"}
+                }
+            },
+            "test_obj2": { "type": "object", "additionalProperties": {"type": "string"} }
+        },
+        "required": ["test_dt"]
+    }
+}"#;
+
+        let tool = ToolDescription::from_json_str(tool).expect("Failed to parse tool description");
+
+        let mut schema_generator = SchemaGenerator::new_with_config(schema_stub, config)
+            .expect("Failed to create schema generator");
+        schema_generator
+            .add_action_from_tool_description(&tool)
+            .expect("Failed to add tool description");
+
+        let schema = schema_generator.get_schema();
+
+        let root_namespace = Some("Test".parse::<Name>().unwrap());
+        let input_namespace = Some("Test::test_tool::Input".parse::<Name>().unwrap());
+
+        let root_nsdef = schema
+            .0
+            .get(&root_namespace)
+            .expect("Expected namespace Test to exist");
+        let input_nsdef = schema
+            .0
+            .get(&input_namespace)
+            .expect("Expected namespace Test::test_tool::Input to exist");
+
+        assert!(root_nsdef.actions.contains_key("test_tool"));
+        assert!(input_nsdef.actions.is_empty());
+
+        assert!(input_nsdef.common_types.iter().count() == 1);
+        assert!(input_nsdef
+            .common_types
+            .contains_key(&CommonTypeId::unchecked("test_obj".parse().unwrap())));
+
+        assert!(input_nsdef.entity_types.iter().count() == 1);
+        assert!(input_nsdef
+            .entity_types
+            .contains_key(&"test_obj2".parse().unwrap()));
+    }
+
+    #[test]
+    fn test_dont_erase_annotations() {
+        let schema_stub = test_schema_stub();
+        let config = SchemaGeneratorConfig::default().erase_annotations(false);
+
+        let tool = r#"{
+    "name": "test_tool",
+    "description": "A tool for testing purposes",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "test_dt": {"type": [{"type": "string", "format": "date-time"}, {"type": "string", "format": "date"}]}
+        },
+        "required": ["test_dt"]
+    }
+}"#;
+
+        let tool = ToolDescription::from_json_str(tool).expect("Failed to parse tool description");
+
+        let mut schema_generator = SchemaGenerator::new_with_config(schema_stub, config)
+            .expect("Failed to create schema generator");
+        schema_generator
+            .add_action_from_tool_description(&tool)
+            .expect("Failed to add tool description");
+
+        let schema = schema_generator.get_schema();
+
+        let root_namespace = Some("Test".parse::<Name>().unwrap());
+
+        assert!(schema.0.iter().count() == 1);
+        let root_nsdef = schema
+            .0
+            .get(&root_namespace)
+            .expect("Expected namespace Test to exist");
+
+        assert!(root_nsdef.actions.contains_key("test_tool"));
+        assert!(root_nsdef.common_types.iter().count() == 1);
+
+        assert!(root_nsdef.entity_types.iter().count() == 3);
+        assert!(root_nsdef
+            .entity_types
+            .get(&"user".parse().unwrap())
+            .unwrap()
+            .annotations
+            .0
+            .contains_key(&"mcp_principal".parse().unwrap()));
+        assert!(root_nsdef
+            .entity_types
+            .get(&"resource".parse().unwrap())
+            .unwrap()
+            .annotations
+            .0
+            .contains_key(&"mcp_resource".parse().unwrap()));
+        assert!(root_nsdef
+            .entity_types
+            .get(&"Foo".parse().unwrap())
+            .unwrap()
+            .annotations
+            .0
+            .contains_key(&"mcp_context".parse().unwrap()));
+    }
 }

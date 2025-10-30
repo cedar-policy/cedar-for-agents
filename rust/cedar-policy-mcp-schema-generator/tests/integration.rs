@@ -16,12 +16,14 @@
 
 use std::io::Read;
 
-use cedar_policy_mcp_schema_generator::{SchemaGenerator, ServerDescription};
+use cedar_policy_mcp_schema_generator::{
+    SchemaGenerator, SchemaGeneratorConfig, ServerDescription,
+};
 
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::validator::json_schema::Fragment;
 
-fn run_integration_test(tools_fname: &str, schema_fname: &str) {
+fn run_integration_test(tools_fname: &str, schema_fname: &str, config: SchemaGeneratorConfig) {
     let description =
         ServerDescription::from_json_file(tools_fname).expect("Failed to read tools file");
     let stub_file =
@@ -30,7 +32,8 @@ fn run_integration_test(tools_fname: &str, schema_fname: &str) {
         .expect("Failed to parse input schema")
         .0;
 
-    let mut generator = SchemaGenerator::new(input_schema).expect("input schema file is malformed");
+    let mut generator = SchemaGenerator::new_with_config(input_schema, config)
+        .expect("input schema file is malformed");
     generator
         .add_actions_from_server_description(&description)
         .expect("Failed to add tool actions to schema generator");
@@ -61,5 +64,15 @@ fn strands_agent() {
     run_integration_test(
         "examples/strands/strands_tools.json",
         "examples/strands/strands_tools.cedarschema",
+        SchemaGeneratorConfig::default(),
+    );
+}
+
+#[test]
+fn strands_agent_flat() {
+    run_integration_test(
+        "examples/strands/strands_tools.json",
+        "examples/strands/strands_tools_flat.cedarschema",
+        SchemaGeneratorConfig::default().flatten_namespaces(true),
     );
 }
