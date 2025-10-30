@@ -160,7 +160,10 @@ impl SchemaGenerator {
                         ))
                     })
             })
-            .collect();
+            .collect::<Vec<_>>();
+        if users.is_empty() {
+            return Err(SchemaGeneratorError::NoPrincipalTypes)
+        }
 
         #[allow(clippy::unwrap_used, reason = "`mcp_resource` is a valid AnyId")]
         // PANIC SAFETY: converting "mcp_resource" into an AnyId should not error
@@ -178,7 +181,10 @@ impl SchemaGenerator {
                         ))
                     })
             })
-            .collect();
+            .collect::<Vec<_>>();
+        if resources.is_empty() {
+            return Err(SchemaGeneratorError::NoResourceTypes)
+        }
 
         #[allow(clippy::unwrap_used, reason = "`mcp_context` is a valid AnyId")]
         // PANIC SAFETY: converting "mcp_context" into an AnyId should not error
@@ -1211,8 +1217,11 @@ fn erase_mcp_annotations(schema_stub: Fragment<RawName>) -> Fragment<RawName> {
 
 #[cfg(test)]
 mod test {
+    use crate::schema_generator;
+
     use super::*;
     use cedar_policy_core::extensions::Extensions;
+    use cool_asserts::assert_matches;
 
     fn test_schema_stub() -> Fragment<RawName> {
         let schema = r#"namespace Test {
@@ -1229,6 +1238,54 @@ mod test {
             .expect("Failed to parse schema")
             .0
     }
+
+    #[test]
+    fn test_default() {
+        let schema_stub = test_schema_stub();
+
+        let tool = r#"{
+    "name": "check_task_status",
+    "description": "Check if a task is ready for work",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "task_id": {"type": "string"}
+        },
+        "required": ["task_id"]
+    },
+    "outputSchema": {
+        "type": "object",
+        "properties": {
+            "status": {
+                "type": "string",
+                "enum": ["started", "paused", "failed", "completed"]
+            },
+            "priority": {"type": "integer"}
+        },
+        "required": ["status", "priority"]
+    }
+}"#;
+        let tool = ToolDescription::from_json_str(tool).expect("Failed to parse tool description");
+
+        let mut schema_generator = SchemaGenerator::new(schema_stub)
+            .expect("Failed to create schema generator");
+        schema_generator
+            .add_action_from_tool_description(&tool)
+            .expect("Failed to add tool description");
+
+        let schema = schema_generator.get_schema();
+
+        assert!(schema.0.iter().count() == 1, "Expected only two namespaces");
+
+        let root_namespace = Some("Test".parse::<Name>().unwrap());
+
+        let root_nsdef = schema
+            .0
+            .get(&root_namespace)
+            .expect("Expected namespace Test to exist");
+
+        assert!(root_nsdef.actions.contains_key("check_task_status"));
+    }        
 
     #[test]
     fn test_outputs() {
@@ -1411,5 +1468,176 @@ mod test {
             .annotations
             .0
             .contains_key(&"mcp_context".parse().unwrap()));
+    }
+
+    #[test]
+    fn test_global_namespace_used_error() {
+        let schema = r#"@mcp_principal("User")
+    entity user;
+"#;
+        let schema_stub = Fragment::from_cedarschema_str(schema, Extensions::all_available())
+            .expect("Failed to parse schema")
+            .0;
+
+        assert_matches!(SchemaGenerator::new(schema_stub), Err(SchemaGeneratorError::GlobalNamespaceUsed));        
+    }
+
+    #[test]
+    fn test_multiple_namespaces_used_error() {
+        let schema = r#"namespace Test {
+}
+
+namespace Test2 {       
+}"#;
+
+        let schema_stub = Fragment::from_cedarschema_str(schema, Extensions::all_available())
+            .expect("Failed to parse schema")
+            .0;
+
+        assert_matches!(SchemaGenerator::new(schema_stub), Err(SchemaGeneratorError::WrongNumberOfNamespaces));
+    }
+
+    #[test]
+    fn test_no_namespaces_error() {
+        let schema = r#""#;
+        let schema_stub = Fragment::from_cedarschema_str(schema, Extensions::all_available())
+            .expect("Failed to parse schema")
+            .0;
+
+        assert_matches!(SchemaGenerator::new(schema_stub), Err(SchemaGeneratorError::WrongNumberOfNamespaces));
+    }
+
+    #[test]
+    fn test_no_principal_declared_error() {
+        let schema = r#"namespace Test {
+    // forgot to annotate mcp_principal
+    entity user;
+
+    @mcp_resource("McpServer")
+    entity resource;
+
+    @mcp_context("foo")
+    entity Foo;
+}"#;
+
+        let schema_stub = Fragment::from_cedarschema_str(schema, Extensions::all_available())
+            .expect("Failed to parse schema")
+            .0;
+
+        assert_matches!(SchemaGenerator::new(schema_stub), Err(SchemaGeneratorError::NoPrincipalTypes));
+    }
+
+    #[test]
+    fn test_no_resource_declared_error() {
+        let schema = r#"namespace Test {
+    @mcp_principal("User")
+    entity user;
+
+    // forgot to annotate mcp_resource
+    entity resource;
+
+    @mcp_context("foo")
+    entity Foo;
+}"#;
+
+        let schema_stub = Fragment::from_cedarschema_str(schema, Extensions::all_available())
+            .expect("Failed to parse schema")
+            .0;
+
+        assert_matches!(SchemaGenerator::new(schema_stub), Err(SchemaGeneratorError::NoResourceTypes));
+    }
+
+    #[test]
+    fn test_adding_tool_action_errors() {
+        let schema = r#"namespace Test {
+    @mcp_principal("User")
+    entity user;
+
+    @mcp_resource("McpServer")
+    entity resource;
+
+    @mcp_context("foo")
+    entity Foo;
+
+    type test_toolInput = {};
+}"#;
+
+        let schema_stub = Fragment::from_cedarschema_str(schema, Extensions::all_available())
+            .expect("Failed to parse schema")
+            .0;
+
+        let tool = r#"{
+    "name": "test_tool",
+    "description": "A tool for testing purposes",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "test_dt": {"type": "string", "format": "date-time"},
+            "test_obj": {
+                "type": "object",
+                "properties": {
+                    "test1": {"type": "float"},
+                    "test2": {"type": "string"}
+                }
+            },
+            "test_obj2": { "type": "object", "additionalProperties": {"type": "string"} }
+        },
+        "required": ["test_dt"]
+    }
+}"#;
+
+        let tool = ToolDescription::from_json_str(tool).expect("Failed to parse tool description");
+        let config = SchemaGeneratorConfig::default().erase_annotations(false);
+        let mut schema_generator = SchemaGenerator::new_with_config(schema_stub.clone(), config).expect("Failed to create schema generator");
+
+        assert_matches!(schema_generator.add_action_from_tool_description(&tool), Err(SchemaGeneratorError::ConflictingSchemaNameError(..)));
+        assert_eq!(&schema_stub, schema_generator.get_schema());
+    }
+
+    #[test]
+    fn test_adding_server_actions_errors() {
+        let schema = r#"namespace Test {
+    @mcp_principal("User")
+    entity user;
+
+    @mcp_resource("McpServer")
+    entity resource;
+
+    @mcp_context("foo")
+    entity Foo;
+
+    type test_toolInput = {};
+}"#;
+
+        let schema_stub = Fragment::from_cedarschema_str(schema, Extensions::all_available())
+            .expect("Failed to parse schema")
+            .0;
+
+        let tool = r#"{
+    "name": "test_tool",
+    "description": "A tool for testing purposes",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "test_dt": {"type": "string", "format": "date-time"},
+            "test_obj": {
+                "type": "object",
+                "properties": {
+                    "test1": {"type": "float"},
+                    "test2": {"type": "string"}
+                }
+            },
+            "test_obj2": { "type": "object", "additionalProperties": {"type": "string"} }
+        },
+        "required": ["test_dt"]
+    }
+}"#;
+
+        let tool = ServerDescription::from_json_str(tool).expect("Failed to parse tool description");
+        let config = SchemaGeneratorConfig::default().erase_annotations(false);
+        let mut schema_generator = SchemaGenerator::new_with_config(schema_stub.clone(), config).expect("Failed to create schema generator");
+
+        assert_matches!(schema_generator.add_actions_from_server_description(&tool), Err(SchemaGeneratorError::ConflictingSchemaNameError(..)));
+        assert_eq!(&schema_stub, schema_generator.get_schema());
     }
 }
