@@ -563,7 +563,7 @@ mod test {
         assert_matches!(
             ServerDescription::from_json_str(server_description),
             Err(DeserializationError::UnexpectedType(..))
-        );        
+        );
     }
 
     #[test]
@@ -798,6 +798,5 @@ mod test {
             ToolDescription::from_json_str(tool_description),
             Err(DeserializationError::UnexpectedType(..))
         );
-
     }
 }
