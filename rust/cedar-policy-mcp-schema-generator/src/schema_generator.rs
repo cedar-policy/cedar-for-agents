@@ -1028,11 +1028,9 @@ impl SchemaGenerator {
                         None => "".into(),
                         Some(name) => format!("{}", name),
                     };
-                    println!("What?");
                     return Err(SchemaGeneratorError::undefined_ref(name.to_string(), ns));
                 }
                 Some(name) => {
-                    println!("Huh, {}", name);
                     return Ok(Type::Type {
                         ty: TypeVariant::EntityOrCommon {
                             type_name: self.flatten_rawname(name.clone()),
