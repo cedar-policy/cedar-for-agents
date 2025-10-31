@@ -1704,10 +1704,20 @@ namespace Test2 {
         // An empty enum doesn't parse with our deserializer. Need to construct
         let tool = ToolDescription::new(
             "test_tool".to_smolstr(),
-            Parameters::new(vec![Property::new("empty_enum".to_smolstr(), true, PropertyType::Enum { variants: Vec::new() }, None)], HashMap::new()),
+            Parameters::new(
+                vec![Property::new(
+                    "empty_enum".to_smolstr(),
+                    true,
+                    PropertyType::Enum {
+                        variants: Vec::new(),
+                    },
+                    None,
+                )],
+                HashMap::new(),
+            ),
             Parameters::new(Vec::new(), HashMap::new()),
             HashMap::new(),
-            None
+            None,
         );
 
         let config = SchemaGeneratorConfig::default().erase_annotations(false);
