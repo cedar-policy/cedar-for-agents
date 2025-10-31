@@ -501,4 +501,57 @@ mod test {
         );
         assert_matches!(inputs.get(0).and_then(Property::description), None);
     }
+
+    #[test]
+    fn test_result_file_but_result_not_object_error() {
+        let server_description = r#"{
+    "result": false
+}"#;
+        assert_matches!(
+            ServerDescription::from_json_str(server_description),
+            Err(DeserializationError::MissingExpectedAttribute(..))
+        );
+    }
+
+    #[test]
+    fn test_result_file_without_tools_list_error() {
+        let server_description = r#"{
+    "result": {}
+}"#;
+        assert_matches!(
+            ServerDescription::from_json_str(server_description),
+            Err(DeserializationError::MissingExpectedAttribute(..))
+        );
+    }
+
+    #[test]
+    fn test_result_file_tool_not_array_error() {
+        let server_description = r#"{
+    "result": {
+        "tools": {}
+    }
+}"#;
+        assert_matches!(
+            ServerDescription::from_json_str(server_description),
+            Err(DeserializationError::UnexpectedType(..))
+        );
+    }
+
+    #[test]
+    fn test_empty_array_of_tools() {
+        let server_description = "[]";
+        let tools = ServerDescription::from_json_str(server_description).unwrap();
+
+        assert!(tools.tool_descriptions().count() == 0);
+        assert!(tools.type_definitions().count() == 0);
+    }
+
+    #[test]
+    fn test_deserialize_wrong_type() {
+        let server_description = "true";
+        assert_matches!(
+            ServerDescription::from_json_str(server_description),
+            Err(DeserializationError::UnexpectedType(..))
+        );
+    }
 }
