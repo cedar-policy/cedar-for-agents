@@ -1002,7 +1002,7 @@ impl SchemaGenerator {
                             shape: AttributesOrContext(Type::Type {
                                 ty: TypeVariant::Record(RecordType {
                                     attributes,
-                                    additional_attributes: tags.is_some(),
+                                    additional_attributes: false,
                                 }),
                                 loc: None,
                             }),

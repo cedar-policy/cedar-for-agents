@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Fix issue in which schemas were generated record types with `additionalAttributes` set to `true` when the record type represented the shape of an entity type that also had tags. This was in error and causes the generated schema to be malformed.
+
 ## [0.2.0] - 2025-10-30
 
 ### Added
