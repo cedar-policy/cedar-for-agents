@@ -1218,8 +1218,11 @@ fn erase_mcp_annotations(schema_stub: Fragment<RawName>) -> Fragment<RawName> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::description::Property;
     use cedar_policy_core::extensions::Extensions;
     use cool_asserts::assert_matches;
+
+    use std::collections::HashMap;
 
     fn test_schema_stub() -> Fragment<RawName> {
         let schema = r#"namespace Test {
@@ -1659,6 +1662,71 @@ namespace Test2 {
         assert_matches!(
             schema_generator.add_actions_from_server_description(&tool),
             Err(SchemaGeneratorError::ConflictingSchemaNameError(..))
+        );
+        assert_eq!(&schema_stub, schema_generator.get_schema());
+    }
+
+    #[test]
+    fn test_undefined_ref_error() {
+        let schema_stub = test_schema_stub();
+
+        let tool = r##"{
+    "name": "test_tool",
+    "description": "a test tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+                "$ref": "#/$defs/undefined_ref"
+            }
+        },
+        "required": []
+    }
+}"##;
+
+        let tool =
+            ServerDescription::from_json_str(tool).expect("Failed to parse tool description");
+        let config = SchemaGeneratorConfig::default().erase_annotations(false);
+        let mut schema_generator = SchemaGenerator::new_with_config(schema_stub.clone(), config)
+            .expect("Failed to create schema generator");
+
+        assert_matches!(
+            schema_generator.add_actions_from_server_description(&tool),
+            Err(SchemaGeneratorError::UndefinedReferenceType(..))
+        );
+        assert_eq!(&schema_stub, schema_generator.get_schema());
+    }
+
+    #[test]
+    fn test_empty_enum_error() {
+        let schema_stub = test_schema_stub();
+
+        // An empty enum doesn't parse with our deserializer. Need to construct
+        let tool = ToolDescription::new(
+            "test_tool".to_smolstr(),
+            Parameters::new(
+                vec![Property::new(
+                    "empty_enum".to_smolstr(),
+                    true,
+                    PropertyType::Enum {
+                        variants: Vec::new(),
+                    },
+                    None,
+                )],
+                HashMap::new(),
+            ),
+            Parameters::new(Vec::new(), HashMap::new()),
+            HashMap::new(),
+            None,
+        );
+
+        let config = SchemaGeneratorConfig::default().erase_annotations(false);
+        let mut schema_generator = SchemaGenerator::new_with_config(schema_stub.clone(), config)
+            .expect("Failed to create schema generator");
+
+        assert_matches!(
+            schema_generator.add_action_from_tool_description(&tool),
+            Err(SchemaGeneratorError::EmptyEnumChoice(..))
         );
         assert_eq!(&schema_stub, schema_generator.get_schema());
     }

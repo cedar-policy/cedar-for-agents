@@ -90,7 +90,7 @@ impl DeserializationError {
         content_type: ContentType,
     ) -> Self {
         let loc = json_value.as_loc().clone();
-        Self::UnexpectedType(LocationFound {
+        Self::UnexpectedValue(LocationFound {
             src: loc,
             label: "Found".to_string(),
             msg: msg.to_string(),
