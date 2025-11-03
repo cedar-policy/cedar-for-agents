@@ -269,16 +269,16 @@ namespace MyMcpServer::code_interpreter::Input {
 }
 
 namespace MyMcpServer::diagram::Input {
-  entity edges = {  } tags {
+  entity edges tags {
   "typeChoice0"?: Long,
   "typeChoice1"?: String
 };
 
-  entity elements = {  } tags String;
+  entity elements tags String;
 
-  entity nodes = {  } tags String;
+  entity nodes tags String;
 
-  entity relationships = {  } tags {
+  entity relationships tags {
   "typeChoice0"?: Long,
   "typeChoice1"?: String
 };

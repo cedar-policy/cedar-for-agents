@@ -727,16 +727,16 @@ namespace MyMcpServer {
     "type": String
   };
 
-  entity diagram_Input_edges = {  } tags {
+  entity diagram_Input_edges tags {
   "typeChoice0"?: Long,
   "typeChoice1"?: String
 };
 
-  entity diagram_Input_elements = {  } tags String;
+  entity diagram_Input_elements tags String;
 
-  entity diagram_Input_nodes = {  } tags String;
+  entity diagram_Input_nodes tags String;
 
-  entity diagram_Input_relationships = {  } tags {
+  entity diagram_Input_relationships tags {
   "typeChoice0"?: Long,
   "typeChoice1"?: String
 };
