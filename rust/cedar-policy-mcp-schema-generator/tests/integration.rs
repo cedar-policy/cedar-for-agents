@@ -110,7 +110,8 @@ mod cli {
 
     #[test]
     fn test_simple_keep_annotations_cedar_schema() {
-        let expected = std::fs::read_to_string("examples/simple/tool_keep_annotations.cedarschema").unwrap();
+        let expected =
+            std::fs::read_to_string("examples/simple/tool_keep_annotations.cedarschema").unwrap();
 
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
@@ -123,7 +124,8 @@ mod cli {
 
     #[test]
     fn test_simple_keep_annotations_json_schema() {
-        let expected = std::fs::read_to_string("examples/simple/tool_keep_annotations.json").unwrap();
+        let expected =
+            std::fs::read_to_string("examples/simple/tool_keep_annotations.json").unwrap();
 
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
@@ -133,12 +135,13 @@ mod cli {
             .arg("--keep-annotations")
             .arg("--output-format")
             .arg("json");
-        cmd.unwrap().assert().success().stdout(expected);        
+        cmd.unwrap().assert().success().stdout(expected);
     }
 
     #[test]
     fn test_simple_object_as_records_cedar_schema() {
-        let expected = std::fs::read_to_string("examples/simple/tool_objects_as_records.cedarschema").unwrap();
+        let expected =
+            std::fs::read_to_string("examples/simple/tool_objects_as_records.cedarschema").unwrap();
 
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
@@ -151,7 +154,8 @@ mod cli {
 
     #[test]
     fn test_simple_object_as_records_json_schema() {
-        let expected = std::fs::read_to_string("examples/simple/tool_objects_as_records.json").unwrap();
+        let expected =
+            std::fs::read_to_string("examples/simple/tool_objects_as_records.json").unwrap();
 
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
@@ -166,7 +170,8 @@ mod cli {
 
     #[test]
     fn test_simple_include_outputs_cedar_schema() {
-        let expected = std::fs::read_to_string("examples/simple/tool_include_outputs.cedarschema").unwrap();
+        let expected =
+            std::fs::read_to_string("examples/simple/tool_include_outputs.cedarschema").unwrap();
 
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
@@ -179,7 +184,8 @@ mod cli {
 
     #[test]
     fn test_simple_include_outputs_json_schema() {
-        let expected = std::fs::read_to_string("examples/simple/tool_include_outputs.json").unwrap();
+        let expected =
+            std::fs::read_to_string("examples/simple/tool_include_outputs.json").unwrap();
 
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
@@ -194,7 +200,9 @@ mod cli {
 
     #[test]
     fn test_simple_flattened_namespace_cedar_schema() {
-        let expected = std::fs::read_to_string("examples/simple/tool_flattened_namespace.cedarschema").unwrap();
+        let expected =
+            std::fs::read_to_string("examples/simple/tool_flattened_namespace.cedarschema")
+                .unwrap();
 
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
@@ -207,7 +215,8 @@ mod cli {
 
     #[test]
     fn test_simple_flattened_namespace_json_schema() {
-        let expected = std::fs::read_to_string("examples/simple/tool_flattened_namespace.json").unwrap();
+        let expected =
+            std::fs::read_to_string("examples/simple/tool_flattened_namespace.json").unwrap();
 
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
