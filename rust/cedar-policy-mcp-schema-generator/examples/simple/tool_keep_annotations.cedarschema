@@ -1,0 +1,73 @@
+namespace MyMcpServer::test_tool::Input {
+  entity enum_attr enum ["variant1", "variant2"];
+
+  entity obj_attr = {
+    "first_attr": String,
+    "second_attr": Bool
+  };
+
+  entity tagged_obj_attr tags Long;
+}
+
+namespace MyMcpServer {
+  @mcp_context("session")
+  type CommonContext = {
+    "currentTimestamp": datetime,
+    "ipaddr": ipaddr
+  };
+
+  type test_toolInput = {
+    "array_attr"?: Set<String>,
+    "bool_attr"?: Bool,
+    "date_attr"?: datetime,
+    "dec_attr"?: decimal,
+    "dt_attr"?: datetime,
+    "dur_attr"?: duration,
+    "enum_attr"?: MyMcpServer::test_tool::Input::enum_attr,
+    "float_attr"?: MyMcpServer::Float,
+    "int_attr"?: Long,
+    "ipv4_attr"?: ipaddr,
+    "ipv6_attr"?: ipaddr,
+    "null_attr"?: MyMcpServer::Null,
+    "num_attr"?: MyMcpServer::Number,
+    "obj_attr"?: MyMcpServer::test_tool::Input::obj_attr,
+    "str_attr"?: String,
+    "tagged_obj_attr"?: MyMcpServer::test_tool::Input::tagged_obj_attr,
+    "tuple_attr"?: {
+      "proj0": String,
+      "proj1": Long
+    },
+    "union_attr"?: {
+      "typeChoice0"?: String,
+      "typeChoice1"?: MyMcpServer::Null
+    }
+  };
+
+  entity Float;
+
+  @mcp_resource("McpServer")
+  entity McpServer;
+
+  entity Null;
+
+  entity Number;
+
+  @mcp_principal("User")
+  entity User = {
+    "id": String,
+    "username": String
+  };
+
+  @mcp_action("call_tool")
+  action "call_tool";
+
+  action "test_tool" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+  "input": test_toolInput,
+  "session": CommonContext
+}
+  };
+}
+
