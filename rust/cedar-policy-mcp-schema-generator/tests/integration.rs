@@ -79,7 +79,7 @@ mod lib {
     }
 }
 
-#[cfg(feature="cli")]
+#[cfg(feature = "cli")]
 mod cli {
     use assert_cmd::{assert::OutputAssertExt, cargo_bin_cmd};
 
