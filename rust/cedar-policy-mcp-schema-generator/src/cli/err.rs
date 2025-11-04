@@ -15,8 +15,8 @@
  */
 
 use miette::Diagnostic;
-use thiserror::Error;
 use std::path::PathBuf;
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 #[error("Could not open file `{}`: {}", .file.display(), .error)]
@@ -28,7 +28,10 @@ pub struct FileOpenError {
 #[derive(Debug, Error, Diagnostic)]
 pub enum CliError {
     #[error("Expected schema file to end with either `.cedarschema` or `.json`")]
-    #[diagnostic(code(cli_error::unrecognized_schema_file), help("Provide schema in either .json or .cedarschema format"))]
+    #[diagnostic(
+        code(cli_error::unrecognized_schema_file),
+        help("Provide schema in either .json or .cedarschema format")
+    )]
     UnrecognizedSchemaExtension,
     #[error("Could not open cedar schema file `{}`: {}", .0.file.display(), .0.error)]
     #[diagnostic(code(cli_error::file_open_error), help("Make sure {} exists and you have permissions to read it.", .0.file.display()))]
@@ -52,32 +55,28 @@ pub enum CliError {
     #[diagnostic(code(cli_error::file_write_error), help("Make sure to write to {}.", .0.file.display()))]
     WritingSchemaFile(FileOpenError),
     #[error("Error while trying to serialize schema to JSON: {}", .0)]
-    #[diagnostic(code(cli_error::serialize_schema_to_json), help("Could not serialize produced schema to json"))]
+    #[diagnostic(
+        code(cli_error::serialize_schema_to_json),
+        help("Could not serialize produced schema to json")
+    )]
     JsonSerializeSchema(#[from] serde_json::Error),
     #[error("Error while trying to serialize schema to Cedar format: {}", .0)]
     #[diagnostic(transparent)]
-    CedarSerializeSchema(#[from] cedar_policy_core::validator::cedar_schema::fmt::ToCedarSchemaSyntaxError)
+    CedarSerializeSchema(
+        #[from] cedar_policy_core::validator::cedar_schema::fmt::ToCedarSchemaSyntaxError,
+    ),
 }
 
 impl CliError {
     pub(crate) fn schema_file_open(file: PathBuf, error: std::io::Error) -> Self {
-        Self::SchemaFileOpen(FileOpenError {
-            file,
-            error
-        })
+        Self::SchemaFileOpen(FileOpenError { file, error })
     }
 
     pub(crate) fn write_file_open(file: PathBuf, error: std::io::Error) -> Self {
-        Self::OpeningSchemaWriteFile(FileOpenError {
-            file,
-            error
-        })
+        Self::OpeningSchemaWriteFile(FileOpenError { file, error })
     }
 
     pub(crate) fn write_schema_file(file: PathBuf, error: std::io::Error) -> Self {
-        Self::WritingSchemaFile(FileOpenError {
-            file,
-            error
-        })
+        Self::WritingSchemaFile(FileOpenError { file, error })
     }
 }

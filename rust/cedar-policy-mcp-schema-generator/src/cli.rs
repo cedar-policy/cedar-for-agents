@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-mod err;
 mod args;
+mod err;
 mod exec;
 
 pub(crate) use args::*;
 
-pub use err::CliError;
 pub use args::CliArgs;
 pub use args::ErrorFormat;
+pub use err::CliError;

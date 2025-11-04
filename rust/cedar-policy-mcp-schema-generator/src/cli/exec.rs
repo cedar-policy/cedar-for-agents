@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-use crate::cli::{CliArgs, CliError, ConfigOptions, Command, ErrorFormat, OutputFormat};
+use crate::cli::{CliArgs, CliError, Command, ConfigOptions, ErrorFormat, OutputFormat};
 use crate::{SchemaGenerator, SchemaGeneratorConfig, ServerDescription};
 
-use cedar_policy_core::validator::{json_schema::Fragment, RawName};
 use cedar_policy_core::extensions::Extensions;
+use cedar_policy_core::validator::{json_schema::Fragment, RawName};
 
 use std::path::{Path, PathBuf};
 
@@ -36,33 +36,45 @@ fn read_schema(file: impl AsRef<Path>) -> Result<Fragment<RawName>, CliError> {
         Some("json") => {
             let json_file = match std::fs::File::open(file) {
                 Ok(json_file) => json_file,
-                Err(e) => return Err(CliError::schema_file_open(file.to_path_buf(), e))
+                Err(e) => return Err(CliError::schema_file_open(file.to_path_buf(), e)),
             };
             Ok(Fragment::from_json_file(json_file)?)
         }
         Some("cedarschema") => {
             let schema_file = match std::fs::File::open(file) {
                 Ok(schema_file) => schema_file,
-                Err(e) => return Err(CliError::schema_file_open(file.to_path_buf(), e))
+                Err(e) => return Err(CliError::schema_file_open(file.to_path_buf(), e)),
             };
             Ok(Fragment::from_cedarschema_file(schema_file, Extensions::all_available())?.0)
         }
-        _ => Err(CliError::UnrecognizedSchemaExtension)
+        _ => Err(CliError::UnrecognizedSchemaExtension),
     }
 }
 
-fn output_schema(schema: &Fragment<RawName>, output_location: &Option<PathBuf>, output_format: &OutputFormat) -> Result<(), CliError> {
+fn output_schema(
+    schema: &Fragment<RawName>,
+    output_location: &Option<PathBuf>,
+    output_format: &OutputFormat,
+) -> Result<(), CliError> {
     let mut writer: Box<dyn std::io::Write> = match output_location {
         None => Box::new(std::io::stdout()),
         Some(file) => match std::fs::File::create(file) {
             Ok(fs) => Box::new(fs),
             Err(e) => return Err(CliError::write_file_open(file.clone(), e)),
-        }
+        },
     };
     match output_format {
         OutputFormat::Human => writeln!(writer, "{}", schema.to_cedarschema()?),
         OutputFormat::Json => writeln!(writer, "{}", serde_json::to_string(schema)?),
-    }.map_err(|e| CliError::write_schema_file(output_location.clone().unwrap_or_else(|| <str as AsRef<Path>>::as_ref("stdout").to_path_buf()), e))
+    }
+    .map_err(|e| {
+        CliError::write_schema_file(
+            output_location
+                .clone()
+                .unwrap_or_else(|| <str as AsRef<Path>>::as_ref("stdout").to_path_buf()),
+            e,
+        )
+    })
 }
 
 impl CliArgs {

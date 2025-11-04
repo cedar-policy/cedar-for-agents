@@ -23,16 +23,16 @@ use std::path::PathBuf;
 #[serde(rename_all = "kebab-case")]
 pub(crate) struct ConfigOptions {
     /// Whether to encode the `OutputSchema` of each tool as an optional attribute of the tool's action's context (default: false).
-    #[arg(long, default_value_t=false)]
+    #[arg(long, default_value_t = false)]
     pub(crate) include_outputs: bool,
     /// Whether to encode "object" typed properties as a Record Type when the object does not have `additionalProperties` (default: false).
-    #[arg(long, default_value_t=false)]
+    #[arg(long, default_value_t = false)]
     pub(crate) objects_as_records: bool,
     /// Whether to keep `mcp_principal`, `mcp_resource`, `mcp_context`, and `mcp_action` annotations in the final schema (default: false).
-    #[arg(long, default_value_t=true)]
+    #[arg(long, default_value_t = true)]
     pub(crate) keep_annotations: bool,
     /// Whether to create an output schema with a single namespace by flattening names---e.g., `Foo::Baz::Bar` becomes `Foo_Baz_Bar`---(default: false).
-    #[arg(long, default_value_t=false)]
+    #[arg(long, default_value_t = false)]
     pub(crate) flatten_namespaces: bool,
 }
 
@@ -68,13 +68,13 @@ pub(crate) enum Command {
         /// The location to save the output Cedar Schema (default: stdout).
         #[arg(long, value_name = "OUTPUT_FILE")]
         output: Option<PathBuf>,
-        #[arg(long, default_value="human")]
+        #[arg(long, default_value = "human")]
         output_format: OutputFormat,
-        #[arg(long, default_value="human")]
+        #[arg(long, default_value = "human")]
         error_format: ErrorFormat,
         #[clap(flatten)]
         config: ConfigOptions,
-    }
+    },
 }
 
 /// Command Line Interface for Cedar MCP Schema Generator
@@ -82,5 +82,5 @@ pub(crate) enum Command {
 #[clap(name = "cedar-policy-mcp-schema-generator", version)]
 pub struct CliArgs {
     #[clap(subcommand)]
-    pub(crate) command: Command
+    pub(crate) command: Command,
 }
