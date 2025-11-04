@@ -39,7 +39,7 @@ fn main() -> ExitCode {
         Err(err) => {
             let report = miette::Report::new(err);
             eprintln!("{:?}", report);
-            ExitCode::from(2)
+            ExitCode::FAILURE
         }
     }
 }
