@@ -223,6 +223,8 @@ def process(
     required_coverage = float(required_coverage)
     entries = list(collect_line_coverage(cobertura_file))
     changed_lines = read_json(changed_lines_file)
+    # Remove the prefix from file paths in change lines
+    changed_lines = {k.removeprefix('rust/'): v for (k, v) in changed_lines.items()}
     # Remove lines that were not modified
     modified_entries = list(filter(lambda e: was_modified(e, changed_lines), entries))
     # Read coverage for PR BASE
