@@ -14,19 +14,12 @@
  * limitations under the License.
  */
 
-mod description;
 mod err;
-mod schema_generator;
+mod args;
+mod exec;
 
-pub use description::{
-    err::DeserializationError, parser::err::ParseError, Parameters, Property, PropertyType,
-    PropertyTypeDef, ServerDescription, ToolDescription,
-};
+pub(crate) use args::*;
 
-pub use err::SchemaGeneratorError;
-pub use schema_generator::{SchemaGenerator, SchemaGeneratorConfig};
-
-#[cfg(feature = "cli")]
-mod cli;
-#[cfg(feature = "cli")]
-pub use cli::*;
+pub use err::CliError;
+pub use args::CliArgs;
+pub use args::ErrorFormat;

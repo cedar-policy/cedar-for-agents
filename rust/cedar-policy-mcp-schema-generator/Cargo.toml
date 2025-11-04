@@ -14,14 +14,27 @@ repository.workspace = true
 
 [dependencies]
 cedar-policy-core = "4.6.0"
-miette = { version = "7.6.0", features = ["fancy"] }
+miette = "7.6.0"
 linked-hash-map = "0.5.6"
 thiserror = "2.0"
 smol_str = "0.3"
 nonempty = "0.12"
+
+# CLI only dependencies
+clap = { version = "4.5.36", features = ["derive"], optional = true }
+serde = {version = "1.0", optional = true }
+serde_json = { version = "1.0", optional = true }
 
 [dev-dependencies]
 cool_asserts = "2.0"
 
 [lints]
 workspace = true
+
+[features]
+cli = ["clap", "serde", "serde_json", "miette/fancy"]
+
+[[bin]]
+name = "cedar-policy-mcp-schema-generator"
+path = "src/main.rs"
+required-features = ["cli"]
