@@ -64,6 +64,8 @@ jobs:
         working-directory: rust/
       - run: cargo test --verbose --no-default-features
         working-directory: rust/
+      - run: cargo test --verbose --all-features
+        working-directory: rust/
       - run: cargo audit --deny warnings # For some reason this hangs if you don't cargo build first
         working-directory: rust/
 

@@ -14,29 +14,32 @@
  * limitations under the License.
  */
 
-use cedar_policy_mcp_schema_generator::{
-    SchemaGenerator, SchemaGeneratorConfig, ServerDescription,
-};
-use miette::Result;
+use cedar_policy_mcp_schema_generator::{CliArgs, ErrorFormat};
+use clap::Parser;
+use std::process::ExitCode;
 
-use cedar_policy_core::extensions::Extensions;
-use cedar_policy_core::validator::json_schema::Fragment;
+fn main() -> ExitCode {
+    let args = CliArgs::parse();
 
-fn main() -> Result<()> {
-    let description = ServerDescription::from_json_file("tool.json")?;
+    let err_hook: Option<miette::ErrorHook> = match args.get_error_format() {
+        ErrorFormat::Human => None, // This is the default.
+        ErrorFormat::Plain => Some(Box::new(|_| {
+            Box::new(miette::NarratableReportHandler::new())
+        })),
+        ErrorFormat::Json => Some(Box::new(|_| Box::new(miette::JSONReportHandler::new()))),
+    };
+    if let Some(err_hook) = err_hook {
+        // PANIC SAFETY: `set_hook` returns an error if a hook has already been installed. We have just entered `main`, so we know a hook has not been installed.
+        #[allow(clippy::expect_used)]
+        miette::set_hook(err_hook).expect("failed to install error-reporting hook");
+    }
 
-    #[allow(
-        clippy::unwrap_used,
-        reason = "It's fine if this demo main file panics"
-    )]
-    // PANIC SAFETY: not part of the library
-    let schema_file = std::fs::File::open("tool.cedarschema").unwrap();
-    let schema = Fragment::from_cedarschema_file(schema_file, Extensions::all_available())?.0;
-
-    let config = SchemaGeneratorConfig::default().flatten_namespaces(true);
-
-    let mut generator = SchemaGenerator::new_with_config(schema, config)?;
-    generator.add_actions_from_server_description(&description)?;
-    println!("{}", generator.get_schema().to_cedarschema()?);
-    Ok(())
+    match args.exec() {
+        Ok(_) => ExitCode::SUCCESS,
+        Err(err) => {
+            let report = miette::Report::new(err);
+            eprintln!("{:?}", report);
+            ExitCode::FAILURE
+        }
+    }
 }

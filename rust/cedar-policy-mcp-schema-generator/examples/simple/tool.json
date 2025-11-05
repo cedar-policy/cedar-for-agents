@@ -1,0 +1,51 @@
+{
+    "name": "test_tool",
+    "description": "a tool for testing",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "bool_attr": { "type": "boolean" },
+            "int_attr": { "type": "integer" },
+            "float_attr": { "type": "float" },
+            "num_attr": { "type": "number" },
+            "str_attr": { "type": "string" },
+            "enum_attr": { "type": "string", "enum": ["variant1", "variant2"] },
+            "date_attr": { "type": "string", "format": "date-time" },
+            "dt_attr": { "type": "string", "format": "date-time" },
+            "dur_attr": { "type": "string", "format": "duration" },
+            "ipv4_attr": { "type": "string", "format": "ipv4" },
+            "ipv6_attr": { "type": "string", "format": "ipv6" },
+            "dec_attr": { "type": "string", "format": "decimal" },
+            "null_attr": { "type": "null" },
+            "array_attr": { "type": "array", "items": { "type": "string" } },
+            "obj_attr": {
+                "type": "object",
+                "properties": {
+                    "first_attr": { "type": "string" },
+                    "second_attr": { "type": "boolean" }
+                },
+                "required": ["first_attr", "second_attr"]
+            },
+            "tagged_obj_attr": {
+                "type": "object",
+                "additionalProperties": { "type": "integer" }
+            },
+            "tuple_attr": {
+                "type": ["string", "integer"]
+            },
+            "union_attr": {
+                "anyOf": [
+                    { "type": "string" },
+                    { "type": "null" }
+                ]
+            }
+        }
+    },
+    "outputSchema": {
+        "type": "object",
+        "properties": {
+            "values": { "type": "array", "items": { "type": "string" } }
+        },
+        "requred": false
+    }
+}
