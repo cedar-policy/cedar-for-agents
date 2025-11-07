@@ -142,7 +142,8 @@ You can call the schema generator in your rust code. Below is a sample program t
 ```rust
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::validator::json_schema::Fragment;
-use cedar_policy_mcp_schema_generator::{SchemaGenerator, mcp::description::ServerDescription};
+use cedar_policy_mcp_schema_generator::{SchemaGenerator};
+use mcp_tools_sdk::description::ServerDescription;
 use miette::Result;
 
 fn main() -> Result<()> {
