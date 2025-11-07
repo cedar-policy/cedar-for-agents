@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use super::deserializer;
-use super::err::DeserializationError;
+pub use super::err::DeserializationError;
 use super::parser;
 
 /// The type a `Property` can take

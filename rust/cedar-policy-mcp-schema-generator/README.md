@@ -131,14 +131,19 @@ namespace MyMcpServer {
 }
 ```
 
-### Calling the Schema Generator
+### Using the Schema Generator
+
+You can either use the schema generator via the library or via the provided CLI
+
+#### Example Library Usage
 
 You can call the schema generator in your rust code. Below is a sample program that reads the input schema stub file and mcp tool descriptions and uses the schema generator to create a new Cedar Schema.
 
 ```rust
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::validator::json_schema::Fragment;
-use cedar_policy_mcp_schema_generator::{SchemaGenerator, ServerDescription};
+use cedar_policy_mcp_schema_generator::{SchemaGenerator};
+use mcp_tools_sdk::description::ServerDescription;
 use miette::Result;
 
 fn main() -> Result<()> {
@@ -153,9 +158,17 @@ fn main() -> Result<()> {
 }
 ```
 
+#### Example CLI Usage
+
+One can achieve the same functionality using the CLI provided by this crate.
+
+```bash
+cedar-policy-mcp-schema-generator generate input.cedarschema mcp_tools.json
+```
+
 ### Generated Cedar Schema
 
-The above example program will output the following Cedar Schema that keeps the user input Schema stub along with an action declaration for each input MCP tool description.
+The above example program/CLI call will output the following Cedar Schema that keeps the user input Schema stub along with an action declaration for each input MCP tool description.
 
 ```cedarschema
 namespace MyMcpServer {

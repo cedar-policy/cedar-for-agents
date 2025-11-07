@@ -15,10 +15,12 @@
  */
 
 use crate::cli::{CliArgs, CliError, Command, ConfigOptions, ErrorFormat, OutputFormat};
-use crate::{SchemaGenerator, SchemaGeneratorConfig, ServerDescription};
+use crate::{SchemaGenerator, SchemaGeneratorConfig};
 
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::validator::{json_schema::Fragment, RawName};
+
+use mcp_tools_sdk::description::ServerDescription;
 
 use std::path::{Path, PathBuf};
 
@@ -51,10 +53,11 @@ fn read_schema(file: impl AsRef<Path>) -> Result<Fragment<RawName>, CliError> {
     }
 }
 
+#[allow(clippy::ref_option)]
 fn output_schema(
     schema: &Fragment<RawName>,
     output_location: &Option<PathBuf>,
-    output_format: &OutputFormat,
+    output_format: OutputFormat,
 ) -> Result<(), CliError> {
     let mut writer: Box<dyn std::io::Write> = match output_location {
         None => Box::new(std::io::stdout()),
@@ -93,14 +96,14 @@ impl CliArgs {
                 let tool_descriptions = ServerDescription::from_json_file(tool_descriptions)?;
                 let mut schema_generator = SchemaGenerator::new_with_config(schema_stub, config)?;
                 schema_generator.add_actions_from_server_description(&tool_descriptions)?;
-                output_schema(schema_generator.get_schema(), output, output_format)
+                output_schema(schema_generator.get_schema(), output, *output_format)
             }
         }
     }
 
     pub fn get_error_format(&self) -> ErrorFormat {
         match &self.command {
-            Command::Generate { error_format, .. } => error_format.clone(),
+            Command::Generate { error_format, .. } => *error_format,
         }
     }
 }

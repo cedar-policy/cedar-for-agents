@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Moved MCP server/tool description and related types, parsing, and manipulating code to a new crate `mcp-tools-sdk`.
+
 ### Added
 - Added command line interface to cedar-policy-mcp-schema-generator.
 

@@ -14,20 +14,17 @@
  * limitations under the License.
  */
 
-//! The `description` module contains definitions of `ToolDescription`s which is a datatype that
+//! This library contains definitions of `ToolDescription`s which is a datatype that
 //! represents a Model Context Protocol (MCP) Tool Description. An MCP Tool description is a JSON
 //! object that gives the name of the tool, an optional description of the tool, and a description of
 //! the input and output parameters of the tool (and any type definitions usded to define these parameters).
 //!
-//! This module also includes a parser that deserializes an MCP tool description JSON into a `ToolDescription` struct.
+//! This library also includes a parser that deserializes an MCP tool description JSON into a `ToolDescription` struct.
 //!
-//! This module also includes a `ServerDescription` struct that represents a collection of MCP tool descriptions
+//! This library also includes a `ServerDescription` struct that represents a collection of MCP tool descriptions
 //! (i.e., the output of `list_tools` from an MCP Server).
 
-#[allow(clippy::module_inception)]
-mod description;
+pub mod description;
 mod deserializer;
 pub mod err;
 pub mod parser;
-
-pub use description::*;

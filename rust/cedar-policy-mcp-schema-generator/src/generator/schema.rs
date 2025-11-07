@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-use crate::description::{Parameters, PropertyType, ServerDescription, ToolDescription};
-use crate::err::SchemaGeneratorError;
+use crate::SchemaGeneratorError;
 
 use cedar_policy_core::ast::{InternalName, Name, UnreservedId};
 use cedar_policy_core::est::Annotations;
@@ -27,6 +26,7 @@ use cedar_policy_core::validator::{
     },
     RawName,
 };
+use mcp_tools_sdk::description::{Parameters, PropertyType, ServerDescription, ToolDescription};
 
 use nonempty::NonEmpty;
 
@@ -44,16 +44,6 @@ pub struct SchemaGeneratorConfig {
 }
 
 impl SchemaGeneratorConfig {
-    /// Default configuration of Schema Generator
-    pub fn default() -> Self {
-        Self {
-            include_outputs: false,
-            objects_as_records: false,
-            erase_annotations: true,
-            flatten_namespaces: false,
-        }
-    }
-
     /// Updates config to set `include_outputs` to `val` (default: false)
     /// if `include_outputs` is set to `true`, then the schema generator
     /// will generate actions for each tool whose context includes both the
@@ -102,6 +92,17 @@ impl SchemaGeneratorConfig {
         Self {
             flatten_namespaces: val,
             ..self
+        }
+    }
+}
+
+impl Default for SchemaGeneratorConfig {
+    fn default() -> Self {
+        Self {
+            include_outputs: false,
+            objects_as_records: false,
+            erase_annotations: true,
+            flatten_namespaces: false,
         }
     }
 }
@@ -311,7 +312,7 @@ impl SchemaGenerator {
         for type_def in description.type_definitions() {
             let type_name = CommonTypeId::new(type_def.name().parse()?)?;
             let type_name = get_refname(&namespace, &type_name);
-            let ref_name = type_def.name.to_smolstr();
+            let ref_name = type_def.name().to_smolstr();
             common_types.insert(ref_name, type_name);
         }
 
@@ -347,7 +348,7 @@ impl SchemaGenerator {
         for type_def in description.type_definitions() {
             let type_name = CommonTypeId::new(type_def.name().parse()?)?;
             let type_name = get_refname(&namespace, &type_name);
-            let ref_name = type_def.name.to_smolstr();
+            let ref_name = type_def.name().to_smolstr();
             // Resolution rules are that defs defined closer to use are preferred
             // So we can just overwrite here if a name is redefined
             common_types.insert(ref_name, type_name);
@@ -532,6 +533,7 @@ impl SchemaGenerator {
         }
     }
 
+    #[allow(clippy::ref_option)]
     // This function should only be called when namespace is prefixed by `{self.namespace}::`
     // If `namespace` is `{self.namespace}::Foo::Bar::Baz` then this function returns the id `Foo_Bar_Baz_id`.
     fn flatten_unreserved_id(&self, id: UnreservedId, namespace: &Option<Name>) -> UnreservedId {
@@ -713,8 +715,8 @@ impl SchemaGenerator {
         // This makes type resolution simpler and will allow for mutually recursive type defs
         for type_def in parameters.type_definitions() {
             let type_name = CommonTypeId::new(type_def.name().parse()?)?;
-            let type_name = get_refname(&namespace, &type_name);
-            let ref_name = type_def.name.to_smolstr();
+            let type_name = get_refname(namespace, &type_name);
+            let ref_name = type_def.name().to_smolstr();
             // Resolution rules are that defs defined closer to use are preferred
             // So we can just overwrite here if a name is redefined
             common_types.insert(ref_name, type_name);
@@ -1048,6 +1050,7 @@ impl SchemaGenerator {
     }
 }
 
+#[allow(clippy::ref_option)]
 fn get_refname(namespace: &Option<Name>, ty_name: &CommonTypeId) -> RawName {
     RawName::from_name(
         RawName::new_from_unreserved(ty_name.as_ref().clone(), None)
@@ -1055,6 +1058,7 @@ fn get_refname(namespace: &Option<Name>, ty_name: &CommonTypeId) -> RawName {
     )
 }
 
+#[allow(clippy::ref_option)]
 // If Type is an entity or common type qualified by namespace, then unquality it;
 // otherwise return the original type
 fn unqualify_type(namespace: &Option<Name>, ty: Type<RawName>) -> Type<RawName> {
@@ -1126,6 +1130,7 @@ fn unqualify_type(namespace: &Option<Name>, ty: Type<RawName>) -> Type<RawName> 
     }
 }
 
+#[allow(clippy::ref_option)]
 // If name is qualified with namespace then return unqualified name
 fn unqualify_name(namespace: &Option<Name>, name: RawName) -> RawName {
     match namespace {
@@ -1218,9 +1223,9 @@ fn erase_mcp_annotations(schema_stub: Fragment<RawName>) -> Fragment<RawName> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::description::Property;
     use cedar_policy_core::extensions::Extensions;
     use cool_asserts::assert_matches;
+    use mcp_tools_sdk::description::Property;
 
     use std::collections::HashMap;
 

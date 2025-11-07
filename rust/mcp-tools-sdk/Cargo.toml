@@ -1,0 +1,26 @@
+[package]
+name = "mcp-tools-sdk"
+description = "An SDK for parsing and manipulating mcp tool descriptions and input/output data."
+version = "0.2.1"
+keywords = ["agents", "mcp", "tools", "parser"]
+homepage = "https://github.com/cedar-policy/cedar-for-agents/tree/main/rust/mcp-tools-sdk"
+categories = ["Data Structures", "Parsing tools"]
+
+#inherit rest from workspace
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+miette = "7.6.0"
+linked-hash-map = "0.5.6"
+thiserror = "2.0"
+smol_str = "0.3"
+nonempty = "0.12"
+
+[dev-dependencies]
+cool_asserts = "2.0"
+
+[lints]
+workspace = true

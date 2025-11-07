@@ -14,15 +14,14 @@
  * limitations under the License.
  */
 
-use linked_hash_map::LinkedHashMap;
-use smol_str::SmolStr;
-
-use super::err::{ContentType, DeserializationError};
-use super::parser::json_value::LocatedValue;
-use crate::description::parser::json_value::LocatedString;
-use crate::description::{
+use super::description::{
     Parameters, Property, PropertyType, PropertyTypeDef, ServerDescription, ToolDescription,
 };
+use super::err::{ContentType, DeserializationError};
+use super::parser::json_value::{LocatedString, LocatedValue};
+
+use linked_hash_map::LinkedHashMap;
+use smol_str::SmolStr;
 
 use std::collections::{HashMap, HashSet};
 

@@ -182,7 +182,7 @@ impl JsonParser {
 
 #[cfg(test)]
 mod tests {
-    use crate::description::parser::err::TokenizeError;
+    use crate::parser::err::TokenizeError;
 
     use super::*;
     use cool_asserts::assert_matches;
