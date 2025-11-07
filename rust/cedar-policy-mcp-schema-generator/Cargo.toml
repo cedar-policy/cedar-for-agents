@@ -13,6 +13,7 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
+mcp-tools-sdk = { path = "../mcp-tools-sdk" }
 cedar-policy-core = "4.6.0"
 miette = "7.6.0"
 linked-hash-map = "0.5.6"
@@ -22,7 +23,7 @@ nonempty = "0.12"
 
 # CLI only dependencies
 clap = { version = "4.5.36", features = ["derive"], optional = true }
-serde = {version = "1.0", optional = true }
+serde = { version = "1.0", optional = true }
 serde_json = { version = "1.0", optional = true }
 
 [dev-dependencies]

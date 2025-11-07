@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-- MCP server/tool description and related types can no longer be imported from the root namespace. Instead they are availabe from `cedar-policy-mcp-schema-generator::mcp::description::*`.
+- Moved MCP server/tool description and related types, parsing, and manipulating code to a new crate `mcp-tools-sdk`.
 
 ### Added
 - Added command line interface to cedar-policy-mcp-schema-generator.

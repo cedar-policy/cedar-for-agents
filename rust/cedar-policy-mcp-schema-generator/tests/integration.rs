@@ -17,12 +17,12 @@
 mod lib {
     use std::io::Read;
 
-    use cedar_policy_mcp_schema_generator::{
-        mcp::description::ServerDescription, SchemaGenerator, SchemaGeneratorConfig,
-    };
+    use cedar_policy_mcp_schema_generator::{SchemaGenerator, SchemaGeneratorConfig};
 
     use cedar_policy_core::extensions::Extensions;
     use cedar_policy_core::validator::json_schema::Fragment;
+
+    use mcp_tools_sdk::description::ServerDescription;
 
     fn run_integration_test(tools_fname: &str, schema_fname: &str, config: SchemaGeneratorConfig) {
         let description =

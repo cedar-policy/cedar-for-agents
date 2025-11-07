@@ -15,8 +15,6 @@
  */
 
 mod generator;
-
-pub mod mcp;
 pub use generator::{SchemaGenerator, SchemaGeneratorConfig, SchemaGeneratorError};
 
 #[cfg(feature = "cli")]
