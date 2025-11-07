@@ -15,7 +15,7 @@
  */
 
 use crate::description::{Parameters, PropertyType, ServerDescription, ToolDescription};
-use crate::err::SchemaGeneratorError;
+use crate::SchemaGeneratorError;
 
 use cedar_policy_core::ast::{InternalName, Name, UnreservedId};
 use cedar_policy_core::est::Annotations;

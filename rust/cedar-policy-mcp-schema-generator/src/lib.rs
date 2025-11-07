@@ -15,16 +15,18 @@
  */
 
 mod description;
-mod err;
-mod schema_generator;
+mod generator;
 
 pub use description::{
     err::DeserializationError, parser::err::ParseError, Parameters, Property, PropertyType,
     PropertyTypeDef, ServerDescription, ToolDescription,
 };
 
-pub use err::SchemaGeneratorError;
-pub use schema_generator::{SchemaGenerator, SchemaGeneratorConfig};
+pub use generator::{
+    SchemaGenerator,
+    SchemaGeneratorConfig,
+    SchemaGeneratorError,
+};
 
 #[cfg(feature = "cli")]
 mod cli;
