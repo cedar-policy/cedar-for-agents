@@ -24,10 +24,7 @@
 //! This module also includes a `ServerDescription` struct that represents a collection of MCP tool descriptions
 //! (i.e., the output of `list_tools` from an MCP Server).
 
-#[allow(clippy::module_inception)]
-mod description;
+pub mod description;
 mod deserializer;
 pub mod err;
 pub mod parser;
-
-pub use description::*;

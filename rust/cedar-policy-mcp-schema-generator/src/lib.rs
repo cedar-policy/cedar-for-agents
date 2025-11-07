@@ -14,19 +14,10 @@
  * limitations under the License.
  */
 
-mod description;
 mod generator;
 
-pub use description::{
-    err::DeserializationError, parser::err::ParseError, Parameters, Property, PropertyType,
-    PropertyTypeDef, ServerDescription, ToolDescription,
-};
-
-pub use generator::{
-    SchemaGenerator,
-    SchemaGeneratorConfig,
-    SchemaGeneratorError,
-};
+pub mod mcp;
+pub use generator::{SchemaGenerator, SchemaGeneratorConfig, SchemaGeneratorError};
 
 #[cfg(feature = "cli")]
 mod cli;

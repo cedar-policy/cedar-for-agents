@@ -44,7 +44,7 @@ pub enum CliError {
     JsonSchemaParseError(#[from] cedar_policy_core::validator::SchemaError),
     #[error("Error while deserializing tool descriptions: {}", .0)]
     #[diagnostic(transparent)]
-    ToolDezerialization(#[from] crate::DeserializationError),
+    ToolDezerialization(#[from] crate::mcp::description::DeserializationError),
     #[error("Error while generating schema: {}", .0)]
     #[diagnostic(transparent)]
     SchemaGenerator(#[from] crate::SchemaGeneratorError),

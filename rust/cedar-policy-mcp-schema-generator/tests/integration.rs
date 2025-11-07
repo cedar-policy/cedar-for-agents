@@ -18,7 +18,7 @@ mod lib {
     use std::io::Read;
 
     use cedar_policy_mcp_schema_generator::{
-        SchemaGenerator, SchemaGeneratorConfig, ServerDescription,
+        mcp::description::ServerDescription, SchemaGenerator, SchemaGeneratorConfig,
     };
 
     use cedar_policy_core::extensions::Extensions;

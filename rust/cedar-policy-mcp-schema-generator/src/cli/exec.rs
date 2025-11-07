@@ -15,7 +15,7 @@
  */
 
 use crate::cli::{CliArgs, CliError, Command, ConfigOptions, ErrorFormat, OutputFormat};
-use crate::{SchemaGenerator, SchemaGeneratorConfig, ServerDescription};
+use crate::{mcp::description::ServerDescription, SchemaGenerator, SchemaGeneratorConfig};
 
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::validator::{json_schema::Fragment, RawName};
