@@ -35,6 +35,13 @@ pub(crate) struct ConfigOptions {
     #[arg(long, default_value_t = false)]
     pub(crate) flatten_namespaces: bool,
     /// Whether to encode all `"number"` and `"float"` typed paramaters in input MCP tool descriptions as Cedar `decimal` type (default: false).
+    /// 
+    /// Note: Representing `"number"` and `"float"` type parameters as `decimals` results
+    /// in a loss of precision as `decimal`s only have four decimal places of precision.
+    /// This may result in unsound authorization policies. For example `x < y` is true for
+    /// `x = 2` and `y = 2.00004`. However, when converted to decimals, `x < y` evaluates to
+    /// false as `x == y == 2.0000`. Additionally, numbers & floats have a significantly larger
+    /// range than decimals. Decimals are limited between [-922337203685477.5808, 922337203685477.5807].
     #[arg(long, default_value_t = false)]
     pub(crate) encode_numbers_as_decimal: bool,
 }

@@ -99,7 +99,7 @@ impl SchemaGeneratorConfig {
     /// Updates config to set `encode_numbers_as_decimal` to `val` (default: false)
     ///
     /// If `encode_numbers_as_decimal` is set to `true`, then every parameter of type
-    /// `"numer"` or `"float"` in an input `ToolDescription` to
+    /// `"number"` or `"float"` in an input `ToolDescription` to
     /// `add_action_from_tool_description` and `add_actions_from_server_description`
     /// will be encoded as a Cedar `decimal` in the output Cedar Schema.
     ///
