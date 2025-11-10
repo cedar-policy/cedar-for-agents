@@ -35,7 +35,7 @@ pub(crate) struct ConfigOptions {
     #[arg(long, default_value_t = false)]
     pub(crate) flatten_namespaces: bool,
     #[arg(long, default_value_t = false)]
-    /// Whether to encode all `"number"` and `"float"` typed paramaters in input MCP tool descriptions as Cedar `decimal` type.
+    /// Whether to encode all `"number"` and `"float"` typed paramaters in input MCP tool descriptions as Cedar `decimal` type (default: false).
     pub(crate) encode_numbers_as_decimal: bool,
 }
 
