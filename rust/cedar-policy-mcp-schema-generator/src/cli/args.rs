@@ -29,11 +29,14 @@ pub(crate) struct ConfigOptions {
     #[arg(long, default_value_t = false)]
     pub(crate) objects_as_records: bool,
     /// Whether to keep `mcp_principal`, `mcp_resource`, `mcp_context`, and `mcp_action` annotations in the final schema (default: false).
-    #[arg(long, default_value_t = true)]
+    #[arg(long, default_value_t = false)]
     pub(crate) keep_annotations: bool,
     /// Whether to create an output schema with a single namespace by flattening names---e.g., `Foo::Baz::Bar` becomes `Foo_Baz_Bar`---(default: false).
     #[arg(long, default_value_t = false)]
     pub(crate) flatten_namespaces: bool,
+    #[arg(long, default_value_t = false)]
+    /// Whether to encode all `"number"` and `"float"` typed paramaters in input MCP tool descriptions as Cedar `decimal` type.
+    pub(crate) encode_numbers_as_decimal: bool,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug, Serialize)]

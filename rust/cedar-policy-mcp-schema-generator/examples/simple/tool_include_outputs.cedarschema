@@ -10,7 +10,6 @@ namespace MyMcpServer::test_tool::Input {
 }
 
 namespace MyMcpServer {
-  @mcp_context("session")
   type CommonContext = {
     "currentTimestamp": datetime,
     "ipaddr": ipaddr
@@ -49,20 +48,17 @@ namespace MyMcpServer {
 
   entity Float;
 
-  @mcp_resource("McpServer")
   entity McpServer;
 
   entity Null;
 
   entity Number;
 
-  @mcp_principal("User")
   entity User = {
     "id": String,
     "username": String
   };
 
-  @mcp_action("call_tool")
   action "call_tool";
 
   action "test_tool" in [Action::"call_tool"] appliesTo {

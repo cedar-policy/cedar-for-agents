@@ -236,6 +236,36 @@ mod cli {
     }
 
     #[test]
+    fn test_simple_encode_numbers_as_decimal_cedar_schema() {
+        let expected =
+            std::fs::read_to_string("examples/simple/tool_encode_numbers_as_decimal.cedarschema")
+                .unwrap();
+
+        let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
+        let cmd = cmd
+            .arg("generate")
+            .arg("examples/stub.cedarschema")
+            .arg("examples/simple/tool.json")
+            .arg("--encode-numbers-as-decimal");
+        cmd.unwrap().assert().success().stdout(expected);
+    }
+
+    #[test]
+    fn test_simple_encode_numbers_as_decimal_json_schema() {
+        let expected =
+            std::fs::read_to_string("examples/simple/tool_encode_numbers_as_decimal.json").unwrap();
+
+        let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
+        let cmd = cmd
+            .arg("generate")
+            .arg("examples/stub.cedarschema")
+            .arg("examples/simple/tool.json")
+            .arg("--encode-numbers-as-decimal")
+            .arg("--output-format")
+            .arg("json");
+        cmd.unwrap().assert().success().stdout(expected);
+    }
+    #[test]
     fn test_input_schema_does_not_exist_error() {
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
