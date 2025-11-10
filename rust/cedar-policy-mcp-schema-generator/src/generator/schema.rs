@@ -111,7 +111,8 @@ impl SchemaGeneratorConfig {
     /// in a loss of precision as `decimal`s only have four decimal places of precision.
     /// This may result in unsound authorization policies. For example `x < y` is true for
     /// `x = 2` and `y = 2.00004`. However, when converted to decimals, `x < y` evaluates to
-    /// false as `x == y == 2.0000`.
+    /// false as `x == y == 2.0000`. Additionally, numbers & floats have a significantly larger
+    /// range than decimals. Decimals are limited between [-922337203685477.5808, 922337203685477.5807].
     pub fn encode_numbers_as_decimal(self, val: bool) -> Self {
         Self {
             numbers_as_decimal: val,

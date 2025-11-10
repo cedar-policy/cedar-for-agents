@@ -34,8 +34,8 @@ pub(crate) struct ConfigOptions {
     /// Whether to create an output schema with a single namespace by flattening names---e.g., `Foo::Baz::Bar` becomes `Foo_Baz_Bar`---(default: false).
     #[arg(long, default_value_t = false)]
     pub(crate) flatten_namespaces: bool,
-    #[arg(long, default_value_t = false)]
     /// Whether to encode all `"number"` and `"float"` typed paramaters in input MCP tool descriptions as Cedar `decimal` type (default: false).
+    #[arg(long, default_value_t = false)]
     pub(crate) encode_numbers_as_decimal: bool,
 }
 
