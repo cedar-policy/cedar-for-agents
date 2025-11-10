@@ -1,3 +1,14 @@
+namespace MyMcpServer::test_tool::Input {
+  entity enum_attr enum ["variant1", "variant2"];
+
+  entity obj_attr = {
+    "first_attr": String,
+    "second_attr": Bool
+  };
+
+  entity tagged_obj_attr tags Long;
+}
+
 namespace MyMcpServer {
   type CommonContext = {
     "currentTimestamp": datetime,
@@ -11,16 +22,16 @@ namespace MyMcpServer {
     "dec_attr"?: decimal,
     "dt_attr"?: datetime,
     "dur_attr"?: duration,
-    "enum_attr"?: MyMcpServer::test_tool_Input_enum_attr,
-    "float_attr"?: MyMcpServer::Float,
+    "enum_attr"?: MyMcpServer::test_tool::Input::enum_attr,
+    "float_attr"?: decimal,
     "int_attr"?: Long,
     "ipv4_attr"?: ipaddr,
     "ipv6_attr"?: ipaddr,
     "null_attr"?: MyMcpServer::Null,
-    "num_attr"?: MyMcpServer::Number,
-    "obj_attr"?: MyMcpServer::test_tool_Input_obj_attr,
+    "num_attr"?: decimal,
+    "obj_attr"?: MyMcpServer::test_tool::Input::obj_attr,
     "str_attr"?: String,
-    "tagged_obj_attr"?: MyMcpServer::test_tool_Input_tagged_obj_attr,
+    "tagged_obj_attr"?: MyMcpServer::test_tool::Input::tagged_obj_attr,
     "tuple_attr"?: {
       "proj0": String,
       "proj1": Long
@@ -31,27 +42,14 @@ namespace MyMcpServer {
     }
   };
 
-  entity Float;
-
   entity McpServer;
 
   entity Null;
-
-  entity Number;
 
   entity User = {
     "id": String,
     "username": String
   };
-
-  entity test_tool_Input_enum_attr enum ["variant1", "variant2"];
-
-  entity test_tool_Input_obj_attr = {
-    "first_attr": String,
-    "second_attr": Bool
-  };
-
-  entity test_tool_Input_tagged_obj_attr tags Long;
 
   action "call_tool";
 

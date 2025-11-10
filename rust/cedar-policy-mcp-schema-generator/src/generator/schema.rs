@@ -41,6 +41,7 @@ pub struct SchemaGeneratorConfig {
     objects_as_records: bool,
     erase_annotations: bool,
     flatten_namespaces: bool,
+    numbers_as_decimal: bool,
 }
 
 impl SchemaGeneratorConfig {
@@ -94,6 +95,30 @@ impl SchemaGeneratorConfig {
             ..self
         }
     }
+
+    /// Updates config to set `encode_numbers_as_decimal` to `val` (default: false)
+    ///
+    /// If `encode_numbers_as_decimal` is set to `true`, then every parameter of type
+    /// `"number"` or `"float"` in an input `ToolDescription` to
+    /// `add_action_from_tool_description` and `add_actions_from_server_description`
+    /// will be encoded as a Cedar `decimal` in the output Cedar Schema.
+    ///
+    /// Otherwise, each `"number"` typed parameter will be encoded as an opaque `number`
+    /// entity type that can only be compared for equality to other numbers. Similarly,
+    /// each `"float"` typed parameter will be encoded as an opaque `float` entity type.
+    ///
+    /// Note: Representing `"number"` and `"float"` type parameters as `decimals` results
+    /// in a loss of precision as `decimal`s only have four decimal places of precision.
+    /// This may result in unsound authorization policies. For example `x < y` is true for
+    /// `x = 2` and `y = 2.00004`. However, when converted to decimals, `x < y` evaluates to
+    /// false as `x == y == 2.0000`. Additionally, numbers & floats have a significantly larger
+    /// range than decimals. Decimals are limited between [-922337203685477.5808, 922337203685477.5807].
+    pub fn encode_numbers_as_decimal(self, val: bool) -> Self {
+        Self {
+            numbers_as_decimal: val,
+            ..self
+        }
+    }
 }
 
 impl Default for SchemaGeneratorConfig {
@@ -103,6 +128,7 @@ impl Default for SchemaGeneratorConfig {
             objects_as_records: false,
             erase_annotations: true,
             flatten_namespaces: false,
+            numbers_as_decimal: false,
         }
     }
 }
@@ -812,22 +838,30 @@ impl SchemaGenerator {
             PropertyType::Bool => bool,
             PropertyType::Integer => long,
             PropertyType::Float => {
-                #[allow(clippy::unwrap_used, reason = "`Float` is a valid UnreservedId")]
-                // PANIC SAFETY: `"Float"` should not be a reserved id
-                let name: UnreservedId = "Float".parse().unwrap();
-                self.add_opaque_entity_type(&self.namespace.clone(), name.clone())?;
-                let name = RawName::new_from_unreserved(name, None);
-                let name = RawName::from_name(name.qualify_with_name(self.namespace.as_ref()));
-                TypeVariant::Entity { name }
+                if self.config.numbers_as_decimal {
+                    decimal
+                } else {
+                    #[allow(clippy::unwrap_used, reason = "`Float` is a valid UnreservedId")]
+                    // PANIC SAFETY: `"Float"` should not be a reserved id
+                    let name: UnreservedId = "Float".parse().unwrap();
+                    self.add_opaque_entity_type(&self.namespace.clone(), name.clone())?;
+                    let name = RawName::new_from_unreserved(name, None);
+                    let name = RawName::from_name(name.qualify_with_name(self.namespace.as_ref()));
+                    TypeVariant::Entity { name }
+                }
             }
             PropertyType::Number => {
-                #[allow(clippy::unwrap_used, reason = "`Number` is a valid UnreservedId")]
-                // PANIC SAFETY: `"Number"` should not be a reserved id
-                let name: UnreservedId = "Number".parse().unwrap();
-                self.add_opaque_entity_type(&self.namespace.clone(), name.clone())?;
-                let name = RawName::new_from_unreserved(name, None);
-                let name = RawName::from_name(name.qualify_with_name(self.namespace.as_ref()));
-                TypeVariant::Entity { name }
+                if self.config.numbers_as_decimal {
+                    decimal
+                } else {
+                    #[allow(clippy::unwrap_used, reason = "`Number` is a valid UnreservedId")]
+                    // PANIC SAFETY: `"Number"` should not be a reserved id
+                    let name: UnreservedId = "Number".parse().unwrap();
+                    self.add_opaque_entity_type(&self.namespace.clone(), name.clone())?;
+                    let name = RawName::new_from_unreserved(name, None);
+                    let name = RawName::from_name(name.qualify_with_name(self.namespace.as_ref()));
+                    TypeVariant::Entity { name }
+                }
             }
             PropertyType::String => string,
             PropertyType::Decimal => decimal,
@@ -1474,6 +1508,85 @@ mod test {
             .annotations
             .0
             .contains_key(&"mcp_context".parse().unwrap()));
+    }
+
+    #[test]
+    fn test_encode_numbers_as_decimals() {
+        let schema_stub = test_schema_stub();
+        let config = SchemaGeneratorConfig::default().encode_numbers_as_decimal(true);
+
+        let tool = r#"{
+    "name": "test_tool",
+    "description": "A tool for testing purposes",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "test_number": {"type": "number"},
+            "test_float": {"type": "float"}
+        },
+        "required": ["test_number"]
+    }
+}"#;
+
+        let tool = ToolDescription::from_json_str(tool).expect("Failed to parse tool description");
+
+        let mut schema_generator = SchemaGenerator::new_with_config(schema_stub, config)
+            .expect("Failed to create schema generator");
+        schema_generator
+            .add_action_from_tool_description(&tool)
+            .expect("Failed to add tool description");
+
+        let schema = schema_generator.get_schema();
+
+        assert!(schema.0.iter().count() == 1);
+        let root_namespace = Some("Test".parse::<Name>().unwrap());
+        let root_nsdef = schema
+            .0
+            .get(&root_namespace)
+            .expect("Expected namespace Test to exist");
+
+        assert!(root_nsdef.actions.contains_key("test_tool"));
+        // Only `test_toolInput` type is added
+        assert!(root_nsdef.common_types.iter().count() == 1);
+        assert!(root_nsdef.entity_types.iter().count() == 3);
+
+        let test_tool_input_type = root_nsdef.common_types.iter().next().unwrap().1;
+        // assert that both `test_number` and `test_float` are encoded as `decimal`.
+        assert_matches!(
+            test_tool_input_type.ty,
+            Type::Type {
+                ty: TypeVariant::Record(
+                    RecordType {
+                        ref attributes, ..
+                    }
+                ), ..
+            }
+            if matches!(
+                attributes.get("test_number"),
+                Some(TypeOfAttribute {
+                    ty: Type::Type {
+                        ty: TypeVariant::EntityOrCommon {
+                            ref type_name
+                        },
+                        ..
+                    },
+                    ..
+                })
+                if *type_name == "decimal".parse().unwrap()
+            ) && matches!(
+                attributes.get("test_float"),
+                Some(TypeOfAttribute {
+                    ty: Type::Type {
+                        ty: TypeVariant::EntityOrCommon {
+                            ref type_name
+                        },
+                        ..
+                    },
+                    ..
+                })
+                if *type_name == "decimal".parse().unwrap()
+            )
+        );
     }
 
     #[test]

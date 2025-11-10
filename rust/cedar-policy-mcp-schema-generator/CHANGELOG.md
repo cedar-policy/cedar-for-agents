@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Added command line interface to cedar-policy-mcp-schema-generator.
+- Added new configuration option `encode_as_number` which forces all `"number"` and `"float"` typed MCP tool parameters to be encoded as a `decimal` in the generated Cedar schema.
 
 ## [0.2.1] - 2025-11-03
 
