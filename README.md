@@ -6,7 +6,7 @@ This repository contains the source code for Rust crates that provide functional
 
 ## Crates in This Workspace
 
-* [cedar-policy-mcp-schema-generator](./cedar-policy-mcp-schema-generator/) : A crate for auto-generating a Cedar Schema for an MCP Server's tool descriptions.
+* [cedar-policy-mcp-schema-generator](./rust/cedar-policy-mcp-schema-generator/) : A crate for auto-generating a Cedar Schema for an MCP Server's tool descriptions.
 
 ## Security
 
