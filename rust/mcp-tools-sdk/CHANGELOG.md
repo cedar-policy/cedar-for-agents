@@ -1,11 +1,5 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
-
-## [0.1.0] - TBD
-- Initial release of `mcp-tools-sdk`.
+The changelog for all the release branches of `mcp-toos-sdk` is maintained on
+the `main` branch. You can view the most up-to-date changelog
+[here](https://github.com/cedar-policy/cedar-for-agents/blob/main/rust/mcp-tools-sdk/CHANGELOG.md).
