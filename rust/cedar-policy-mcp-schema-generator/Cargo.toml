@@ -1,7 +1,7 @@
 [package]
 name = "cedar-policy-mcp-schema-generator"
 description = "Auto-Generates Cedar schemas from an MCP server's tool descriptions."
-version = "0.2.1"
+version = "0.3.0"
 
 #inherit rest from workspace
 edition.workspace = true
@@ -14,7 +14,7 @@ repository.workspace = true
 
 [dependencies]
 mcp-tools-sdk = { path = "../mcp-tools-sdk" }
-cedar-policy-core = "4.6.0"
+cedar-policy-core = "4.7.0"
 miette = "7.6.0"
 linked-hash-map = "0.5.6"
 thiserror = "2.0"

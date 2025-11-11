@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+# [0.3.0] - 2025-11-11
+
 ### Changed
 - Moved MCP server/tool description and related types, parsing, and manipulating code to a new crate `mcp-tools-sdk`.
 
