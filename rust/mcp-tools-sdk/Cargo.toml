@@ -4,7 +4,7 @@ description = "An SDK for parsing and manipulating mcp tool descriptions and inp
 version = "0.1.0"
 keywords = ["agents", "mcp", "tools", "parser"]
 homepage = "https://github.com/cedar-policy/cedar-for-agents/tree/main/rust/mcp-tools-sdk"
-categories = ["Data Structures", "Parsing tools"]
+categories = ["data-structures", "parsing"]
 
 #inherit rest from workspace
 edition.workspace = true
