@@ -13,11 +13,13 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-miette = "7.6.0"
+chrono = "0.4"
+iso8601 = "0.6.3"
 linked-hash-map = "0.5.6"
-thiserror = "2.0"
-smol_str = "0.3"
+miette = "7.6.0"
 nonempty = "0.12"
+smol_str = "0.3"
+thiserror = "2.0"
 
 [dev-dependencies]
 cool_asserts = "2.0"

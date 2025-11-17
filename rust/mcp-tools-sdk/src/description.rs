@@ -14,13 +14,15 @@
  * limitations under the License.
  */
 
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use std::collections::HashMap;
 use std::path::Path;
 
+use super::data::{Input, Output};
 use super::deserializer;
-pub use super::err::DeserializationError;
+use super::err::{DeserializationError, ValidationError};
 use super::parser;
+use super::validation::{validate_input, validate_output};
 
 /// The type a `Property` can take
 #[derive(Debug, Clone)]
@@ -139,7 +141,7 @@ impl PropertyTypeDef {
 /// Container for convienently representing a collection of TypeDefs
 #[derive(Debug, Clone)]
 pub(crate) struct PropertyTypeDefs {
-    type_defs: HashMap<SmolStr, PropertyTypeDef>,
+    pub(crate) type_defs: HashMap<SmolStr, PropertyTypeDef>,
 }
 
 impl PropertyTypeDefs {
@@ -250,18 +252,40 @@ impl ToolDescription {
         })?;
         Self::from_json_str(&contents)
     }
+
+    /// Validates the `Input` matches this `ToolDescription`'s input schema.
+    pub fn validate_input(
+        &self,
+        input: &Input,
+        type_defs: &HashMap<SmolStr, PropertyTypeDef>,
+    ) -> Result<(), ValidationError> {
+        validate_input(self, input, type_defs)
+    }
+
+    /// Validates the `Output` matches this `ToolDescription`'s output schema.
+    pub fn validate_output(
+        &self,
+        output: &Output,
+        type_defs: &HashMap<SmolStr, PropertyTypeDef>,
+    ) -> Result<(), ValidationError> {
+        validate_output(self, output, type_defs)
+    }
 }
 
 /// A representation of a collection of MCP Tools (e.g., all the tools provided by an MCP Server)
 #[derive(Debug, Clone)]
 pub struct ServerDescription {
-    pub(crate) tools: Vec<ToolDescription>,
-    pub(crate) type_defs: PropertyTypeDefs,
+    tools: HashMap<SmolStr, ToolDescription>,
+    type_defs: PropertyTypeDefs,
 }
 
 impl ServerDescription {
     /// Create a new Server Description from its components
     pub fn new(tools: Vec<ToolDescription>, type_defs: HashMap<SmolStr, PropertyTypeDef>) -> Self {
+        let tools = tools
+            .into_iter()
+            .map(|tool| (tool.name().to_smolstr(), tool))
+            .collect();
         Self {
             tools,
             type_defs: PropertyTypeDefs::new(type_defs),
@@ -270,7 +294,7 @@ impl ServerDescription {
 
     /// Get an iterator to all tool descriptions within this `ServerDescription`
     pub fn tool_descriptions(&self) -> impl Iterator<Item = &ToolDescription> {
-        self.tools.iter()
+        self.tools.values()
     }
 
     /// Get any TypeDefs defined within this ServerDescription (i.e., TypeDefs shared between tools)
@@ -290,6 +314,22 @@ impl ServerDescription {
             DeserializationError::read_error(json_file.as_ref().into(), format!("{e}"))
         })?;
         Self::from_json_str(&contents)
+    }
+
+    /// Validate the `Input` against the corresponding tool within this `ServerDescription`
+    pub fn validate_input(&self, input: &Input) -> Result<(), ValidationError> {
+        match self.tools.get(input.name()) {
+            Some(tool) => tool.validate_input(input, &self.type_defs.type_defs),
+            None => Err(ValidationError::tool_not_found(input.name().into())),
+        }
+    }
+
+    /// Validate the `Output` against the corresponding tool within this `ServerDescription`
+    pub fn validate_output(&self, tool_name: &str, output: &Output) -> Result<(), ValidationError> {
+        match self.tools.get(tool_name) {
+            Some(tool) => tool.validate_output(output, &self.type_defs.type_defs),
+            None => Err(ValidationError::tool_not_found(tool_name.into())),
+        }
     }
 }
 
