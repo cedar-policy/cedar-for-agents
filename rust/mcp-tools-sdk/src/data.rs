@@ -844,6 +844,19 @@ mod test {
     }
 
     #[test]
+    fn test_output_result_not_object_errors() {
+        let output = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": false
+}"#;
+        assert_matches!(
+            Output::from_json_str(output),
+            Err(DeserializationError::UnexpectedType(..))
+        )
+    }
+
+    #[test]
     fn test_output_result_content_missing_errors() {
         let output = r#"{
     "jsonrpc": "2.0",
