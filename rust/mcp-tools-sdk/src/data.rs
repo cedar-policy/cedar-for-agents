@@ -714,4 +714,161 @@ mod test {
             )
         )
     }
+
+    #[test]
+    fn test_input_not_object_errors() {
+        let input = r#""not a valid mcp \"tools/call\" request""#;
+        assert_matches!(
+            Input::from_json_str(input),
+            Err(DeserializationError::UnexpectedType(..))
+        )
+    }
+
+    #[test]
+    fn test_input_params_missing_errors() {
+        let input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call"
+}"#;
+        assert_matches!(
+            Input::from_json_str(input),
+            Err(DeserializationError::MissingExpectedAttribute(..))
+        )
+    }
+
+    #[test]
+    fn test_input_params_not_object_errors() {
+        let input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": false
+}"#;
+        assert_matches!(
+            Input::from_json_str(input),
+            Err(DeserializationError::UnexpectedType(..))
+        )
+    }
+
+    #[test]
+    fn test_input_toolname_missing_errors() {
+        let input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "args": {
+            "arg1": 0
+        }
+    }
+}"#;
+        assert_matches!(
+            Input::from_json_str(input),
+            Err(DeserializationError::MissingExpectedAttribute(..))
+        )
+    }
+
+    #[test]
+    fn test_input_toolname_not_string_errors() {
+        let input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "tool": false,
+        "args": {
+            "arg1": 0
+        }
+    }
+}"#;
+        assert_matches!(
+            Input::from_json_str(input),
+            Err(DeserializationError::UnexpectedType(..))
+        )
+    }
+
+    #[test]
+    fn test_input_missing_args_errors() {
+        let input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "tool": "test_tool"
+    }
+}"#;
+        assert_matches!(
+            Input::from_json_str(input),
+            Err(DeserializationError::MissingExpectedAttribute(..))
+        )
+    }
+
+    #[test]
+    fn test_input_args_not_object_errors() {
+        let input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "tool": "test_tool",
+        "args": false
+    }
+}"#;
+        assert_matches!(
+            Input::from_json_str(input),
+            Err(DeserializationError::UnexpectedType(..))
+        )
+    }
+
+    #[test]
+    fn test_output_not_object_errors() {
+        let output = r#""Not a well formed MCP \"tools/call\" output""#;
+
+        assert_matches!(
+            Output::from_json_str(output),
+            Err(DeserializationError::UnexpectedType(..))
+        )
+    }
+
+    #[test]
+    fn test_output_result_missing_errors() {
+        let output = r#"{
+    "jsonrpc": "2.0",
+    "id": 1
+}"#;
+        assert_matches!(
+            Output::from_json_str(output),
+            Err(DeserializationError::MissingExpectedAttribute(..))
+        )
+    }
+
+    #[test]
+    fn test_output_result_content_missing_errors() {
+        let output = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+    }
+}"#;
+        assert_matches!(
+            Output::from_json_str(output),
+            Err(DeserializationError::MissingExpectedAttribute(..))
+        )
+    }
+
+    #[test]
+    fn test_output_result_content_not_object_errors() {
+        let output = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+        "structuredContent": false
+    }
+}"#;
+        assert_matches!(
+            Output::from_json_str(output),
+            Err(DeserializationError::UnexpectedType(..))
+        )
+    }
 }
