@@ -839,4 +839,237 @@ mod test {
             Err(DeserializationError::UnexpectedType(..))
         );
     }
+
+    #[test]
+    fn test_enum_non_array_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+                "type": "string",
+                "enum": true
+            }
+        }
+    }
+}"#;
+        assert_matches!(
+            ToolDescription::from_json_str(tool_description),
+            Err(DeserializationError::UnexpectedType(..))
+        );
+    }
+
+    #[test]
+    fn test_unrecognized_string_format_is_string() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+                "type": "string",
+                "format": "unknown"
+            }
+        }
+    }
+}"#;
+        let tool = ToolDescription::from_json_str(tool_description).unwrap();
+        assert_matches!(
+            tool.inputs().properties().next(),
+            Some(v) if matches!(v.property_type(), PropertyType::String)
+        );
+    }
+
+    #[test]
+    fn test_string_format_is_not_string_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+                "type": "string",
+                "format": false
+            }
+        }
+    }
+}"#;
+        assert_matches!(
+            ToolDescription::from_json_str(tool_description),
+            Err(DeserializationError::UnexpectedType(..))
+        );
+    }
+
+    #[test]
+    fn test_array_items_declaration_not_object_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+                "type": "array",
+                "items": false
+            }
+        }
+    }
+}"#;
+        assert_matches!(
+            ToolDescription::from_json_str(tool_description),
+            Err(DeserializationError::UnexpectedType(..))
+        );
+    }
+
+    #[test]
+    fn test_array_items_declaration_missing_is_error() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+                "type": "array"
+            }
+        }
+    }
+}"#;
+        assert_matches!(
+            ToolDescription::from_json_str(tool_description),
+            Err(DeserializationError::MissingExpectedAttribute(..))
+        );
+    }
+
+    #[test]
+    fn test_unrecognized_type_name_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+                "type": "some weird type name"
+            }
+        }
+    }
+}"#;
+        assert_matches!(
+            ToolDescription::from_json_str(tool_description),
+            Err(DeserializationError::UnexpectedValue(..))
+        );
+    }
+
+    #[test]
+    fn test_unrecognized_base_type_in_tuple_type_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+                "type": ["null", "some weird type name"]
+            }
+        }
+    }
+}"#;
+        assert_matches!(
+            ToolDescription::from_json_str(tool_description),
+            Err(DeserializationError::UnexpectedValue(..))
+        );
+    }
+
+    #[test]
+    fn test_type_not_string_or_array_of_types_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+                "type": false
+            }
+        }
+    }
+}"#;
+        assert_matches!(
+            ToolDescription::from_json_str(tool_description),
+            Err(DeserializationError::UnexpectedType(..))
+        );
+    }
+
+    #[test]
+    fn test_union_type_not_array_of_types_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+                "anyOf": false
+            }
+        }
+    }
+}"#;
+        assert_matches!(
+            ToolDescription::from_json_str(tool_description),
+            Err(DeserializationError::UnexpectedType(..))
+        );
+    }
+
+    #[test]
+    fn test_reftype_has_unrecognized_prefix_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+                "$ref": "does not start with required prefix"
+            }
+        }
+    }
+}"#;
+        assert_matches!(
+            ToolDescription::from_json_str(tool_description),
+            Err(DeserializationError::UnexpectedValue(..))
+        );
+    }
+
+    #[test]
+    fn test_reftype_is_not_string_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+                "$ref": false
+            }
+        }
+    }
+}"#;
+        assert_matches!(
+            ToolDescription::from_json_str(tool_description),
+            Err(DeserializationError::UnexpectedType(..))
+        );
+    }
+
+    #[test]
+    fn test_no_type_information_provided_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+            }
+        }
+    }
+}"#;
+        assert_matches!(
+            ToolDescription::from_json_str(tool_description),
+            Err(DeserializationError::MissingExpectedAttribute(..))
+        );
+    }
+
 }
