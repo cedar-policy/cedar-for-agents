@@ -1009,6 +1009,63 @@ mod test {
         assert_matches!(
             ToolDescription::from_json_str(tool_description),
             Err(DeserializationError::UnexpectedType(..))
-        )
+        );
     }
+
+    #[test]
+    fn test_reftype_has_unrecognized_prefix_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+                "$ref": "does not start with required prefix"
+            }
+        }
+    }
+}"#;
+        assert_matches!(
+            ToolDescription::from_json_str(tool_description),
+            Err(DeserializationError::UnexpectedValue(..))
+        );
+    }
+
+    #[test]
+    fn test_reftype_is_not_string_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+                "$ref": false
+            }
+        }
+    }
+}"#;
+        assert_matches!(
+            ToolDescription::from_json_str(tool_description),
+            Err(DeserializationError::UnexpectedType(..))
+        );
+    }
+
+    #[test]
+    fn test_no_type_information_provided_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+            }
+        }
+    }
+}"#;
+        assert_matches!(
+            ToolDescription::from_json_str(tool_description),
+            Err(DeserializationError::MissingExpectedAttribute(..))
+        );
+    }
+
 }
