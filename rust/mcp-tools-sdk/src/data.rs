@@ -276,6 +276,7 @@ mod test {
 
     use super::*;
     use cool_asserts::assert_matches;
+    use tempfile::TempDir;
 
     //------------------- test number converions ----------------------------
     #[test]
@@ -628,4 +629,75 @@ mod test {
             )
         )
     }
+
+    //------------------- test Input ----------------------------
+    #[test]
+    fn test_simple_input_from_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let input_file = temp_dir.path().join("input.json");
+        std::fs::write(&input_file, r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "arg1": 0
+        }
+    }
+}"#).unwrap();
+
+        // Error reading because forgot to look into tempdir
+        assert_matches!(Input::from_json_file("input.json"), Err(DeserializationError::ReadError(..)));
+        // Should succeed and match the following assertions
+        let input = Input::from_json_file(input_file).unwrap();
+        assert_eq!(input.name(), "test_tool");
+        assert!(input.get_args().count() == 1);
+        assert_matches!(
+            input.get_arg("arg1"),
+            Some(v)
+            if matches!(
+                v.to_owned(),
+                Value::Number(n)
+                if n.as_u64() == Some(0)
+            )
+        )
+    }
+
+    //------------------- test Output ----------------------------
+    #[test]
+    fn test_simple_output_from_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let output_file = temp_dir.path().join("output.json");
+        std::fs::write(&output_file, r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+        "content": [
+            {
+                "type": "text",
+                "text": "{\"value\": 0}"
+            }
+        ],
+        "structuredContent": {
+            "value": 0
+        }
+    }
+}"#).unwrap();
+
+        // Error reading because forgot to look into tempdir
+        assert_matches!(Output::from_json_file("output.json"), Err(DeserializationError::ReadError(..)));
+        // Should succeed and match the following assertions
+        let output = Output::from_json_file(output_file).unwrap();
+        assert!(output.get_results().count() == 1);
+        assert_matches!(
+            output.get_result("value"),
+            Some(v)
+            if matches!(
+                v.to_owned(),
+                Value::Number(n)
+                if n.as_u64() == Some(0)
+            )
+        )
+    }    
 }
