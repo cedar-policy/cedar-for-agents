@@ -635,7 +635,9 @@ mod test {
     fn test_simple_input_from_file() {
         let temp_dir = TempDir::new().unwrap();
         let input_file = temp_dir.path().join("input.json");
-        std::fs::write(&input_file, r#"{
+        std::fs::write(
+            &input_file,
+            r#"{
     "jsonrpc": "2.0",
     "id": 1,
     "method": "tools/call",
@@ -645,10 +647,15 @@ mod test {
             "arg1": 0
         }
     }
-}"#).unwrap();
+}"#,
+        )
+        .unwrap();
 
         // Error reading because forgot to look into tempdir
-        assert_matches!(Input::from_json_file("input.json"), Err(DeserializationError::ReadError(..)));
+        assert_matches!(
+            Input::from_json_file("input.json"),
+            Err(DeserializationError::ReadError(..))
+        );
         // Should succeed and match the following assertions
         let input = Input::from_json_file(input_file).unwrap();
         assert_eq!(input.name(), "test_tool");
@@ -669,7 +676,9 @@ mod test {
     fn test_simple_output_from_file() {
         let temp_dir = TempDir::new().unwrap();
         let output_file = temp_dir.path().join("output.json");
-        std::fs::write(&output_file, r#"{
+        std::fs::write(
+            &output_file,
+            r#"{
     "jsonrpc": "2.0",
     "id": 1,
     "result": {
@@ -683,10 +692,15 @@ mod test {
             "value": 0
         }
     }
-}"#).unwrap();
+}"#,
+        )
+        .unwrap();
 
         // Error reading because forgot to look into tempdir
-        assert_matches!(Output::from_json_file("output.json"), Err(DeserializationError::ReadError(..)));
+        assert_matches!(
+            Output::from_json_file("output.json"),
+            Err(DeserializationError::ReadError(..))
+        );
         // Should succeed and match the following assertions
         let output = Output::from_json_file(output_file).unwrap();
         assert!(output.get_results().count() == 1);
@@ -699,5 +713,5 @@ mod test {
                 if n.as_u64() == Some(0)
             )
         )
-    }    
+    }
 }

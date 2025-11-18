@@ -1071,5 +1071,4 @@ mod test {
             Err(DeserializationError::MissingExpectedAttribute(..))
         );
     }
-
 }
