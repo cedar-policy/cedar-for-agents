@@ -191,6 +191,8 @@ pub enum ContentType {
     ToolParameters,
     Property,
     PropertyType,
+    ToolInputRequest,
+    ToolOutputResponse,
 }
 
 impl std::fmt::Display for ContentType {
@@ -201,6 +203,8 @@ impl std::fmt::Display for ContentType {
             Self::ToolParameters => write!(f, "MCP Tool Input/Output Schema"),
             Self::Property => write!(f, "JSON Schema Property Description"),
             Self::PropertyType => write!(f, "JSON Schema Property Type"),
+            Self::ToolInputRequest => write!(f, "MCP `tools/call` JSON request"),
+            Self::ToolOutputResponse => write!(f, "MCP `tools/call` JSON response"),
         }
     }
 }
@@ -316,7 +320,7 @@ pub enum ValidationError {
         code = "validation_error::invalid_value_for_type",
         help = "Ensure input value matches expected type in MCP tool description"
     )]
-    InvalidValueForType
+    InvalidValueForType,
 }
 
 impl ValidationError {

@@ -156,7 +156,7 @@ fn validate_property_type(
                 reason = "val is a string. Converting to smolstr should not error"
             )]
             let val = val.get_smolstr().unwrap();
-            if variants.iter().find(|v| **v == val).is_some() {
+            if variants.contains(&val) {
                 return Err(ValidationError::invalid_enum_variant(val.as_str()));
             }
         }
@@ -234,6 +234,8 @@ fn validate_property_type(
     Ok(())
 }
 
+// PANIC SAFETY: Indexing vec of length 2 by 0 and 1 should not panic
+#[allow(clippy::indexing_slicing, reason="Indexing vec of length 2 by 0 and 1 should not panic")]
 fn is_decimal(str: &str) -> bool {
     let parts: Vec<&str> = str.split('.').collect();
 
@@ -262,6 +264,7 @@ fn is_decimal(str: &str) -> bool {
     // Construct the scaled integer value
     // Result = (integer_part * 10^frac_len + fractional_part)
     let frac_len = fractional_part.len();
+    #[allow(clippy::cast_possible_truncation, reason="Casting length of 0-4 will not truncate")]
     let scale = 10_i64.pow(frac_len as u32);
 
     // Parse parts
@@ -281,7 +284,7 @@ fn is_decimal(str: &str) -> bool {
     };
 
     // Check for overflow when adding fractional part
-    return scaled_int.checked_add(frac_val).is_some();
+    scaled_int.checked_add(frac_val).is_some()
 }
 
 fn is_datetime(str: &str) -> bool {
