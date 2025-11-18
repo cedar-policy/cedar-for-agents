@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use super::data::{Input, Output};
 use super::description::{
     Parameters, Property, PropertyType, PropertyTypeDef, ServerDescription, ToolDescription,
 };
@@ -25,7 +26,7 @@ use smol_str::SmolStr;
 
 use std::collections::{HashMap, HashSet};
 
-/// Deserialize an MCP `list_tool` json response into a `ServerDescription`
+/// Deserialize an MCP `tools/list` json response into a `ServerDescription`
 #[allow(clippy::needless_pass_by_value, reason = "Better interface")]
 pub(crate) fn server_description_from_json_value(
     json_value: LocatedValue,
@@ -476,4 +477,137 @@ fn get_value_from_map<'a, T: AsRef<str>>(
     key_aliases: &[T],
 ) -> Option<&'a LocatedValue> {
     key_aliases.iter().find_map(|key| map.get(key.as_ref()))
+}
+
+/// Deserialize an MCP `tools/call` json request into an `Input`
+pub(crate) fn mcp_tool_input_from_json_value(
+    json_value: &LocatedValue,
+) -> Result<Input, DeserializationError> {
+    if let Some(obj) = json_value.get_object() {
+        if let Some(params) = obj.get("params") {
+            if let Some(params_obj) = params.get_object() {
+                let tool = match params_obj.get("tool") {
+                    Some(tool) => tool,
+                    None => {
+                        return Err(DeserializationError::missing_attribute(
+                            params,
+                            "tool",
+                            vec![],
+                        ))
+                    }
+                };
+                let tool = match tool.get_smolstr() {
+                    Some(s) => s,
+                    None => {
+                        return Err(DeserializationError::unexpected_type(
+                            tool,
+                            "Expected \"tool\" attribute to be a string",
+                            ContentType::ToolInputRequest,
+                        ))
+                    }
+                };
+                let args = match params_obj.get("args") {
+                    Some(args) => args,
+                    None => {
+                        return Err(DeserializationError::missing_attribute(
+                            params,
+                            "args",
+                            vec![],
+                        ))
+                    }
+                };
+                let args = match args.get_object() {
+                    Some(args) => args,
+                    None => {
+                        return Err(DeserializationError::unexpected_type(
+                            args,
+                            "Expected \"args\" attribute to be an object",
+                            ContentType::ToolInputRequest,
+                        ))
+                    }
+                };
+                let args = args
+                    .iter()
+                    .map(|(k, v)| (k.to_smolstr(), v.clone()))
+                    .collect();
+                Ok(Input { name: tool, args })
+            } else {
+                Err(DeserializationError::unexpected_type(
+                    json_value,
+                    "MCP `tools/call` request \"params\" attribute should be an object",
+                    ContentType::ToolInputRequest,
+                ))
+            }
+        } else {
+            Err(DeserializationError::missing_attribute(
+                json_value,
+                "params",
+                vec![],
+            ))
+        }
+    } else {
+        Err(DeserializationError::unexpected_type(
+            json_value,
+            "MCP `tools/call` request should be an object",
+            ContentType::ToolInputRequest,
+        ))
+    }
+}
+
+/// Deserialize an MCP `tools/call` json response into an `Output`
+pub(crate) fn mcp_tool_output_from_json_value(
+    json_value: &LocatedValue,
+) -> Result<Output, DeserializationError> {
+    if let Some(obj) = json_value.get_object() {
+        let result = match obj.get("result") {
+            Some(result) => result,
+            None => {
+                return Err(DeserializationError::missing_attribute(
+                    json_value,
+                    "result",
+                    vec![],
+                ))
+            }
+        };
+        let result_obj = match result.get_object() {
+            Some(result) => result,
+            None => {
+                return Err(DeserializationError::unexpected_type(
+                    result,
+                    "MCP `tools/call` response \"result\" attribute should be an object",
+                    ContentType::ToolOutputResponse,
+                ))
+            }
+        };
+        let content = match result_obj.get("structuredContent") {
+            Some(content) => content,
+            None => {
+                return Err(DeserializationError::missing_attribute(
+                    result,
+                    "structuredContent",
+                    vec![],
+                ))
+            }
+        };
+        let results =
+            match content.get_object() {
+                Some(content) => content,
+                None => return Err(DeserializationError::unexpected_type(
+                    content,
+                    "MCP `tools/call` response `\"structuredContent\"` is expected to be an object",
+                    ContentType::ToolOutputResponse,
+                )),
+            };
+        let results = results
+            .iter()
+            .map(|(k, v)| (k.to_smolstr(), v.clone()))
+            .collect();
+        Ok(Output { results })
+    } else {
+        Err(DeserializationError::unexpected_type(
+            json_value,
+            "MCP `tools/call` response should be an object",
+            ContentType::ToolOutputResponse,
+        ))
+    }
 }

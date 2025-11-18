@@ -14,10 +14,13 @@
  * limitations under the License.
  */
 
-use crate::parser::json_value::LocatedValue;
-
 use smol_str::SmolStr;
 use std::collections::HashMap;
+use std::path::Path;
+
+use super::deserializer;
+use super::err::DeserializationError;
+use super::parser::{self, json_value::LocatedValue};
 
 #[derive(Debug, Clone)]
 /// A struct representing a JSON encodable `Number`.
@@ -196,8 +199,8 @@ impl BorrowedValue<'_> {
 #[derive(Debug, Clone)]
 /// A struct representing an MCP "call/tool" request
 pub struct Input {
-    name: SmolStr,
-    args: HashMap<SmolStr, LocatedValue>,
+    pub(crate) name: SmolStr,
+    pub(crate) args: HashMap<SmolStr, LocatedValue>,
 }
 
 impl Input {
@@ -217,12 +220,26 @@ impl Input {
     pub fn get_arg(&self, arg: &str) -> Option<BorrowedValue<'_>> {
         self.args.get(arg).map(BorrowedValue)
     }
+
+    /// Deserialize an MCP `tools/call` json request into an `Input`
+    pub fn from_json_str(json_str: &str) -> Result<Self, DeserializationError> {
+        let mut parser = parser::json_parser::JsonParser::new(json_str);
+        deserializer::mcp_tool_input_from_json_value(&parser.get_value()?)
+    }
+
+    /// Deserialize an MCP `tools/call` json request into an `Input`
+    pub fn from_json_file<P: AsRef<Path>>(json_file: P) -> Result<Self, DeserializationError> {
+        let contents = std::fs::read_to_string(json_file.as_ref()).map_err(|e| {
+            DeserializationError::read_error(json_file.as_ref().into(), format!("{e}"))
+        })?;
+        Self::from_json_str(&contents)
+    }
 }
 
 #[derive(Debug, Clone)]
 /// A struct representing an MCP `call/tool` response
 pub struct Output {
-    results: HashMap<SmolStr, LocatedValue>,
+    pub(crate) results: HashMap<SmolStr, LocatedValue>,
 }
 
 impl Output {
@@ -236,5 +253,19 @@ impl Output {
     /// Get a returned result from an MCP tool if it exists
     pub fn get_result(&self, res: &str) -> Option<BorrowedValue<'_>> {
         self.results.get(res).map(BorrowedValue)
+    }
+
+    /// Deserialize an MCP `tools/call` json response into an `Output`
+    pub fn from_json_str(json_str: &str) -> Result<Self, DeserializationError> {
+        let mut parser = parser::json_parser::JsonParser::new(json_str);
+        deserializer::mcp_tool_output_from_json_value(&parser.get_value()?)
+    }
+
+    /// Deserialize an MCP `tools/call` json response into an `Output`
+    pub fn from_json_file<P: AsRef<Path>>(json_file: P) -> Result<Self, DeserializationError> {
+        let contents = std::fs::read_to_string(json_file.as_ref()).map_err(|e| {
+            DeserializationError::read_error(json_file.as_ref().into(), format!("{e}"))
+        })?;
+        Self::from_json_str(&contents)
     }
 }

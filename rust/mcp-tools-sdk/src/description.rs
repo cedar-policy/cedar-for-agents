@@ -302,13 +302,13 @@ impl ServerDescription {
         self.type_defs.values()
     }
 
-    /// Deserialize an MCP `list_tool` json response (or JSON Array of Tool Descriptions) into a `ServerDescription`
+    /// Deserialize an MCP `tools/list` json response (or JSON Array of Tool Descriptions) into a `ServerDescription`
     pub fn from_json_str(json_str: &str) -> Result<Self, DeserializationError> {
         let mut parser = parser::json_parser::JsonParser::new(json_str);
         deserializer::server_description_from_json_value(parser.get_value()?)
     }
 
-    /// Deserialize an MCP `list_tool` json response (or JSON Array of Tool Descriptions) into a `ServerDescription`
+    /// Deserialize an MCP `tools/list` json response (or JSON Array of Tool Descriptions) into a `ServerDescription`
     pub fn from_json_file<P: AsRef<Path>>(json_file: P) -> Result<Self, DeserializationError> {
         let contents = std::fs::read_to_string(json_file.as_ref()).map_err(|e| {
             DeserializationError::read_error(json_file.as_ref().into(), format!("{e}"))
