@@ -14,7 +14,7 @@ repository.workspace = true
 
 [dependencies]
 mcp-tools-sdk = { path = "../mcp-tools-sdk" }
-cedar-policy-core = "4.7.0"
+cedar-policy-core = "4.8.*"
 miette = "7.6.0"
 linked-hash-map = "0.5.6"
 thiserror = "2.0"
