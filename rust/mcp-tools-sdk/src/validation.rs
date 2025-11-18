@@ -235,7 +235,10 @@ fn validate_property_type(
 }
 
 // PANIC SAFETY: Indexing vec of length 2 by 0 and 1 should not panic
-#[allow(clippy::indexing_slicing, reason="Indexing vec of length 2 by 0 and 1 should not panic")]
+#[allow(
+    clippy::indexing_slicing,
+    reason = "Indexing vec of length 2 by 0 and 1 should not panic"
+)]
 fn is_decimal(str: &str) -> bool {
     let parts: Vec<&str> = str.split('.').collect();
 
@@ -264,7 +267,10 @@ fn is_decimal(str: &str) -> bool {
     // Construct the scaled integer value
     // Result = (integer_part * 10^frac_len + fractional_part)
     let frac_len = fractional_part.len();
-    #[allow(clippy::cast_possible_truncation, reason="Casting length of 0-4 will not truncate")]
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "Casting length of 0-4 will not truncate"
+    )]
     let scale = 10_i64.pow(frac_len as u32);
 
     // Parse parts
