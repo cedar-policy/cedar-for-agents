@@ -44,7 +44,7 @@ impl Number {
 
     /// Get this `Number` as a 64-bit float if possible. Otherwise return None.
     pub fn as_f64(&self) -> Option<f64> {
-        self.0.parse().ok()
+        self.0.parse().ok().filter(|f: &f64| f.is_finite())
     }
 }
 
@@ -129,19 +129,19 @@ impl BorrowedValue<'_> {
     /// Returns `Some(n)` if this `BorrowedValue` is a number
     /// representable as a 64bit integer; otherwise, returns None.
     pub fn get_i64(&self) -> Option<i64> {
-        self.0.get_numeric_str().and_then(|s| s.parse().ok())
+        self.get_number().and_then(|n| n.as_i64())
     }
 
     /// Returns `Some(n)` if this `BorrowedValue` is a number
     /// representable as a 64bit unsigned integer; otherwise, returns None.
     pub fn get_u64(&self) -> Option<u64> {
-        self.0.get_numeric_str().and_then(|s| s.parse().ok())
+        self.get_number().and_then(|n| n.as_u64())
     }
 
     /// Returns `Some(n)` if this `BorrowedValue` is a number
     /// representable as a 64bit float; otherwise, returns None.
     pub fn get_f64(&self) -> Option<f64> {
-        self.0.get_numeric_str().and_then(|s| s.parse().ok())
+        self.get_number().and_then(|n| n.as_f64())
     }
 
     /// Returns if this `BorrowedValue` is a string `Value`
@@ -267,5 +267,365 @@ impl Output {
             DeserializationError::read_error(json_file.as_ref().into(), format!("{e}"))
         })?;
         Self::from_json_str(&contents)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::parser::json_parser;
+
+    use super::*;
+    use cool_asserts::assert_matches;
+
+    //------------------- test number converions ----------------------------
+    #[test]
+    fn test_number_as_str() {
+        let num = Number("0".to_string());
+        assert!(num.as_str() == "0")
+    }
+
+    #[test]
+    fn test_number_as_i64_int_zero() {
+        let num = Number("0".to_string());
+        assert_matches!(num.as_i64(), Some(0))
+    }
+
+    #[test]
+    fn test_number_as_i64_int_neg() {
+        let num = Number("-123".to_string());
+        assert_matches!(num.as_i64(), Some(-123))
+    }
+
+    #[test]
+    fn test_number_as_i64_int_pos() {
+        let num = Number("9845".to_string());
+        assert_matches!(num.as_i64(), Some(9845))
+    }
+
+    #[test]
+    fn test_number_as_i64_max_pos_int() {
+        let num = Number("9223372036854775807".to_string());
+        assert_matches!(num.as_i64(), Some(9223372036854775807))
+    }
+
+    #[test]
+    fn test_number_as_i64_max_neg_int() {
+        let num = Number("-9223372036854775808".to_string());
+        assert_matches!(num.as_i64(), Some(-9223372036854775808))
+    }
+
+    #[test]
+    fn test_number_as_i64_float_zero() {
+        let num = Number("0.0".to_string());
+        assert!(num.as_i64().is_none())
+    }
+
+    #[test]
+    fn test_number_as_i64_float_pos() {
+        let num = Number("123.0".to_string());
+        assert!(num.as_i64().is_none())
+    }
+
+    #[test]
+    fn test_number_as_i64_float_neg() {
+        let num = Number("-8090.0".to_string());
+        assert!(num.as_i64().is_none())
+    }
+
+    #[test]
+    fn test_number_as_i64_large_pos_int() {
+        let num = Number("9223372036854775808".to_string());
+        assert!(num.as_i64().is_none())
+    }
+
+    #[test]
+    fn test_number_as_i64_large_neg_int() {
+        let num = Number("-9223372036854775809".to_string());
+        assert!(num.as_i64().is_none())
+    }
+
+    #[test]
+    fn test_number_as_i64_pos_exp() {
+        let num = Number("1e3".to_string());
+        assert!(num.as_i64().is_none())
+    }
+
+    #[test]
+    fn test_number_as_u64_int_zero() {
+        let num = Number("0".to_string());
+        assert_matches!(num.as_u64(), Some(0))
+    }
+
+    #[test]
+    fn test_number_as_u64_int_pos() {
+        let num = Number("9845".to_string());
+        assert_matches!(num.as_u64(), Some(9845))
+    }
+
+    #[test]
+    fn test_number_as_u64_max_pos_int() {
+        let num = Number("18446744073709551615".to_string());
+        assert_matches!(num.as_u64(), Some(18446744073709551615))
+    }
+
+    #[test]
+    fn test_number_as_u64_int_neg() {
+        let num = Number("-123".to_string());
+        assert!(num.as_u64().is_none())
+    }
+
+    #[test]
+    fn test_number_as_u64_float_zero() {
+        let num = Number("0.0".to_string());
+        assert!(num.as_u64().is_none())
+    }
+
+    #[test]
+    fn test_number_as_u64_float_pos() {
+        let num = Number("123.0".to_string());
+        assert!(num.as_u64().is_none())
+    }
+
+    #[test]
+    fn test_number_as_u64_float_neg() {
+        let num = Number("-8090.0".to_string());
+        assert!(num.as_u64().is_none())
+    }
+
+    #[test]
+    fn test_number_as_u64_large_pos_int() {
+        let num = Number("18446744073709551616".to_string());
+        assert!(num.as_u64().is_none())
+    }
+
+    #[test]
+    fn test_number_as_u64_pos_exp() {
+        let num = Number("1e3".to_string());
+        assert!(num.as_u64().is_none())
+    }
+
+    #[test]
+    fn test_number_as_f64_int_zero() {
+        let num = Number("0".to_string());
+        assert_matches!(num.as_f64(), Some(0.0))
+    }
+
+    #[test]
+    fn test_number_as_f64_float_zero() {
+        let num = Number("0.00".to_string());
+        assert_matches!(num.as_f64(), Some(0.0))
+    }
+
+    #[test]
+    fn test_number_as_f64_float_neg_zero() {
+        let num = Number("-0.0".to_string());
+        assert_matches!(num.as_f64(), Some(0.0))
+    }
+
+    #[test]
+    fn test_number_as_f64_int_neg() {
+        let num = Number("-123".to_string());
+        assert_matches!(num.as_f64(), Some(-123.0))
+    }
+
+    #[test]
+    fn test_number_as_f64_int_pos() {
+        let num = Number("9845".to_string());
+        assert_matches!(num.as_f64(), Some(9845.0))
+    }
+
+    #[test]
+    fn test_number_as_f64_float_neg() {
+        let num = Number("-123.0".to_string());
+        assert_matches!(num.as_f64(), Some(-123.0))
+    }
+
+    #[test]
+    fn test_number_as_f64_float_pos() {
+        let num = Number("-8093.01".to_string());
+        assert_matches!(num.as_f64(), Some(-8093.01))
+    }
+
+    #[test]
+    fn test_number_as_f64_float_pos_max() {
+        let num = Number("1.7976931348623157e308".to_string());
+        assert_matches!(num.as_f64(), Some(1.7976931348623157e308))
+    }
+
+    #[test]
+    fn test_number_as_f64_float_pos_overflow() {
+        let num = Number("1.7976931348623159e308".to_string());
+        assert_matches!(num.as_f64(), None)
+    }
+
+    #[test]
+    fn test_number_as_f64_float_neg_max() {
+        let num = Number("-1.7976931348623157e308".to_string());
+        assert_matches!(num.as_f64(), Some(-1.7976931348623157e308))
+    }
+
+    #[test]
+    fn test_number_as_f64_float_neg_overflow() {
+        let num = Number("-1.7976931348623159e308".to_string());
+        assert!(num.as_f64().is_none())
+    }
+
+    #[test]
+    fn test_number_as_f64_float_min_normal_pos() {
+        let num = Number("2.2250738585072014e-308".to_string());
+        assert_matches!(num.as_f64(), Some(2.2250738585072014e-308))
+    }
+
+    #[test]
+    fn test_number_as_f64_float_min_subnormal_pos() {
+        let num = Number("5e-324".to_string());
+        assert_matches!(num.as_f64(), Some(5e-324))
+    }
+
+    #[test]
+    fn test_number_as_f64_float_subnormal_rounds() {
+        let num = Number("2.5e-324".to_string());
+        assert_matches!(num.as_f64(), Some(5e-324))
+    }
+
+    #[test]
+    fn test_number_as_f64_float_subnormal_underflows() {
+        let num = Number("1e-400".to_string());
+        assert_matches!(num.as_f64(), Some(0.0))
+    }
+
+    #[test]
+    fn test_number_as_f64_max_precision_under_1() {
+        let num = Number("0.9999999999999999".to_string());
+        assert_matches!(num.as_f64(), Some(0.9999999999999999))
+    }
+
+    #[test]
+    fn test_number_as_f64_loses_precision_under_1() {
+        let num = Number("0.99999999999999999".to_string());
+        assert_matches!(num.as_f64(), Some(1.0))
+    }
+
+    //------------------- test BorrowedValues ----------------------------
+    #[test]
+    fn test_borrowed_value_is_null() {
+        let mut parser = json_parser::JsonParser::new("null");
+        let val = parser.get_value().unwrap();
+        let bv = BorrowedValue(&val);
+
+        assert!(bv.is_null());
+        assert_matches!(bv.to_owned(), Value::Null)
+    }
+
+    #[test]
+    fn test_borrowed_value_is_bool_true() {
+        let mut parser = json_parser::JsonParser::new("true");
+        let val = parser.get_value().unwrap();
+        let bv = BorrowedValue(&val);
+
+        assert!(bv.is_bool());
+        assert_matches!(bv.get_bool(), Some(true));
+        assert_matches!(bv.to_owned(), Value::Bool(true))
+    }
+
+    #[test]
+    fn test_borrowed_value_is_bool_false() {
+        let mut parser = json_parser::JsonParser::new("false");
+        let val = parser.get_value().unwrap();
+        let bv = BorrowedValue(&val);
+
+        assert!(bv.is_bool());
+        assert_matches!(bv.get_bool(), Some(false));
+        assert_matches!(bv.to_owned(), Value::Bool(false))
+    }
+
+    #[test]
+    fn test_borrowed_value_is_number() {
+        let mut parser = json_parser::JsonParser::new("0");
+        let val = parser.get_value().unwrap();
+        let bv = BorrowedValue(&val);
+
+        assert!(bv.is_number());
+        assert_matches!(bv.get_number(), Some(Number(..)));
+        assert_matches!(bv.get_i64(), Some(0));
+        assert_matches!(bv.get_u64(), Some(0));
+        assert_matches!(bv.get_f64(), Some(0.0));
+        assert_matches!(bv.to_owned(), Value::Number(Number(..)))
+    }
+
+    #[test]
+    fn test_borrowed_value_is_string() {
+        let mut parser = json_parser::JsonParser::new("\"My test string\"");
+        let val = parser.get_value().unwrap();
+        let bv = BorrowedValue(&val);
+
+        assert!(bv.is_string());
+        assert_matches!(bv.get_str(), Some("My test string"));
+        assert_matches!(bv.get_string(), Some(v) if v == "My test string");
+        assert_matches!(bv.get_smolstr(), Some(v) if v == "My test string");
+        assert_matches!(bv.to_owned(), Value::String(v) if v == "My test string")
+    }
+
+    #[test]
+    fn test_borrowed_value_is_array() {
+        let mut parser = json_parser::JsonParser::new("[true, false, 1, 2, 3.0]");
+        let val = parser.get_value().unwrap();
+        let bv = BorrowedValue(&val);
+
+        assert!(bv.is_array());
+        assert_matches!(
+            bv.get_array(),
+            Some(v)
+            if matches!(
+                v.as_slice(),
+                [a, b, c, d, e]
+                if a.get_bool() == Some(true) &&
+                   b.get_bool() == Some(false) &&
+                   c.get_i64() == Some(1) &&
+                   d.get_u64() == Some(2) &&
+                   e.get_f64() == Some(3.0)
+            )
+        );
+        assert_matches!(
+            bv.to_owned(),
+            Value::Array(v)
+            if matches!(
+                v.as_slice(),
+                [
+                    Value::Bool(true),
+                    Value::Bool(false),
+                    Value::Number(..),
+                    Value::Number(..),
+                    Value::Number(..),
+                ]
+            )
+        );
+    }
+
+    #[test]
+    fn test_borrowed_value_is_map() {
+        let mut parser = json_parser::JsonParser::new("{\"attr\": false}");
+        let val = parser.get_value().unwrap();
+        let bv = BorrowedValue(&val);
+
+        assert!(bv.is_map());
+        assert_matches!(
+            bv.get_map(),
+            Some(m)
+            if m.len() == 1 && matches!(
+                m.iter().next(),
+                Some((k, v))
+                if k == "attr" && v.get_bool() == Some(false)
+            )
+        );
+        assert_matches!(
+            bv.to_owned(),
+            Value::Map(m)
+            if m.len() == 1 && matches!(
+                m.iter().next(),
+                Some((k, Value::Bool(false)))
+                if k == "attr"
+            )
+        )
     }
 }
