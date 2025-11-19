@@ -156,7 +156,7 @@ fn validate_property_type(
                 reason = "val is a string. Converting to smolstr should not error"
             )]
             let val = val.get_smolstr().unwrap();
-            if variants.contains(&val) {
+            if !variants.contains(&val) {
                 return Err(ValidationError::invalid_enum_variant(val.as_str()));
             }
         }
@@ -294,10 +294,10 @@ fn is_decimal(str: &str) -> bool {
 }
 
 fn is_datetime(str: &str) -> bool {
-    if chrono::NaiveDate::parse_from_str(str, "%Y-%m-%d").is_ok() {
-        return true;
-    }
-    str.parse::<chrono::DateTime<chrono::Utc>>().is_ok()
+    chrono::NaiveDate::parse_from_str(str, "%Y-%m-%d").is_ok()
+        || chrono::DateTime::parse_from_rfc3339(str).is_ok()
+        || chrono::NaiveDateTime::parse_from_str(str, "%Y-%m-%dT%H:%M:%S%.f").is_ok()
+        || chrono::NaiveDateTime::parse_from_str(str, "%Y-%m-%dT%H:%M:%S").is_ok()
 }
 
 fn is_duration(str: &str) -> bool {
