@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -74,7 +74,7 @@ impl From<&LocatedValue> for Value {
         } else if let Some(num_str) = val.get_numeric_str() {
             Value::Number(Number(num_str.to_string()))
         } else if let Some(s) = val.get_string() {
-            Value::String(s)
+            Value::String(s.to_smolstr())
         } else if let Some(arr) = val.get_array() {
             Value::Array(arr.iter().map(Value::from).collect())
         } else if let Some(map) = val.get_object() {
