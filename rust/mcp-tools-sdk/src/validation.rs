@@ -58,7 +58,9 @@ fn validate_parameters(
 ) -> Result<(), ValidationError> {
     type_defs.extend(types.type_defs.type_defs.clone());
 
+    let mut props = HashSet::new();
     for property in types.properties() {
+        props.insert(property.name());
         match vals.get(property.name()) {
             Some(val) => validate_property_type(property.property_type(), val, type_defs)?,
             None if property.is_required() => {
@@ -67,6 +69,11 @@ fn validate_parameters(
                 ))
             }
             None => (),
+        }
+    }
+    for val in vals.keys() {
+        if !props.contains(*val) {
+            return Err(ValidationError::unexpected_property(*val))
         }
     }
 
@@ -251,7 +258,7 @@ fn is_decimal(str: &str) -> bool {
     // Validate integer part: 0 or [1-9][0-9]*
     if integer_part.is_empty()
         || (integer_part.len() > 1 && integer_part.starts_with('0'))
-        || !integer_part.chars().all(|c| c.is_ascii_digit())
+        || !integer_part.chars().all(|c| c.is_ascii_digit() || c == '-')
     {
         return false;
     }
@@ -265,23 +272,24 @@ fn is_decimal(str: &str) -> bool {
     }
 
     // Construct the scaled integer value
-    // Result = (integer_part * 10^frac_len + fractional_part)
-    let frac_len = fractional_part.len();
+    // Result = (integer_part * 10^4 + fractional_part * 10^(4 - fractional_part.len()))
     #[allow(
         clippy::cast_possible_truncation,
         reason = "Casting length of 0-4 will not truncate"
     )]
-    let scale = 10_i64.pow(frac_len as u32);
+    let frac_scale = 10_i64.pow(4 - (fractional_part.len() as u32));
+    let scale = 10_i64.pow(4);
 
     // Parse parts
     let int_val: i64 = match integer_part.parse() {
         Ok(v) => v,
         Err(_) => return false,
     };
-    let frac_val: i64 = match fractional_part.parse() {
-        Ok(v) => v,
-        Err(_) => return false,
-    };
+    // PANIC SAFETY: above checks ensures fractional_part is a string containing
+    // only ascii digits and has length 1-4 (thus parsing will not fail)
+    #[allow(clippy::unwrap_used, reason = "integer or length 4 cannot overflow")]
+    let frac_val: i64 = fractional_part.parse().unwrap();
+    let frac_val = frac_val * frac_scale * (if int_val < 0 { -1 } else { 1 });
 
     // Check for overflow when scaling integer part
     let scaled_int = match int_val.checked_mul(scale) {
@@ -297,7 +305,6 @@ fn is_datetime(str: &str) -> bool {
     chrono::NaiveDate::parse_from_str(str, "%Y-%m-%d").is_ok()
         || chrono::DateTime::parse_from_rfc3339(str).is_ok()
         || chrono::NaiveDateTime::parse_from_str(str, "%Y-%m-%dT%H:%M:%S%.f").is_ok()
-        || chrono::NaiveDateTime::parse_from_str(str, "%Y-%m-%dT%H:%M:%S").is_ok()
 }
 
 fn is_duration(str: &str) -> bool {
@@ -306,4 +313,53 @@ fn is_duration(str: &str) -> bool {
 
 fn is_ipaddr(str: &str) -> bool {
     str.parse::<std::net::IpAddr>().is_ok()
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_is_decimal_positive_tests() {
+        assert!(is_decimal("0.0"));
+        assert!(is_decimal("922337203685477.5807"));
+        assert!(is_decimal("922337203685477.580"));
+        assert!(is_decimal("-922337203685477.5808"))
+    }
+
+    #[test]
+    fn test_is_decimal_no_decimal_point_is_false() {
+        assert!(!is_decimal("0"))
+    }
+
+    #[test]
+    fn test_is_decimal_integral_potion_not_integer_is_false() {
+        assert!(!is_decimal("a.0"))
+    }
+
+    #[test]
+    fn test_is_decimal_fractional_portion_not_integer_is_false() {
+        assert!(!is_decimal("0.a"))
+    }
+
+    #[test]
+    fn test_is_decimal_fractional_portion_5_digits_is_false() {
+        assert!(!is_decimal("0.00000"))
+    }
+
+    #[test]
+    fn test_is_decimal_inegral_portion_overflows_is_false() {
+        assert!(!is_decimal("12345678931234123412.0"))
+    }
+
+    #[test]
+    fn test_is_decimal_integral_portion_scaling_overflows_is_false() {
+        assert!(!is_decimal("922337203685478.0000"))
+    }
+
+    #[test]
+    fn test_is_decimal_overflows_is_false() {
+        assert!(!is_decimal("922337203685477.5808"));
+        assert!(!is_decimal("-922337203685477.5809"))
+    }
 }
