@@ -73,7 +73,7 @@ fn validate_parameters(
     }
     for val in vals.keys() {
         if !props.contains(*val) {
-            return Err(ValidationError::unexpected_property(*val));
+            return Err(ValidationError::unexpected_property(val));
         }
     }
 
