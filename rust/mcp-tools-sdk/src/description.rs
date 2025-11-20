@@ -281,11 +281,11 @@ pub struct ServerDescription {
 
 impl ServerDescription {
     /// Create a new Server Description from its components
-    pub fn new(tools: Vec<ToolDescription>, type_defs: HashMap<SmolStr, PropertyTypeDef>) -> Self {
-        let tools = tools
-            .into_iter()
-            .map(|tool| (tool.name().to_smolstr(), tool))
-            .collect();
+    pub fn new(
+        tools: impl Iterator<Item = ToolDescription>,
+        type_defs: HashMap<SmolStr, PropertyTypeDef>,
+    ) -> Self {
+        let tools = tools.map(|tool| (tool.name().to_smolstr(), tool)).collect();
         Self {
             tools,
             type_defs: PropertyTypeDefs::new(type_defs),
