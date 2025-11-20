@@ -54,7 +54,7 @@ pub enum Value {
     Null,
     Bool(bool),
     Number(Number),
-    String(String),
+    String(SmolStr),
     Array(Vec<Value>),
     Map(HashMap<SmolStr, Value>),
 }
