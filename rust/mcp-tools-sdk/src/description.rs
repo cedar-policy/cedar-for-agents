@@ -1304,7 +1304,7 @@ mod test {
             tools.validate_input(&input),
             Err(ValidationError::UnexpectedProperty(..))
         )
-    }    
+    }
 
     #[test]
     fn test_validate_output_simple() {
@@ -1532,7 +1532,7 @@ mod test {
         assert_matches!(
             tools.validate_input(&input),
             Err(ValidationError::InvalidIntegerLiteral(..))
-        )        
+        )
     }
 
     #[test]
