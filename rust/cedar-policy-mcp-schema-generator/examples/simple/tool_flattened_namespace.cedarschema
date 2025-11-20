@@ -1,33 +1,33 @@
 namespace MyMcpServer {
   type CommonContext = {
-    "currentTimestamp": datetime,
-    "ipaddr": ipaddr
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
   };
 
   type test_toolInput = {
-    "array_attr"?: Set<String>,
-    "bool_attr"?: Bool,
-    "date_attr"?: datetime,
-    "dec_attr"?: decimal,
-    "dt_attr"?: datetime,
-    "dur_attr"?: duration,
-    "enum_attr"?: MyMcpServer::test_tool_Input_enum_attr,
-    "float_attr"?: MyMcpServer::Float,
-    "int_attr"?: Long,
-    "ipv4_attr"?: ipaddr,
-    "ipv6_attr"?: ipaddr,
-    "null_attr"?: MyMcpServer::Null,
-    "num_attr"?: MyMcpServer::Number,
-    "obj_attr"?: MyMcpServer::test_tool_Input_obj_attr,
-    "str_attr"?: String,
-    "tagged_obj_attr"?: MyMcpServer::test_tool_Input_tagged_obj_attr,
-    "tuple_attr"?: {
-      "proj0": String,
-      "proj1": Long
+    array_attr?: Set<String>,
+    bool_attr?: Bool,
+    date_attr?: datetime,
+    dec_attr?: decimal,
+    dt_attr?: datetime,
+    dur_attr?: duration,
+    enum_attr?: MyMcpServer::test_tool_Input_enum_attr,
+    float_attr?: MyMcpServer::Float,
+    int_attr?: Long,
+    ipv4_attr?: ipaddr,
+    ipv6_attr?: ipaddr,
+    null_attr?: MyMcpServer::Null,
+    num_attr?: MyMcpServer::Number,
+    obj_attr?: MyMcpServer::test_tool_Input_obj_attr,
+    str_attr?: String,
+    tagged_obj_attr?: MyMcpServer::test_tool_Input_tagged_obj_attr,
+    tuple_attr?: {
+      proj0: String,
+      proj1: Long
     },
-    "union_attr"?: {
-      "typeChoice0"?: String,
-      "typeChoice1"?: MyMcpServer::Null
+    union_attr?: {
+      typeChoice0?: String,
+      typeChoice1?: MyMcpServer::Null
     }
   };
 
@@ -40,15 +40,15 @@ namespace MyMcpServer {
   entity Number;
 
   entity User = {
-    "id": String,
-    "username": String
+    id: String,
+    username: String
   };
 
   entity test_tool_Input_enum_attr enum ["variant1", "variant2"];
 
   entity test_tool_Input_obj_attr = {
-    "first_attr": String,
-    "second_attr": Bool
+    first_attr: String,
+    second_attr: Bool
   };
 
   entity test_tool_Input_tagged_obj_attr tags Long;
@@ -59,9 +59,9 @@ namespace MyMcpServer {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": test_toolInput,
-  "session": CommonContext
-}
+      input: test_toolInput,
+      session: CommonContext
+    }
   };
 }
 
