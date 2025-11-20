@@ -40,7 +40,8 @@ pub(crate) fn server_description_from_json_value(
                             tools
                                 .iter()
                                 .map(tool_description_from_json_value_inner)
-                                .collect::<Result<_, _>>()?,
+                                .collect::<Result<Vec<_>, _>>()?
+                                .into_iter(),
                             typedefs_from_json_value(
                                 result.get("$defs"),
                                 ContentType::ToolParameters,
@@ -61,7 +62,7 @@ pub(crate) fn server_description_from_json_value(
                 )),
             },
             None => Ok(ServerDescription::new(
-                vec![tool_description_from_json_value_inner(&json_value)?],
+                std::iter::once(tool_description_from_json_value_inner(&json_value)?),
                 HashMap::new(),
             )),
         }
@@ -70,7 +71,8 @@ pub(crate) fn server_description_from_json_value(
             tools
                 .iter()
                 .map(tool_description_from_json_value_inner)
-                .collect::<Result<_, _>>()?,
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter(),
             HashMap::new(),
         ))
     } else {
