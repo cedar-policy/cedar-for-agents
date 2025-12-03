@@ -870,7 +870,27 @@ mod test {
     }
 
     #[test]
-    fn test_array_attr_type_missing_is_unknown() {
+    fn test_array_items_is_number_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+                "type": "array",
+                "items": 0
+            }
+        }
+    }
+}"#;
+        assert_matches!(
+            ToolDescription::from_json_str(tool_description),
+            Err(DeserializationError::UnexpectedType(..))
+        )
+    }
+
+    #[test]
+    fn test_attr_type_missing_is_unknown() {
         let tool_description = r#"{
     "name": "test_tool",
     "inputSchema": {
@@ -890,7 +910,7 @@ mod test {
     }
 
     #[test]
-    fn test_array_attr_type_is_null_is_unknown() {
+    fn test_attr_type_is_null_is_unknown() {
         let tool_description = r#"{
     "name": "test_tool",
     "inputSchema": {
@@ -912,7 +932,7 @@ mod test {
     }
 
     #[test]
-    fn test_array_attr_type_is_bool_is_unknown() {
+    fn test_attr_type_is_bool_is_unknown() {
         let tool_description = r#"{
     "name": "test_tool",
     "inputSchema": {
@@ -931,5 +951,24 @@ mod test {
         let input = tool.inputs().properties().next().unwrap();
         assert_eq!(input.name(), "test_attr");
         assert_matches!(input.property_type(), PropertyType::Unknown)
+    }
+
+    #[test]
+    fn test_property_type_is_number_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+                "type": 3
+            }
+        }
+    }
+}"#;
+        assert_matches!(
+            ToolDescription::from_json_str(tool_description),
+            Err(DeserializationError::UnexpectedType(..))
+        )
     }
 }

@@ -12,7 +12,7 @@ Added:
 
 Fixed:
 - Fixed a bug in MCP Tool description parser that would reject legal JSON schemas when the schemas included 
-array and property types that are unsecified.
+array and property types that are unspecified.
 
 ## [0.1.0] - 2025-11-11
 - Initial release of `mcp-tools-sdk`.
