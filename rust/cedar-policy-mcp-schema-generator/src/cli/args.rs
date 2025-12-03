@@ -18,6 +18,48 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use serde::Serialize;
 use std::path::PathBuf;
 
+/// This struct contains the arguments that together specify a request.
+#[derive(Args, Clone, Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct RequestArgs {
+    /// Principal for the request, e.g., MyMcpServer::User::"Alice"
+    #[arg(short = 'l', long)]
+    pub principal: Option<String>,
+    /// Resource for the request, e.g., MyMcpServer::McpServer::"Server 0"
+    #[arg(short, long)]
+    pub resource: Option<String>,
+    /// File containing a JSON object representing the context for the request.
+    /// Should be a (possibly empty) map from keys to values.
+    #[arg(short, long = "context", value_name = "FILE")]
+    pub context_json_file: Option<String>,
+    /// File containing a JSON object representing the entire request. Must have
+    /// fields "principal", "action", "resource", and "context", where "context"
+    /// is a (possibly empty) map from keys to values. This option replaces
+    /// --principal, --resource, etc.
+    #[arg(long = "request-json", value_name = "FILE", conflicts_with_all = &["principal", "resource", "context_json_file"])]
+    pub request_json_file: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum, Serialize)]
+pub enum PolicyFormat {
+    /// The standard Cedar policy format, documented at <https://docs.cedarpolicy.com/policies/syntax-policy.html>
+    #[default]
+    Cedar,
+    /// Cedar's JSON policy format, documented at <https://docs.cedarpolicy.com/policies/json-format.html>
+    Json,
+}
+
+/// This struct contains the arguments that together specify an input policy or policy set.
+#[derive(Args, Clone, Debug, Serialize)]
+pub struct PoliciesArgs {
+    /// File containing the static Cedar policies and/or templates. If not provided, read policies from stdin.
+    #[arg(short, long = "policies", value_name = "FILE", required = true)]
+    pub policies_file: PathBuf,
+    /// Format of policies in the `--policies` file
+    #[arg(long = "policy-format", default_value_t, value_enum)]
+    pub policy_format: PolicyFormat,
+}
+
 #[derive(Args, Clone, Debug, Serialize)]
 #[clap(next_help_heading = "Configuration Options")]
 #[serde(rename_all = "kebab-case")]
@@ -82,6 +124,38 @@ pub(crate) enum Command {
         output_format: OutputFormat,
         #[arg(long, default_value = "human")]
         error_format: ErrorFormat,
+        #[clap(flatten)]
+        config: ConfigOptions,
+    },
+    /// Convert MCP tool Input & Output to a Cedar Authorization Request and check authorization
+    /// against a set of policies.
+    ///
+    /// Requires:
+    /// 1. MCP tool description to successfully generate to a Schema,
+    /// 2. Policies to validate against the generated Schema,
+    /// 3. MCP Input/Output data to validate against MCP tool description, and
+    /// 4. Input Entities / Context / Principal / Resource and generated Request components to validate against generated Schema.
+    Authorize {
+        /// A Cedar Schema stub file used as the basis of the ouptut schema.
+        #[clap(required = true)]
+        schema_stub: PathBuf,
+        /// A file containing the MCP Tool Descriptions to add as actions to schema stub file.
+        #[clap(required = true)]
+        tool_descriptions: PathBuf,
+        #[arg(long, default_value = "human")]
+        output_format: OutputFormat,
+        #[arg(long, default_value = "human")]
+        error_format: ErrorFormat,
+        #[clap(flatten)]
+        request: RequestArgs,
+        #[clap(flatten)]
+        policies: PoliciesArgs,
+        #[arg(long = "entities", value_name = "FILE")]
+        entities: PathBuf,
+        #[arg(long = "mcp-tool-input", value_name = "FILE")]
+        mcp_tool_input: PathBuf,
+        #[arg(long = "mcp-tool-output", value_name = "FILE")]
+        mcp_tool_output: Option<PathBuf>,
         #[clap(flatten)]
         config: ConfigOptions,
     },

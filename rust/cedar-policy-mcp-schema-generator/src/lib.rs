@@ -15,7 +15,10 @@
  */
 
 mod generator;
-pub use generator::{SchemaGenerator, SchemaGeneratorConfig, SchemaGeneratorError};
+pub use generator::{
+    RequestGenerator, RequestGeneratorError, SchemaGenerator, SchemaGeneratorConfig,
+    SchemaGeneratorError,
+};
 
 #[cfg(feature = "cli")]
 mod cli;

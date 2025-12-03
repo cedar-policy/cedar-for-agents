@@ -14,12 +14,17 @@
  * limitations under the License.
  */
 
-use crate::cli::{CliArgs, CliError, Command, ConfigOptions, ErrorFormat, OutputFormat};
+use crate::cli::{
+    CliArgs, CliError, Command, ConfigOptions, ErrorFormat, OutputFormat, PoliciesArgs, RequestArgs,
+};
 use crate::{SchemaGenerator, SchemaGeneratorConfig};
 
+use cedar_policy_core::ast::{Context, EntityUID, PolicySet};
+use cedar_policy_core::entities::Entities;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::validator::{json_schema::Fragment, RawName};
 
+use mcp_tools_sdk::data::{Input, Output};
 use mcp_tools_sdk::description::ServerDescription;
 
 use std::path::{Path, PathBuf};
@@ -99,12 +104,106 @@ impl CliArgs {
                 schema_generator.add_actions_from_server_description(&tool_descriptions)?;
                 output_schema(schema_generator.get_schema(), output, *output_format)
             }
+            Command::Authorize {
+                schema_stub,
+                tool_descriptions,
+                config,
+                request,
+                policies,
+                entities,
+                mcp_tool_input,
+                mcp_tool_output,
+                ..
+            } => {
+                let config = get_config(config);
+                let schema_stub = read_schema(schema_stub)?;
+                let tool_descriptions = ServerDescription::from_json_file(tool_descriptions)?;
+                let mut schema_generator = SchemaGenerator::new_with_config(schema_stub, config)?;
+                schema_generator.add_actions_from_server_description(&tool_descriptions)?;
+                let request_generator = schema_generator.new_request_generator()?;
+                let policies = read_policies(policies)?;
+                let entities = read_entities(entities)?;
+                let (principal, resource, context) = read_request(request)?;
+                let input = Input::from_json_file(mcp_tool_input)?;
+                let output = mcp_tool_output
+                    .as_ref()
+                    .map(|file| Output::from_json_file(file))
+                    .transpose()?;
+                let (request, entities) = request_generator.generate_request(
+                    principal,
+                    resource,
+                    context.into_iter(),
+                    entities,
+                    input,
+                    output
+                )?;
+                let authorizor = cedar_policy_core::authorizer::Authorizer::new();
+                match authorizor.is_authorized(request, &policies, &entities).decision {
+                    cedar_policy_core::authorizer::Decision::Allow => println!("ALLOW"),
+                    cedar_policy_core::authorizer::Decision::Deny => println!("DENY"),
+                };
+                Ok(())
+            }
         }
     }
 
     pub fn get_error_format(&self) -> ErrorFormat {
         match &self.command {
             Command::Generate { error_format, .. } => *error_format,
+            Command::Authorize { error_format, .. } => *error_format,
+        }
+    }
+}
+
+fn read_policies(args: &PoliciesArgs) -> Result<PolicySet, CliError> {
+    let policy_str = match std::fs::read_to_string(args.policies_file.clone()) {
+        Ok(str) => str,
+        Err(e) => return Err(CliError::policies_file_open(args.policies_file.clone(), e)),
+    };
+    Ok(cedar_policy_core::parser::parse_policyset(&policy_str)?)
+}
+
+fn read_entities(file: impl AsRef<Path>) -> Result<Entities, CliError> {
+    let file = file.as_ref();
+    let entities_str = match std::fs::read_to_string(file) {
+        Ok(str) => str,
+        Err(e) => return Err(CliError::entities_file_open(file.to_path_buf(), e)),
+    };
+    let eparser = cedar_policy_core::entities::EntityJsonParser::new(
+        None::<&cedar_policy_core::validator::CoreSchema<'_>>,
+        cedar_policy_core::extensions::Extensions::all_available(),
+        cedar_policy_core::entities::TCComputation::ComputeNow,
+    );
+    Ok(eparser.from_json_str(&entities_str)?)
+}
+
+fn read_request(args: &RequestArgs) -> Result<(EntityUID, EntityUID, Context), CliError> {
+    match &args.request_json_file {
+        Some(_file) => {
+            panic!()
+        }
+        None => {
+            let principal = args
+                .principal
+                .as_ref()
+                .ok_or_else(|| CliError::MissingPrincipal)?;
+            let principal: EntityUID = principal.parse()?;
+            let resource = args
+                .resource
+                .as_ref()
+                .ok_or_else(|| CliError::MissingResource)?;
+            let resource: EntityUID = resource.parse()?;
+            let context = match &args.context_json_file {
+                Some(ctx_file) => {
+                    let context_str = match std::fs::read_to_string(ctx_file) {
+                        Ok(str) => str,
+                        Err(e) => return Err(CliError::context_file_open(ctx_file.into(), e)),
+                    };
+                    Context::from_json_str(&context_str)?
+                }
+                None => Context::empty(),
+            };
+            Ok((principal, resource, context))
         }
     }
 }

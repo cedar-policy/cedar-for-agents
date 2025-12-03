@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use crate::SchemaGeneratorError;
+use crate::{RequestGenerator, SchemaGeneratorError};
 
 use cedar_policy_core::ast::{InternalName, Name, UnreservedId};
 use cedar_policy_core::est::Annotations;
@@ -32,16 +32,16 @@ use nonempty::NonEmpty;
 
 use smol_str::{SmolStr, ToSmolStr};
 
-use std::collections::{btree_map::Entry, BTreeMap};
+use std::collections::{btree_map::Entry, BTreeMap, HashMap};
 
 /// A type reserved to configure how the schema generator functions
 #[derive(Debug, Clone)]
 pub struct SchemaGeneratorConfig {
-    include_outputs: bool,
-    objects_as_records: bool,
-    erase_annotations: bool,
-    flatten_namespaces: bool,
-    numbers_as_decimal: bool,
+    pub(crate) include_outputs: bool,
+    pub(crate) objects_as_records: bool,
+    pub(crate) erase_annotations: bool,
+    pub(crate) flatten_namespaces: bool,
+    pub(crate) numbers_as_decimal: bool,
 }
 
 impl SchemaGeneratorConfig {
@@ -149,6 +149,7 @@ pub struct SchemaGenerator {
     contexts: BTreeMap<SmolStr, RawName>,
     actions: Option<Vec<ActionEntityUID<RawName>>>,
     config: SchemaGeneratorConfig,
+    tools: ServerDescription,
 }
 
 impl SchemaGenerator {
@@ -283,6 +284,7 @@ impl SchemaGenerator {
             contexts,
             actions,
             config,
+            tools: ServerDescription::new(Vec::new().into_iter(), HashMap::new()),
         })
     }
 
@@ -291,12 +293,30 @@ impl SchemaGenerator {
         &self.fragment
     }
 
+    /// Get a `RequestGenerator` that will convert MCP tool Input/Ouptut
+    /// requests that validate against a tool added to this `SchemaGenerator`
+    /// to Cedar Authorization Requests that validate against the current Schema.
+    pub fn new_request_generator(&self) -> Result<RequestGenerator, SchemaGeneratorError> {
+        let schema =
+            cedar_policy_core::validator::ValidatorSchema::try_from(self.fragment.clone())?;
+        Ok(RequestGenerator::new(
+            self.config.clone(),
+            self.tools.clone(),
+            self.namespace.clone(),
+            schema,
+        ))
+    }
+
     /// Add a new action to the generated Cedar Schema
     /// that corresponds to the input `ToolDescription`
     pub fn add_action_from_tool_description(
         &mut self,
         description: &ToolDescription,
     ) -> Result<(), SchemaGeneratorError> {
+        if self.tools.tool_descriptions().count() != 0 {
+            return Err(SchemaGeneratorError::UserError);
+        }
+        self.tools = ServerDescription::new(vec![description.clone()].into_iter(), HashMap::new());
         // Keep a copy of schema fragment in case we have an error
         let fragment = self.fragment.clone();
         match self.add_action_from_tool_description_inner(description, BTreeMap::new()) {
@@ -329,6 +349,11 @@ impl SchemaGenerator {
         &mut self,
         description: &ServerDescription,
     ) -> Result<(), SchemaGeneratorError> {
+        if self.tools.tool_descriptions().count() != 0 {
+            return Err(SchemaGeneratorError::UserError);
+        }
+        self.tools = description.clone();
+
         // Clone once and reuse to avoid borrow issues
         let namespace = self.namespace.clone();
 
