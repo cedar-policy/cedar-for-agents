@@ -25,6 +25,7 @@ use super::parser;
 /// The type a `Property` can take
 #[derive(Debug, Clone)]
 pub enum PropertyType {
+    Unknown,
     Bool,
     Integer,
     Float,
@@ -798,5 +799,137 @@ mod test {
             ToolDescription::from_json_str(tool_description),
             Err(DeserializationError::UnexpectedType(..))
         );
+    }
+
+    #[test]
+    fn test_array_items_missing_is_unknown() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+                "type": "array"
+            }
+        }
+    }
+}"#;
+        let tool = ToolDescription::from_json_str(tool_description)
+            .expect("Array with unknown items should parse");
+        assert_eq!(tool.inputs().type_definitions().count(), 0);
+        assert_eq!(tool.inputs().properties().count(), 1);
+        let input = tool.inputs().properties().next().unwrap();
+        assert_eq!(input.name(), "test_attr");
+        assert_matches!(input.property_type(), PropertyType::Array { element_ty } if matches!(element_ty.as_ref(), PropertyType::Unknown) )
+    }
+
+    #[test]
+    fn test_array_items_is_null_is_unknown() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+                "type": "array",
+                "items": null
+            }
+        }
+    }
+}"#;
+        let tool = ToolDescription::from_json_str(tool_description)
+            .expect("Array with unknown items should parse");
+        assert_eq!(tool.inputs().type_definitions().count(), 0);
+        assert_eq!(tool.inputs().properties().count(), 1);
+        let input = tool.inputs().properties().next().unwrap();
+        assert_eq!(input.name(), "test_attr");
+        assert_matches!(input.property_type(), PropertyType::Array { element_ty } if matches!(element_ty.as_ref(), PropertyType::Unknown) )
+    }
+
+    #[test]
+    fn test_array_items_is_bool_is_unknown() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+                "type": "array",
+                "items": true
+            }
+        }
+    }
+}"#;
+        let tool = ToolDescription::from_json_str(tool_description)
+            .expect("Array with unknown items should parse");
+        assert_eq!(tool.inputs().type_definitions().count(), 0);
+        assert_eq!(tool.inputs().properties().count(), 1);
+        let input = tool.inputs().properties().next().unwrap();
+        assert_eq!(input.name(), "test_attr");
+        assert_matches!(input.property_type(), PropertyType::Array { element_ty } if matches!(element_ty.as_ref(), PropertyType::Unknown) )
+    }
+
+    #[test]
+    fn test_array_attr_type_missing_is_unknown() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {}
+        }
+    }
+}"#;
+        let tool = ToolDescription::from_json_str(tool_description)
+            .expect("Array with unknown items should parse");
+        assert_eq!(tool.inputs().type_definitions().count(), 0);
+        assert_eq!(tool.inputs().properties().count(), 1);
+        let input = tool.inputs().properties().next().unwrap();
+        assert_eq!(input.name(), "test_attr");
+        assert_matches!(input.property_type(), PropertyType::Unknown)
+    }
+
+    #[test]
+    fn test_array_attr_type_is_null_is_unknown() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+                "type": null
+            }
+        }
+    }
+}"#;
+        let tool = ToolDescription::from_json_str(tool_description)
+            .expect("Array with unknown items should parse");
+        assert_eq!(tool.inputs().type_definitions().count(), 0);
+        assert_eq!(tool.inputs().properties().count(), 1);
+        let input = tool.inputs().properties().next().unwrap();
+        assert_eq!(input.name(), "test_attr");
+        assert_matches!(input.property_type(), PropertyType::Unknown)
+    }
+
+    #[test]
+    fn test_array_attr_type_is_bool_is_unknown() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+                "type": true
+            }
+        }
+    }
+}"#;
+        let tool = ToolDescription::from_json_str(tool_description)
+            .expect("Array with unknown items should parse");
+        assert_eq!(tool.inputs().type_definitions().count(), 0);
+        assert_eq!(tool.inputs().properties().count(), 1);
+        let input = tool.inputs().properties().next().unwrap();
+        assert_eq!(input.name(), "test_attr");
+        assert_matches!(input.property_type(), PropertyType::Unknown)
     }
 }

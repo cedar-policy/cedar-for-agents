@@ -2,195 +2,195 @@ namespace MyMcpServer::agent_graph::Input {
   entity action enum ["create", "list", "stop", "message", "status"];
 
   entity message = {
-    "content"?: String,
-    "target"?: String
+    content?: String,
+    target?: String
   };
 
   entity topology = {
-    "edges"?: Set<MyMcpServer::agent_graph::Input::topology::edges>,
-    "nodes"?: Set<MyMcpServer::agent_graph::Input::topology::nodes>,
-    "type"?: MyMcpServer::agent_graph::Input::topology::type
+    edges?: Set<MyMcpServer::agent_graph::Input::topology::edges>,
+    nodes?: Set<MyMcpServer::agent_graph::Input::topology::nodes>,
+    type?: MyMcpServer::agent_graph::Input::topology::type
   };
 }
 
 namespace MyMcpServer::batch::Input {
   entity invocations = {
-    "arguments": MyMcpServer::batch::Input::invocations::arguments,
-    "name": String
+    arguments: MyMcpServer::batch::Input::invocations::arguments,
+    name: String
   };
 }
 
 namespace MyMcpServer::browser::Input {
   entity BackAction = {
-    "session_name": String,
-    "type": String
+    session_name: String,
+    type: String
   };
 
   entity BrowserInput = {
-    "action": {
-      "typeChoice0"?: InitSessionAction,
-      "typeChoice1"?: ListLocalSessionsAction,
-      "typeChoice10"?: RefreshAction,
-      "typeChoice11"?: BackAction,
-      "typeChoice12"?: ForwardAction,
-      "typeChoice13"?: NewTabAction,
-      "typeChoice14"?: SwitchTabAction,
-      "typeChoice15"?: CloseTabAction,
-      "typeChoice16"?: ListTabsAction,
-      "typeChoice17"?: GetCookiesAction,
-      "typeChoice18"?: SetCookiesAction,
-      "typeChoice19"?: NetworkInterceptAction,
-      "typeChoice2"?: NavigateAction,
-      "typeChoice20"?: ExecuteCdpAction,
-      "typeChoice21"?: CloseAction,
-      "typeChoice3"?: ClickAction,
-      "typeChoice4"?: TypeAction,
-      "typeChoice5"?: EvaluateAction,
-      "typeChoice6"?: PressKeyAction,
-      "typeChoice7"?: GetTextAction,
-      "typeChoice8"?: GetHtmlAction,
-      "typeChoice9"?: ScreenshotAction
+    action: {
+      typeChoice0?: InitSessionAction,
+      typeChoice1?: ListLocalSessionsAction,
+      typeChoice10?: RefreshAction,
+      typeChoice11?: BackAction,
+      typeChoice12?: ForwardAction,
+      typeChoice13?: NewTabAction,
+      typeChoice14?: SwitchTabAction,
+      typeChoice15?: CloseTabAction,
+      typeChoice16?: ListTabsAction,
+      typeChoice17?: GetCookiesAction,
+      typeChoice18?: SetCookiesAction,
+      typeChoice19?: NetworkInterceptAction,
+      typeChoice2?: NavigateAction,
+      typeChoice20?: ExecuteCdpAction,
+      typeChoice21?: CloseAction,
+      typeChoice3?: ClickAction,
+      typeChoice4?: TypeAction,
+      typeChoice5?: EvaluateAction,
+      typeChoice6?: PressKeyAction,
+      typeChoice7?: GetTextAction,
+      typeChoice8?: GetHtmlAction,
+      typeChoice9?: ScreenshotAction
     },
-    "wait_time"?: {
-      "typeChoice0"?: Long,
-      "typeChoice1"?: MyMcpServer::Null
+    wait_time?: {
+      typeChoice0?: Long,
+      typeChoice1?: MyMcpServer::Null
     }
   };
 
   entity ClickAction = {
-    "selector": String,
-    "session_name": String,
-    "type": String
+    selector: String,
+    session_name: String,
+    type: String
   };
 
   entity CloseAction = {
-    "session_name": String,
-    "type": String
+    session_name: String,
+    type: String
   };
 
   entity CloseTabAction = {
-    "session_name": String,
-    "tab_id"?: {
-      "typeChoice0"?: String,
-      "typeChoice1"?: MyMcpServer::Null
+    session_name: String,
+    tab_id?: {
+      typeChoice0?: String,
+      typeChoice1?: MyMcpServer::Null
     },
-    "type": String
+    type: String
   };
 
   entity EvaluateAction = {
-    "script": String,
-    "session_name": String,
-    "type": String
+    script: String,
+    session_name: String,
+    type: String
   };
 
   entity ExecuteCdpAction = {
-    "method": String,
-    "params"?: {
-      "typeChoice0"?: MyMcpServer::browser::Input::ExecuteCdpAction::params::TypeChoice0,
-      "typeChoice1"?: MyMcpServer::Null
+    method: String,
+    params?: {
+      typeChoice0?: MyMcpServer::browser::Input::ExecuteCdpAction::params::TypeChoice0,
+      typeChoice1?: MyMcpServer::Null
     },
-    "session_name": String,
-    "type": String
+    session_name: String,
+    type: String
   };
 
   entity ForwardAction = {
-    "session_name": String,
-    "type": String
+    session_name: String,
+    type: String
   };
 
   entity GetCookiesAction = {
-    "session_name": String,
-    "type": String
+    session_name: String,
+    type: String
   };
 
   entity GetHtmlAction = {
-    "selector"?: {
-      "typeChoice0"?: String,
-      "typeChoice1"?: MyMcpServer::Null
+    selector?: {
+      typeChoice0?: String,
+      typeChoice1?: MyMcpServer::Null
     },
-    "session_name": String,
-    "type": String
+    session_name: String,
+    type: String
   };
 
   entity GetTextAction = {
-    "selector": String,
-    "session_name": String,
-    "type": String
+    selector: String,
+    session_name: String,
+    type: String
   };
 
   entity InitSessionAction = {
-    "description": String,
-    "session_name": String,
-    "type": String
+    description: String,
+    session_name: String,
+    type: String
   };
 
   entity ListLocalSessionsAction = {
-    "type": String
+    type: String
   };
 
   entity ListTabsAction = {
-    "session_name": String,
-    "type": String
+    session_name: String,
+    type: String
   };
 
   entity NavigateAction = {
-    "session_name": String,
-    "type": String,
-    "url": String
+    session_name: String,
+    type: String,
+    url: String
   };
 
   entity NetworkInterceptAction = {
-    "pattern": String,
-    "session_name": String,
-    "type": String
+    pattern: String,
+    session_name: String,
+    type: String
   };
 
   entity NewTabAction = {
-    "session_name": String,
-    "tab_id"?: {
-      "typeChoice0"?: String,
-      "typeChoice1"?: MyMcpServer::Null
+    session_name: String,
+    tab_id?: {
+      typeChoice0?: String,
+      typeChoice1?: MyMcpServer::Null
     },
-    "type": String
+    type: String
   };
 
   entity PressKeyAction = {
-    "key": String,
-    "session_name": String,
-    "type": String
+    key: String,
+    session_name: String,
+    type: String
   };
 
   entity RefreshAction = {
-    "session_name": String,
-    "type": String
+    session_name: String,
+    type: String
   };
 
   entity ScreenshotAction = {
-    "path"?: {
-      "typeChoice0"?: String,
-      "typeChoice1"?: MyMcpServer::Null
+    path?: {
+      typeChoice0?: String,
+      typeChoice1?: MyMcpServer::Null
     },
-    "session_name": String,
-    "type": String
+    session_name: String,
+    type: String
   };
 
   entity SetCookiesAction = {
-    "cookies": Set<MyMcpServer::browser::Input::SetCookiesAction::cookies>,
-    "session_name": String,
-    "type": String
+    cookies: Set<MyMcpServer::browser::Input::SetCookiesAction::cookies>,
+    session_name: String,
+    type: String
   };
 
   entity SwitchTabAction = {
-    "session_name": String,
-    "tab_id": String,
-    "type": String
+    session_name: String,
+    tab_id: String,
+    type: String
   };
 
   entity TypeAction = {
-    "selector": String,
-    "session_name": String,
-    "text": String,
-    "type": String
+    selector: String,
+    session_name: String,
+    text: String,
+    type: String
   };
 }
 
@@ -200,78 +200,78 @@ namespace MyMcpServer::calculator::Input {
 
 namespace MyMcpServer::code_interpreter::Input {
   entity CodeInterpreterInput = {
-    "action": {
-      "typeChoice0"?: InitSessionAction,
-      "typeChoice1"?: ListLocalSessionsAction,
-      "typeChoice2"?: ExecuteCodeAction,
-      "typeChoice3"?: ExecuteCommandAction,
-      "typeChoice4"?: ReadFilesAction,
-      "typeChoice5"?: ListFilesAction,
-      "typeChoice6"?: RemoveFilesAction,
-      "typeChoice7"?: WriteFilesAction
+    action: {
+      typeChoice0?: InitSessionAction,
+      typeChoice1?: ListLocalSessionsAction,
+      typeChoice2?: ExecuteCodeAction,
+      typeChoice3?: ExecuteCommandAction,
+      typeChoice4?: ReadFilesAction,
+      typeChoice5?: ListFilesAction,
+      typeChoice6?: RemoveFilesAction,
+      typeChoice7?: WriteFilesAction
     }
   };
 
   entity ExecuteCodeAction = {
-    "clear_context"?: Bool,
-    "code": String,
-    "language"?: LanguageType,
-    "session_name": String,
-    "type": String
+    clear_context?: Bool,
+    code: String,
+    language?: LanguageType,
+    session_name: String,
+    type: String
   };
 
   entity ExecuteCommandAction = {
-    "command": String,
-    "session_name": String,
-    "type": String
+    command: String,
+    session_name: String,
+    type: String
   };
 
   entity FileContent = {
-    "path": String,
-    "text": String
+    path: String,
+    text: String
   };
 
   entity InitSessionAction = {
-    "description": String,
-    "session_name": String,
-    "type": String
+    description: String,
+    session_name: String,
+    type: String
   };
 
   entity LanguageType enum ["python", "javascript", "typescript"];
 
   entity ListFilesAction = {
-    "path"?: String,
-    "session_name": String,
-    "type": String
+    path?: String,
+    session_name: String,
+    type: String
   };
 
   entity ListLocalSessionsAction = {
-    "type": String
+    type: String
   };
 
   entity ReadFilesAction = {
-    "paths": Set<String>,
-    "session_name": String,
-    "type": String
+    paths: Set<String>,
+    session_name: String,
+    type: String
   };
 
   entity RemoveFilesAction = {
-    "paths": Set<String>,
-    "session_name": String,
-    "type": String
+    paths: Set<String>,
+    session_name: String,
+    type: String
   };
 
   entity WriteFilesAction = {
-    "content": Set<FileContent>,
-    "session_name": String,
-    "type": String
+    content: Set<FileContent>,
+    session_name: String,
+    type: String
   };
 }
 
 namespace MyMcpServer::diagram::Input {
   entity edges tags {
-  "typeChoice0"?: Long,
-  "typeChoice1"?: String
+  typeChoice0?: Long,
+  typeChoice1?: String
 };
 
   entity elements tags String;
@@ -279,8 +279,8 @@ namespace MyMcpServer::diagram::Input {
   entity nodes tags String;
 
   entity relationships tags {
-  "typeChoice0"?: Long,
-  "typeChoice1"?: String
+  typeChoice0?: Long,
+  typeChoice1?: String
 };
 
   entity style;
@@ -314,38 +314,38 @@ namespace MyMcpServer::http_request::Input {
   entity auth_type enum ["Bearer", "token", "basic", "digest", "jwt", "aws_sig_v4", "kerberos", "custom", "api_key"];
 
   entity aws_auth = {
-    "access_key"?: String,
-    "refresh_credentials"?: Bool,
-    "region"?: String,
-    "secret_key"?: String,
-    "service"?: String,
-    "session_token"?: String
+    access_key?: String,
+    refresh_credentials?: Bool,
+    region?: String,
+    secret_key?: String,
+    service?: String,
+    session_token?: String
   };
 
   entity basic_auth = {
-    "password": String,
-    "username": String
+    password: String,
+    username: String
   };
 
   entity digest_auth = {
-    "password"?: String,
-    "realm"?: String,
-    "username"?: String
+    password?: String,
+    realm?: String,
+    username?: String
   };
 
   entity headers;
 
   entity jwt_config = {
-    "algorithm"?: String,
-    "expiry"?: Long,
-    "secret"?: String
+    algorithm?: String,
+    expiry?: Long,
+    secret?: String
   };
 
   entity session_config = {
-    "cookie_persistence"?: Bool,
-    "keep_alive"?: Bool,
-    "max_retries"?: Long,
-    "pool_size"?: Long
+    cookie_persistence?: Bool,
+    keep_alive?: Bool,
+    max_retries?: Long,
+    pool_size?: Long
   };
 }
 
@@ -427,441 +427,441 @@ namespace MyMcpServer::workflow::Input {
 
 namespace MyMcpServer {
   type CommonContext = {
-    "currentTimestamp": datetime,
-    "ipaddr": ipaddr
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
   };
 
   type a2a_discover_agentInput = {
-    "url": String
+    url: String
   };
 
   type a2a_list_discovered_agentsInput = {  };
 
   type a2a_send_messageInput = {
-    "message_id"?: String,
-    "message_text": String,
-    "target_agent_url": String
+    message_id?: String,
+    message_text: String,
+    target_agent_url: String
   };
 
   type agent_core_memoryInput = {
-    "action": String,
-    "content"?: String,
-    "max_results"?: Long,
-    "memory_record_id"?: String,
-    "next_token"?: String,
-    "query"?: String
+    action: String,
+    content?: String,
+    max_results?: Long,
+    memory_record_id?: String,
+    next_token?: String,
+    query?: String
   };
 
   type agent_graphInput = {
-    "action": MyMcpServer::agent_graph::Input::action,
-    "graph_id"?: String,
-    "message"?: MyMcpServer::agent_graph::Input::message,
-    "topology"?: MyMcpServer::agent_graph::Input::topology
+    action: MyMcpServer::agent_graph::Input::action,
+    graph_id?: String,
+    message?: MyMcpServer::agent_graph::Input::message,
+    topology?: MyMcpServer::agent_graph::Input::topology
   };
 
   type batchInput = {
-    "invocations": Set<MyMcpServer::batch::Input::invocations>
+    invocations: Set<MyMcpServer::batch::Input::invocations>
   };
 
   type browserInput = {
-    "browser_input": MyMcpServer::browser::Input::BrowserInput
+    browser_input: MyMcpServer::browser::Input::BrowserInput
   };
 
   type calculatorInput = {
-    "expression": String,
-    "force_numeric"?: Bool,
-    "mode"?: String,
-    "order"?: Long,
-    "point"?: String,
-    "precision"?: Long,
-    "scientific"?: Bool,
-    "variables"?: MyMcpServer::calculator::Input::variables,
-    "wrt"?: String
+    expression: String,
+    force_numeric?: Bool,
+    mode?: String,
+    order?: Long,
+    point?: String,
+    precision?: Long,
+    scientific?: Bool,
+    variables?: MyMcpServer::calculator::Input::variables,
+    wrt?: String
   };
 
   type code_interpreterInput = {
-    "code_interpreter_input": MyMcpServer::code_interpreter::Input::CodeInterpreterInput
+    code_interpreter_input: MyMcpServer::code_interpreter::Input::CodeInterpreterInput
   };
 
   type cronInput = {
-    "action": String,
-    "command"?: String,
-    "description"?: String,
-    "job_id"?: Long,
-    "schedule"?: String
+    action: String,
+    command?: String,
+    description?: String,
+    job_id?: Long,
+    schedule?: String
   };
 
   type current_timeInput = {
-    "timezone"?: String
+    timezone?: String
   };
 
   type diagramInput = {
-    "diagram_type": String,
-    "edges"?: Set<MyMcpServer::diagram::Input::edges>,
-    "elements"?: Set<MyMcpServer::diagram::Input::elements>,
-    "nodes"?: Set<MyMcpServer::diagram::Input::nodes>,
-    "open_diagram_flag"?: Bool,
-    "output_format"?: String,
-    "relationships"?: Set<MyMcpServer::diagram::Input::relationships>,
-    "style"?: MyMcpServer::diagram::Input::style,
-    "title"?: String
+    diagram_type: String,
+    edges?: Set<MyMcpServer::diagram::Input::edges>,
+    elements?: Set<MyMcpServer::diagram::Input::elements>,
+    nodes?: Set<MyMcpServer::diagram::Input::nodes>,
+    open_diagram_flag?: Bool,
+    output_format?: String,
+    relationships?: Set<MyMcpServer::diagram::Input::relationships>,
+    style?: MyMcpServer::diagram::Input::style,
+    title?: String
   };
 
   type editorInput = {
-    "command": String,
-    "file_text"?: String,
-    "fuzzy"?: Bool,
-    "insert_line"?: String,
-    "new_str"?: String,
-    "old_str"?: String,
-    "path": String,
-    "pattern"?: String,
-    "search_text"?: String,
-    "view_range"?: Set<Long>
+    command: String,
+    file_text?: String,
+    fuzzy?: Bool,
+    insert_line?: String,
+    new_str?: String,
+    old_str?: String,
+    path: String,
+    pattern?: String,
+    search_text?: String,
+    view_range?: Set<Long>
   };
 
   type environmentInput = {
-    "action": MyMcpServer::environment::Input::action,
-    "masked"?: Bool,
-    "name"?: String,
-    "prefix"?: String,
-    "value"?: String
+    action: MyMcpServer::environment::Input::action,
+    masked?: Bool,
+    name?: String,
+    prefix?: String,
+    value?: String
   };
 
   type file_readInput = {
-    "chunk_offset"?: Long,
-    "chunk_size"?: Long,
-    "comparison_path"?: String,
-    "context_lines"?: Long,
-    "diff_type"?: MyMcpServer::file_read::Input::diff_type,
-    "end_line"?: Long,
-    "format"?: MyMcpServer::file_read::Input::format,
-    "git_history"?: Bool,
-    "mode": MyMcpServer::file_read::Input::mode,
-    "neutral_name"?: String,
-    "num_revisions"?: Long,
-    "path": String,
-    "recursive"?: Bool,
-    "search_pattern"?: String,
-    "start_line"?: Long
+    chunk_offset?: Long,
+    chunk_size?: Long,
+    comparison_path?: String,
+    context_lines?: Long,
+    diff_type?: MyMcpServer::file_read::Input::diff_type,
+    end_line?: Long,
+    format?: MyMcpServer::file_read::Input::format,
+    git_history?: Bool,
+    mode: MyMcpServer::file_read::Input::mode,
+    neutral_name?: String,
+    num_revisions?: Long,
+    path: String,
+    recursive?: Bool,
+    search_pattern?: String,
+    start_line?: Long
   };
 
   type file_writeInput = {
-    "content": String,
-    "path": String
+    content: String,
+    path: String
   };
 
   type generate_imageInput = {
-    "aspect_ratio"?: String,
-    "model_id"?: String,
-    "negative_prompt"?: String,
-    "output_format"?: String,
-    "prompt": String,
-    "region"?: String,
-    "seed"?: Long
+    aspect_ratio?: String,
+    model_id?: String,
+    negative_prompt?: String,
+    output_format?: String,
+    prompt: String,
+    region?: String,
+    seed?: Long
   };
 
   type generate_image_stabilityInput = {
-    "aspect_ratio"?: MyMcpServer::generate_image_stability::Input::aspect_ratio,
-    "cfg_scale"?: MyMcpServer::Number,
-    "image"?: String,
-    "mode"?: MyMcpServer::generate_image_stability::Input::mode,
-    "negative_prompt"?: String,
-    "output_format"?: MyMcpServer::generate_image_stability::Input::output_format,
-    "prompt": String,
-    "return_type"?: MyMcpServer::generate_image_stability::Input::return_type,
-    "seed"?: Long,
-    "strength"?: MyMcpServer::Number,
-    "style_preset"?: MyMcpServer::generate_image_stability::Input::style_preset
+    aspect_ratio?: MyMcpServer::generate_image_stability::Input::aspect_ratio,
+    cfg_scale?: MyMcpServer::Number,
+    image?: String,
+    mode?: MyMcpServer::generate_image_stability::Input::mode,
+    negative_prompt?: String,
+    output_format?: MyMcpServer::generate_image_stability::Input::output_format,
+    prompt: String,
+    return_type?: MyMcpServer::generate_image_stability::Input::return_type,
+    seed?: Long,
+    strength?: MyMcpServer::Number,
+    style_preset?: MyMcpServer::generate_image_stability::Input::style_preset
   };
 
   type handoff_to_userInput = {
-    "breakout_of_loop"?: Bool,
-    "message": String
+    breakout_of_loop?: Bool,
+    message: String
   };
 
   type http_requestInput = {
-    "allow_redirects"?: Bool,
-    "auth_env_var"?: String,
-    "auth_token"?: String,
-    "auth_type"?: MyMcpServer::http_request::Input::auth_type,
-    "aws_auth"?: MyMcpServer::http_request::Input::aws_auth,
-    "basic_auth"?: MyMcpServer::http_request::Input::basic_auth,
-    "body"?: String,
-    "convert_to_markdown"?: Bool,
-    "cookie"?: String,
-    "cookie_jar"?: String,
-    "digest_auth"?: MyMcpServer::http_request::Input::digest_auth,
-    "headers"?: MyMcpServer::http_request::Input::headers,
-    "jwt_config"?: MyMcpServer::http_request::Input::jwt_config,
-    "max_redirects"?: Long,
-    "method": String,
-    "metrics"?: Bool,
-    "session_config"?: MyMcpServer::http_request::Input::session_config,
-    "streaming"?: Bool,
-    "url": String,
-    "verify_ssl"?: Bool
+    allow_redirects?: Bool,
+    auth_env_var?: String,
+    auth_token?: String,
+    auth_type?: MyMcpServer::http_request::Input::auth_type,
+    aws_auth?: MyMcpServer::http_request::Input::aws_auth,
+    basic_auth?: MyMcpServer::http_request::Input::basic_auth,
+    body?: String,
+    convert_to_markdown?: Bool,
+    cookie?: String,
+    cookie_jar?: String,
+    digest_auth?: MyMcpServer::http_request::Input::digest_auth,
+    headers?: MyMcpServer::http_request::Input::headers,
+    jwt_config?: MyMcpServer::http_request::Input::jwt_config,
+    max_redirects?: Long,
+    method: String,
+    metrics?: Bool,
+    session_config?: MyMcpServer::http_request::Input::session_config,
+    streaming?: Bool,
+    url: String,
+    verify_ssl?: Bool
   };
 
   type image_readerInput = {
-    "image_path": String
+    image_path: String
   };
 
   type journalInput = {
-    "action": MyMcpServer::journal::Input::action,
-    "content"?: String,
-    "date"?: String,
-    "task"?: String
+    action: MyMcpServer::journal::Input::action,
+    content?: String,
+    date?: String,
+    task?: String
   };
 
   type load_toolInput = {
-    "name": String,
-    "path": String
+    name: String,
+    path: String
   };
 
   type mcp_clientInput = {
-    "action": String,
-    "args"?: Set<String>,
-    "arguments"?: MyMcpServer::mcp_client::Input::arguments,
-    "auth"?: String,
-    "command"?: String,
-    "connection_id"?: String,
-    "env"?: MyMcpServer::mcp_client::Input::env,
-    "headers"?: MyMcpServer::mcp_client::Input::headers,
-    "server_config"?: MyMcpServer::mcp_client::Input::server_config,
-    "server_url"?: String,
-    "sse_read_timeout"?: MyMcpServer::Number,
-    "terminate_on_close"?: Bool,
-    "timeout"?: MyMcpServer::Number,
-    "tool_args"?: MyMcpServer::mcp_client::Input::tool_args,
-    "tool_name"?: String,
-    "transport"?: String
+    action: String,
+    args?: Set<String>,
+    arguments?: MyMcpServer::mcp_client::Input::arguments,
+    auth?: String,
+    command?: String,
+    connection_id?: String,
+    env?: MyMcpServer::mcp_client::Input::env,
+    headers?: MyMcpServer::mcp_client::Input::headers,
+    server_config?: MyMcpServer::mcp_client::Input::server_config,
+    server_url?: String,
+    sse_read_timeout?: MyMcpServer::Number,
+    terminate_on_close?: Bool,
+    timeout?: MyMcpServer::Number,
+    tool_args?: MyMcpServer::mcp_client::Input::tool_args,
+    tool_name?: String,
+    transport?: String
   };
 
   type mem0_memoryInput = {
-    "action": MyMcpServer::mem0_memory::Input::action,
-    "agent_id"?: String,
-    "content"?: String,
-    "memory_id"?: String,
-    "metadata"?: MyMcpServer::mem0_memory::Input::metadata,
-    "query"?: String,
-    "user_id"?: String
+    action: MyMcpServer::mem0_memory::Input::action,
+    agent_id?: String,
+    content?: String,
+    memory_id?: String,
+    metadata?: MyMcpServer::mem0_memory::Input::metadata,
+    query?: String,
+    user_id?: String
   };
 
   type memoryInput = {
-    "STRANDS_KNOWLEDGE_BASE_ID"?: String,
-    "action": String,
-    "content"?: String,
-    "document_id"?: String,
-    "max_results"?: Long,
-    "min_score"?: MyMcpServer::Number,
-    "next_token"?: String,
-    "query"?: String,
-    "region_name"?: String,
-    "title"?: String
+    STRANDS_KNOWLEDGE_BASE_ID?: String,
+    action: String,
+    content?: String,
+    document_id?: String,
+    max_results?: Long,
+    min_score?: MyMcpServer::Number,
+    next_token?: String,
+    query?: String,
+    region_name?: String,
+    title?: String
   };
 
   type nova_reelsInput = {
-    "action": String,
-    "dimension"?: String,
-    "fps"?: Long,
-    "image_path"?: String,
-    "invocation_arn"?: String,
-    "max_results"?: Long,
-    "region"?: String,
-    "s3_bucket"?: String,
-    "seed"?: Long,
-    "status_filter"?: String,
-    "text"?: String
+    action: String,
+    dimension?: String,
+    fps?: Long,
+    image_path?: String,
+    invocation_arn?: String,
+    max_results?: Long,
+    region?: String,
+    s3_bucket?: String,
+    seed?: Long,
+    status_filter?: String,
+    text?: String
   };
 
   type python_replInput = {
-    "code": String,
-    "interactive"?: Bool,
-    "reset_state"?: Bool
+    code: String,
+    interactive?: Bool,
+    reset_state?: Bool
   };
 
   type retrieveInput = {
-    "knowledgeBaseId"?: String,
-    "numberOfResults"?: Long,
-    "profile_name"?: String,
-    "region"?: String,
-    "score"?: MyMcpServer::Number,
-    "text": String
+    knowledgeBaseId?: String,
+    numberOfResults?: Long,
+    profile_name?: String,
+    region?: String,
+    score?: MyMcpServer::Number,
+    text: String
   };
 
   type rssInput = {
-    "action": String,
-    "auth_password"?: String,
-    "auth_username"?: String,
-    "category"?: String,
-    "feed_id"?: String,
-    "headers"?: MyMcpServer::rss::Input::headers,
-    "include_content"?: Bool,
-    "max_entries"?: Long,
-    "query"?: String,
-    "update_interval"?: Long,
-    "url"?: String
+    action: String,
+    auth_password?: String,
+    auth_username?: String,
+    category?: String,
+    feed_id?: String,
+    headers?: MyMcpServer::rss::Input::headers,
+    include_content?: Bool,
+    max_entries?: Long,
+    query?: String,
+    update_interval?: Long,
+    url?: String
   };
 
   type shellInput = {
-    "command": String,
-    "ignore_errors"?: Bool,
-    "non_interactive"?: Bool,
-    "parallel"?: Bool,
-    "timeout"?: Long,
-    "work_dir"?: String
+    command: String,
+    ignore_errors?: Bool,
+    non_interactive?: Bool,
+    parallel?: Bool,
+    timeout?: Long,
+    work_dir?: String
   };
 
   type slackInput = {
-    "action": String,
-    "parameters"?: MyMcpServer::slack::Input::parameters
+    action: String,
+    parameters?: MyMcpServer::slack::Input::parameters
   };
 
   type slack_send_messageInput = {
-    "channel": String,
-    "text": String,
-    "thread_ts"?: String
+    channel: String,
+    text: String,
+    thread_ts?: String
   };
 
   type sleepInput = {
-    "seconds": String
+    seconds: String
   };
 
   type speakInput = {
-    "mode"?: MyMcpServer::speak::Input::mode,
-    "output_path"?: String,
-    "play_audio"?: Bool,
-    "text": String,
-    "voice_id"?: String
+    mode?: MyMcpServer::speak::Input::mode,
+    output_path?: String,
+    play_audio?: Bool,
+    text: String,
+    voice_id?: String
   };
 
   type stopInput = {
-    "reason"?: String
+    reason?: String
   };
 
   type swarmInput = {
-    "agents": Set<MyMcpServer::swarm::Input::agents>,
-    "execution_timeout"?: MyMcpServer::Number,
-    "max_handoffs"?: Long,
-    "max_iterations"?: Long,
-    "node_timeout"?: MyMcpServer::Number,
-    "repetitive_handoff_detection_window"?: Long,
-    "repetitive_handoff_min_unique_agents"?: Long,
-    "task": String
+    agents: Set<MyMcpServer::swarm::Input::agents>,
+    execution_timeout?: MyMcpServer::Number,
+    max_handoffs?: Long,
+    max_iterations?: Long,
+    node_timeout?: MyMcpServer::Number,
+    repetitive_handoff_detection_window?: Long,
+    repetitive_handoff_min_unique_agents?: Long,
+    task: String
   };
 
   type tavily_crawlInput = {
-    "allow_external"?: Bool,
-    "categories"?: Set<MyMcpServer::tavily_crawl::Input::categories>,
-    "exclude_domains"?: Set<String>,
-    "exclude_paths"?: Set<String>,
-    "extract_depth"?: MyMcpServer::tavily_crawl::Input::extract_depth,
-    "format"?: MyMcpServer::tavily_crawl::Input::format,
-    "include_favicon"?: Bool,
-    "include_images"?: Bool,
-    "instructions"?: String,
-    "limit"?: Long,
-    "max_breadth"?: Long,
-    "max_depth"?: Long,
-    "select_domains"?: Set<String>,
-    "select_paths"?: Set<String>,
-    "url": String
+    allow_external?: Bool,
+    categories?: Set<MyMcpServer::tavily_crawl::Input::categories>,
+    exclude_domains?: Set<String>,
+    exclude_paths?: Set<String>,
+    extract_depth?: MyMcpServer::tavily_crawl::Input::extract_depth,
+    format?: MyMcpServer::tavily_crawl::Input::format,
+    include_favicon?: Bool,
+    include_images?: Bool,
+    instructions?: String,
+    limit?: Long,
+    max_breadth?: Long,
+    max_depth?: Long,
+    select_domains?: Set<String>,
+    select_paths?: Set<String>,
+    url: String
   };
 
   type tavily_extractInput = {
-    "extract_depth"?: MyMcpServer::tavily_extract::Input::extract_depth,
-    "format"?: MyMcpServer::tavily_extract::Input::format,
-    "include_favicon"?: Bool,
-    "include_images"?: Bool,
-    "urls": String
+    extract_depth?: MyMcpServer::tavily_extract::Input::extract_depth,
+    format?: MyMcpServer::tavily_extract::Input::format,
+    include_favicon?: Bool,
+    include_images?: Bool,
+    urls: String
   };
 
   type tavily_mapInput = {
-    "allow_external"?: Bool,
-    "categories"?: Set<MyMcpServer::tavily_map::Input::categories>,
-    "exclude_domains"?: Set<String>,
-    "exclude_paths"?: Set<String>,
-    "instructions"?: String,
-    "limit"?: Long,
-    "max_breadth"?: Long,
-    "max_depth"?: Long,
-    "select_domains"?: Set<String>,
-    "select_paths"?: Set<String>,
-    "url": String
+    allow_external?: Bool,
+    categories?: Set<MyMcpServer::tavily_map::Input::categories>,
+    exclude_domains?: Set<String>,
+    exclude_paths?: Set<String>,
+    instructions?: String,
+    limit?: Long,
+    max_breadth?: Long,
+    max_depth?: Long,
+    select_domains?: Set<String>,
+    select_paths?: Set<String>,
+    url: String
   };
 
   type tavily_searchInput = {
-    "auto_parameters"?: Bool,
-    "chunks_per_source"?: Long,
-    "country"?: String,
-    "days"?: Long,
-    "end_date"?: String,
-    "exclude_domains"?: Set<String>,
-    "include_answer"?: String,
-    "include_domains"?: Set<String>,
-    "include_favicon"?: Bool,
-    "include_image_descriptions"?: Bool,
-    "include_images"?: Bool,
-    "include_raw_content"?: String,
-    "max_results"?: Long,
-    "query": String,
-    "search_depth"?: MyMcpServer::tavily_search::Input::search_depth,
-    "start_date"?: String,
-    "time_range"?: MyMcpServer::tavily_search::Input::time_range,
-    "topic"?: MyMcpServer::tavily_search::Input::topic
+    auto_parameters?: Bool,
+    chunks_per_source?: Long,
+    country?: String,
+    days?: Long,
+    end_date?: String,
+    exclude_domains?: Set<String>,
+    include_answer?: String,
+    include_domains?: Set<String>,
+    include_favicon?: Bool,
+    include_image_descriptions?: Bool,
+    include_images?: Bool,
+    include_raw_content?: String,
+    max_results?: Long,
+    query: String,
+    search_depth?: MyMcpServer::tavily_search::Input::search_depth,
+    start_date?: String,
+    time_range?: MyMcpServer::tavily_search::Input::time_range,
+    topic?: MyMcpServer::tavily_search::Input::topic
   };
 
   type thinkInput = {
-    "cycle_count": Long,
-    "model_provider"?: String,
-    "model_settings"?: MyMcpServer::think::Input::model_settings,
-    "system_prompt": String,
-    "thinking_system_prompt"?: String,
-    "thought": String,
-    "tools"?: Set<String>
+    cycle_count: Long,
+    model_provider?: String,
+    model_settings?: MyMcpServer::think::Input::model_settings,
+    system_prompt: String,
+    thinking_system_prompt?: String,
+    thought: String,
+    tools?: Set<String>
   };
 
   type use_awsInput = {
-    "label": String,
-    "operation_name": String,
-    "parameters": MyMcpServer::use_aws::Input::parameters,
-    "profile_name"?: String,
-    "region": String,
-    "service_name": String
+    label: String,
+    operation_name: String,
+    parameters: MyMcpServer::use_aws::Input::parameters,
+    profile_name?: String,
+    region: String,
+    service_name: String
   };
 
   type use_computerInput = {
-    "action": String,
-    "app_name"?: String,
-    "click_type"?: String,
-    "drag_to_x"?: Long,
-    "drag_to_y"?: Long,
-    "focus_timeout"?: MyMcpServer::Number,
-    "hotkey_str"?: String,
-    "key"?: String,
-    "min_confidence"?: MyMcpServer::Number,
-    "modifier_keys"?: Set<String>,
-    "region"?: Set<Long>,
-    "screenshot_path"?: String,
-    "scroll_amount"?: Long,
-    "scroll_direction"?: String,
-    "send_screenshot"?: Bool,
-    "text"?: String,
-    "x"?: Long,
-    "y"?: Long
+    action: String,
+    app_name?: String,
+    click_type?: String,
+    drag_to_x?: Long,
+    drag_to_y?: Long,
+    focus_timeout?: MyMcpServer::Number,
+    hotkey_str?: String,
+    key?: String,
+    min_confidence?: MyMcpServer::Number,
+    modifier_keys?: Set<String>,
+    region?: Set<Long>,
+    screenshot_path?: String,
+    scroll_amount?: Long,
+    scroll_direction?: String,
+    send_screenshot?: Bool,
+    text?: String,
+    x?: Long,
+    y?: Long
   };
 
   type use_llmInput = {
-    "prompt": String,
-    "system_prompt": String,
-    "tools"?: Set<String>
+    prompt: String,
+    system_prompt: String,
+    tools?: Set<String>
   };
 
   type workflowInput = {
-    "action": String,
-    "tasks"?: Set<MyMcpServer::workflow::Input::tasks>,
-    "workflow_id"?: String
+    action: String,
+    tasks?: Set<MyMcpServer::workflow::Input::tasks>,
+    workflow_id?: String
   };
 
   entity McpServer;
@@ -871,80 +871,80 @@ namespace MyMcpServer {
   entity Number;
 
   entity User = {
-    "id": String,
-    "username": String
+    id: String,
+    username: String
   };
 
   action "a2a_discover_agent" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": a2a_discover_agentInput,
-  "session": CommonContext
-}
+      input: a2a_discover_agentInput,
+      session: CommonContext
+    }
   };
 
   action "a2a_list_discovered_agents" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": a2a_list_discovered_agentsInput,
-  "session": CommonContext
-}
+      input: a2a_list_discovered_agentsInput,
+      session: CommonContext
+    }
   };
 
   action "a2a_send_message" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": a2a_send_messageInput,
-  "session": CommonContext
-}
+      input: a2a_send_messageInput,
+      session: CommonContext
+    }
   };
 
   action "agent_core_memory" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": agent_core_memoryInput,
-  "session": CommonContext
-}
+      input: agent_core_memoryInput,
+      session: CommonContext
+    }
   };
 
   action "agent_graph" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": agent_graphInput,
-  "session": CommonContext
-}
+      input: agent_graphInput,
+      session: CommonContext
+    }
   };
 
   action "batch" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": batchInput,
-  "session": CommonContext
-}
+      input: batchInput,
+      session: CommonContext
+    }
   };
 
   action "browser" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": browserInput,
-  "session": CommonContext
-}
+      input: browserInput,
+      session: CommonContext
+    }
   };
 
   action "calculator" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": calculatorInput,
-  "session": CommonContext
-}
+      input: calculatorInput,
+      session: CommonContext
+    }
   };
 
   action "call_tool";
@@ -953,342 +953,342 @@ namespace MyMcpServer {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": code_interpreterInput,
-  "session": CommonContext
-}
+      input: code_interpreterInput,
+      session: CommonContext
+    }
   };
 
   action "cron" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": cronInput,
-  "session": CommonContext
-}
+      input: cronInput,
+      session: CommonContext
+    }
   };
 
   action "current_time" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": current_timeInput,
-  "session": CommonContext
-}
+      input: current_timeInput,
+      session: CommonContext
+    }
   };
 
   action "diagram" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": diagramInput,
-  "session": CommonContext
-}
+      input: diagramInput,
+      session: CommonContext
+    }
   };
 
   action "editor" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": editorInput,
-  "session": CommonContext
-}
+      input: editorInput,
+      session: CommonContext
+    }
   };
 
   action "environment" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": environmentInput,
-  "session": CommonContext
-}
+      input: environmentInput,
+      session: CommonContext
+    }
   };
 
   action "file_read" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": file_readInput,
-  "session": CommonContext
-}
+      input: file_readInput,
+      session: CommonContext
+    }
   };
 
   action "file_write" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": file_writeInput,
-  "session": CommonContext
-}
+      input: file_writeInput,
+      session: CommonContext
+    }
   };
 
   action "generate_image" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": generate_imageInput,
-  "session": CommonContext
-}
+      input: generate_imageInput,
+      session: CommonContext
+    }
   };
 
   action "generate_image_stability" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": generate_image_stabilityInput,
-  "session": CommonContext
-}
+      input: generate_image_stabilityInput,
+      session: CommonContext
+    }
   };
 
   action "handoff_to_user" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": handoff_to_userInput,
-  "session": CommonContext
-}
+      input: handoff_to_userInput,
+      session: CommonContext
+    }
   };
 
   action "http_request" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": http_requestInput,
-  "session": CommonContext
-}
+      input: http_requestInput,
+      session: CommonContext
+    }
   };
 
   action "image_reader" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": image_readerInput,
-  "session": CommonContext
-}
+      input: image_readerInput,
+      session: CommonContext
+    }
   };
 
   action "journal" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": journalInput,
-  "session": CommonContext
-}
+      input: journalInput,
+      session: CommonContext
+    }
   };
 
   action "load_tool" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": load_toolInput,
-  "session": CommonContext
-}
+      input: load_toolInput,
+      session: CommonContext
+    }
   };
 
   action "mcp_client" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": mcp_clientInput,
-  "session": CommonContext
-}
+      input: mcp_clientInput,
+      session: CommonContext
+    }
   };
 
   action "mem0_memory" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": mem0_memoryInput,
-  "session": CommonContext
-}
+      input: mem0_memoryInput,
+      session: CommonContext
+    }
   };
 
   action "memory" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": memoryInput,
-  "session": CommonContext
-}
+      input: memoryInput,
+      session: CommonContext
+    }
   };
 
   action "nova_reels" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": nova_reelsInput,
-  "session": CommonContext
-}
+      input: nova_reelsInput,
+      session: CommonContext
+    }
   };
 
   action "python_repl" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": python_replInput,
-  "session": CommonContext
-}
+      input: python_replInput,
+      session: CommonContext
+    }
   };
 
   action "retrieve" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": retrieveInput,
-  "session": CommonContext
-}
+      input: retrieveInput,
+      session: CommonContext
+    }
   };
 
   action "rss" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": rssInput,
-  "session": CommonContext
-}
+      input: rssInput,
+      session: CommonContext
+    }
   };
 
   action "shell" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": shellInput,
-  "session": CommonContext
-}
+      input: shellInput,
+      session: CommonContext
+    }
   };
 
   action "slack" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": slackInput,
-  "session": CommonContext
-}
+      input: slackInput,
+      session: CommonContext
+    }
   };
 
   action "slack_send_message" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": slack_send_messageInput,
-  "session": CommonContext
-}
+      input: slack_send_messageInput,
+      session: CommonContext
+    }
   };
 
   action "sleep" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": sleepInput,
-  "session": CommonContext
-}
+      input: sleepInput,
+      session: CommonContext
+    }
   };
 
   action "speak" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": speakInput,
-  "session": CommonContext
-}
+      input: speakInput,
+      session: CommonContext
+    }
   };
 
   action "stop" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": stopInput,
-  "session": CommonContext
-}
+      input: stopInput,
+      session: CommonContext
+    }
   };
 
   action "swarm" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": swarmInput,
-  "session": CommonContext
-}
+      input: swarmInput,
+      session: CommonContext
+    }
   };
 
   action "tavily_crawl" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": tavily_crawlInput,
-  "session": CommonContext
-}
+      input: tavily_crawlInput,
+      session: CommonContext
+    }
   };
 
   action "tavily_extract" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": tavily_extractInput,
-  "session": CommonContext
-}
+      input: tavily_extractInput,
+      session: CommonContext
+    }
   };
 
   action "tavily_map" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": tavily_mapInput,
-  "session": CommonContext
-}
+      input: tavily_mapInput,
+      session: CommonContext
+    }
   };
 
   action "tavily_search" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": tavily_searchInput,
-  "session": CommonContext
-}
+      input: tavily_searchInput,
+      session: CommonContext
+    }
   };
 
   action "think" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": thinkInput,
-  "session": CommonContext
-}
+      input: thinkInput,
+      session: CommonContext
+    }
   };
 
   action "use_aws" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": use_awsInput,
-  "session": CommonContext
-}
+      input: use_awsInput,
+      session: CommonContext
+    }
   };
 
   action "use_computer" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": use_computerInput,
-  "session": CommonContext
-}
+      input: use_computerInput,
+      session: CommonContext
+    }
   };
 
   action "use_llm" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": use_llmInput,
-  "session": CommonContext
-}
+      input: use_llmInput,
+      session: CommonContext
+    }
   };
 
   action "workflow" in [Action::"call_tool"] appliesTo {
     principal: [User],
     resource: [McpServer],
     context: {
-  "input": workflowInput,
-  "session": CommonContext
-}
+      input: workflowInput,
+      session: CommonContext
+    }
   };
 }
 
@@ -1306,14 +1306,14 @@ namespace MyMcpServer::browser::Input::ExecuteCdpAction::params {
 
 namespace MyMcpServer::agent_graph::Input::topology {
   entity edges = {
-    "from"?: String,
-    "to"?: String
+    from?: String,
+    to?: String
   };
 
   entity nodes = {
-    "id"?: String,
-    "role"?: String,
-    "system_prompt"?: String
+    id?: String,
+    role?: String,
+    system_prompt?: String
   };
 
   entity type enum ["star", "mesh", "hierarchical"];

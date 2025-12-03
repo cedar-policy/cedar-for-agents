@@ -13,7 +13,7 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-mcp-tools-sdk = { path = "../mcp-tools-sdk" }
+mcp-tools-sdk = { path = "../mcp-tools-sdk", version="0.1.0" }
 cedar-policy-core = "4.7.0"
 miette = "7.6.0"
 linked-hash-map = "0.5.6"
