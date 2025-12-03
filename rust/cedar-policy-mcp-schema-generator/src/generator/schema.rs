@@ -877,6 +877,15 @@ impl SchemaGenerator {
                 let name = RawName::from_name(name.qualify_with_name(self.namespace.as_ref()));
                 TypeVariant::Entity { name }
             }
+            PropertyType::Unknown => {
+                #[allow(clippy::unwrap_used, reason = "`Unknown` is a valid UnreservedId")]
+                // PANIC SAFETY: `"Unknown"` should not be a reserved id
+                let name: UnreservedId = "Unknown".parse().unwrap();
+                self.add_opaque_entity_type(&self.namespace.clone(), name.clone())?;
+                let name = RawName::new_from_unreserved(name, None);
+                let name = RawName::from_name(name.qualify_with_name(self.namespace.as_ref()));
+                TypeVariant::Entity { name }
+            }
             PropertyType::Enum { variants } => {
                 if variants.is_empty() {
                     return Err(SchemaGeneratorError::empty_enum_choice(format!(
@@ -1289,7 +1298,8 @@ mod test {
     "inputSchema": {
         "type": "object",
         "properties": {
-            "task_id": {"type": "string"}
+            "task_id": {"type": "string"},
+            "sub_tasks": { "type": "array" }
         },
         "required": ["task_id"]
     },
