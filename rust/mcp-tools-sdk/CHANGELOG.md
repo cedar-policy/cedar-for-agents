@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - Coming soon
+
 Added:
 - Adds `Unknown` `PropertyType` to represent when a property's (sub-)type is not provided.
 
