@@ -1,6 +1,7 @@
 [workspace]
 members = [
 	"cedar-policy-mcp-schema-generator",
+	"mcp-tools-sdk",
 ]
 
 resolver = "2"

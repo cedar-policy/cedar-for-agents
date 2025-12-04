@@ -7,26 +7,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-# [0.3.0] - 2025-11-11
-
-### Changed
-- Moved MCP server/tool description and related types, parsing, and manipulating code to a new crate `mcp-tools-sdk`.
-
-### Added
-- Added command line interface to cedar-policy-mcp-schema-generator.
-- Added new configuration option `encode_as_number` which forces all `"number"` and `"float"` typed MCP tool parameters to be encoded as a `decimal` in the generated Cedar schema.
-
-## [0.2.1] - 2025-11-03
-
-- Fix issue in which schemas were generated record types with `additionalAttributes` set to `true` when the record type represented the shape of an entity type that also had tags. This was in error and causes the generated schema to be malformed.
-
-## [0.2.0] - 2025-10-30
-
-### Added
-- Added configuration option to allow flattening namespaces into a single namespace.
-
-### Fixed
- - Fix issue in which mutually recursive type definitions in JSON type schemas would always result in the schema generator returning an error when encoding the type definition.
-
- ## [0.1.0] - 2025-10-21
  - Initial release of `cedar-policy-mcp-schema-generator`.

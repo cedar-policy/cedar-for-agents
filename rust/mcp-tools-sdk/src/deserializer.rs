@@ -368,18 +368,18 @@ fn property_type_from_json_value(
                             let items_type = property_type_from_json_value(items_json)?;
                             Ok(PropertyType::Array { element_ty: Box::new(items_type) })
                         } else {
-                            Err(DeserializationError::unexpected_type(
-                                items_json,
-                                "Expected `items` attribute to be a JSON Schema (object) describing the type of array items.",
-                                ContentType::PropertyType
-                            ))
+                            if items_json.is_bool() || items_json.is_null() {
+                                Ok(PropertyType::Array { element_ty: Box::new(PropertyType::Unknown) })
+                            } else {
+                                Err(DeserializationError::unexpected_type(
+                                    items_json,
+                                    "Expected `items` attribute to be a JSON Schema (object) describing the type of array items.",
+                                    ContentType::PropertyType
+                                ))
+                            }
                         }
                     } else {
-                        Err(DeserializationError::missing_attribute(
-                            json_value,
-                            "items",
-                            Vec::new()
-                        ))
+                        Ok(PropertyType::Array { element_ty: Box::new(PropertyType::Unknown) })
                     }
                 }
                 Some("object") => {
@@ -418,11 +418,15 @@ fn property_type_from_json_value(
                             .collect::<Result<_,_>>()?;
                         Ok(PropertyType::Tuple { types })
                     } else {
-                        Err(DeserializationError::unexpected_type(
-                            type_json,
-                            "Expected `type` attribute to be a string.",
-                            ContentType::PropertyType
-                        ))
+                        if type_json.is_bool() || type_json.is_null() {
+                            Ok(PropertyType::Unknown)
+                        } else {
+                            Err(DeserializationError::unexpected_type(
+                                type_json,
+                                "Expected `type` attribute to be a string.",
+                                ContentType::PropertyType
+                            ))
+                        }
                     }
                 }
             }
@@ -459,11 +463,7 @@ fn property_type_from_json_value(
                 ))
             }
         } else {
-            Err(DeserializationError::missing_attribute(
-                json_value,
-                "type",
-                vec!["anyOf".to_string(), "oneOf".to_string(), "$ref".to_string()],
-            ))
+            Ok(PropertyType::Unknown)
         }
     } else {
         Err(DeserializationError::unexpected_type(
