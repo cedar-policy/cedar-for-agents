@@ -392,6 +392,15 @@ impl RequestGenerator {
                 let ipaddr_ctor = "ip".parse().unwrap();
                 RestrictedExpr::call_extension_fn(ipaddr_ctor, vec![val])
             }
+            PropertyType::Unknown => {
+                // PANIC SAFETY: Unknown should be a valid EntityType name
+                #[allow(clippy::unwrap_used, reason = "Unknown should be a valid EntityType name")]
+                let ty: EntityType = "Unknown".parse().unwrap();
+                let ty = ty.qualify_with(self.root_namespace.as_ref());
+                let eid = Eid::new("unknown");
+                let euid = EntityUID::from_components(ty, eid, None);
+                RestrictedExpr::val(euid)
+            }
             PropertyType::Enum { .. } => {
                 // PANIC SAFETY: By assumption (that we could generate a schema for this tool description), `ty_name` should be a valid EntityType name
                 #[allow(
