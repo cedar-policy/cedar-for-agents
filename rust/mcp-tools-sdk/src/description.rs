@@ -18,6 +18,8 @@ use smol_str::{SmolStr, ToSmolStr};
 use std::collections::HashMap;
 use std::path::Path;
 
+use crate::data;
+
 use super::data::{Input, Output};
 use super::deserializer;
 use super::err::{DeserializationError, ValidationError};
@@ -259,7 +261,7 @@ impl ToolDescription {
         &self,
         input: &Input,
         type_defs: &HashMap<SmolStr, PropertyTypeDef>,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<data::TypedInput, ValidationError> {
         validate_input(self, input, type_defs)
     }
 
@@ -268,7 +270,7 @@ impl ToolDescription {
         &self,
         output: &Output,
         type_defs: &HashMap<SmolStr, PropertyTypeDef>,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<data::TypedOutput, ValidationError> {
         validate_output(self, output, type_defs)
     }
 }
@@ -318,7 +320,7 @@ impl ServerDescription {
     }
 
     /// Validate the `Input` against the corresponding tool within this `ServerDescription`
-    pub fn validate_input(&self, input: &Input) -> Result<(), ValidationError> {
+    pub fn validate_input(&self, input: &Input) -> Result<data::TypedInput, ValidationError> {
         match self.tools.get(input.name()) {
             Some(tool) => tool.validate_input(input, &self.type_defs.type_defs),
             None => Err(ValidationError::tool_not_found(input.name().into())),
@@ -326,7 +328,11 @@ impl ServerDescription {
     }
 
     /// Validate the `Output` against the corresponding tool within this `ServerDescription`
-    pub fn validate_output(&self, tool_name: &str, output: &Output) -> Result<(), ValidationError> {
+    pub fn validate_output(
+        &self,
+        tool_name: &str,
+        output: &Output,
+    ) -> Result<data::TypedOutput, ValidationError> {
         match self.tools.get(tool_name) {
             Some(tool) => tool.validate_output(output, &self.type_defs.type_defs),
             None => Err(ValidationError::tool_not_found(tool_name.into())),
@@ -1138,7 +1144,7 @@ mod test {
     }
 }"#;
         let input = Input::from_json_str(tool_input).unwrap();
-        tools.validate_input(&input).unwrap()
+        tools.validate_input(&input).unwrap();
     }
 
     #[test]
@@ -1226,7 +1232,7 @@ mod test {
     }
 }"#;
         let input = Input::from_json_str(tool_input).unwrap();
-        tools.validate_input(&input).unwrap()
+        tools.validate_input(&input).unwrap();
     }
 
     #[test]
@@ -1253,7 +1259,7 @@ mod test {
     }
 }"#;
         let input = Input::from_json_str(tool_input).unwrap();
-        tools.validate_input(&input).unwrap()
+        tools.validate_input(&input).unwrap();
     }
 
     #[test]
@@ -1377,7 +1383,7 @@ mod test {
     }
 }"#;
         let output = Output::from_json_str(tool_output).unwrap();
-        tools.validate_output("test_tool", &output).unwrap()
+        tools.validate_output("test_tool", &output).unwrap();
     }
 
     #[test]
@@ -1454,7 +1460,7 @@ mod test {
     }
 }"#;
         let output = Output::from_json_str(tool_output).unwrap();
-        tools.validate_output("test_tool", &output).unwrap()
+        tools.validate_output("test_tool", &output).unwrap();
     }
 
     #[test]
@@ -1482,7 +1488,7 @@ mod test {
     }
 }"#;
         let output = Output::from_json_str(tool_output).unwrap();
-        tools.validate_output("test_tool", &output).unwrap()
+        tools.validate_output("test_tool", &output).unwrap();
     }
 
     #[test]

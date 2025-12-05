@@ -15,6 +15,7 @@ repository.workspace = true
 [dependencies]
 chrono = "0.4"
 iso8601 = "0.6.3"
+itertools = "0.14.0"
 linked-hash-map = "0.5.6"
 miette = "7.6.0"
 nonempty = "0.12"
