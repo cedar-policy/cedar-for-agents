@@ -98,7 +98,8 @@ mod cli {
 
     #[test]
     fn test_simple_default_json_schema() {
-        let expected = std::fs::read_to_string("examples/simple/tool_default.json").unwrap();
+        let expected =
+            std::fs::read_to_string("examples/simple/tool_default.cedarschema.json").unwrap();
 
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
@@ -127,7 +128,8 @@ mod cli {
     #[test]
     fn test_simple_keep_annotations_json_schema() {
         let expected =
-            std::fs::read_to_string("examples/simple/tool_keep_annotations.json").unwrap();
+            std::fs::read_to_string("examples/simple/tool_keep_annotations.cedarschema.json")
+                .unwrap();
 
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
@@ -157,7 +159,8 @@ mod cli {
     #[test]
     fn test_simple_object_as_records_json_schema() {
         let expected =
-            std::fs::read_to_string("examples/simple/tool_objects_as_records.json").unwrap();
+            std::fs::read_to_string("examples/simple/tool_objects_as_records.cedarschema.json")
+                .unwrap();
 
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
@@ -187,7 +190,8 @@ mod cli {
     #[test]
     fn test_simple_include_outputs_json_schema() {
         let expected =
-            std::fs::read_to_string("examples/simple/tool_include_outputs.json").unwrap();
+            std::fs::read_to_string("examples/simple/tool_include_outputs.cedarschema.json")
+                .unwrap();
 
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
@@ -220,7 +224,8 @@ mod cli {
     #[test]
     fn test_simple_flattened_namespace_json_schema() {
         let expected =
-            std::fs::read_to_string("examples/simple/tool_flattened_namespace.json").unwrap();
+            std::fs::read_to_string("examples/simple/tool_flattened_namespace.cedarschema.json")
+                .unwrap();
 
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
@@ -252,8 +257,10 @@ mod cli {
 
     #[test]
     fn test_simple_encode_numbers_as_decimal_json_schema() {
-        let expected =
-            std::fs::read_to_string("examples/simple/tool_encode_numbers_as_decimal.json").unwrap();
+        let expected = std::fs::read_to_string(
+            "examples/simple/tool_encode_numbers_as_decimal.cedarschema.json",
+        )
+        .unwrap();
 
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
