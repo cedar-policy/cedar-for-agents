@@ -1029,8 +1029,12 @@ impl SchemaGenerator {
                     attributes.insert(attr_name, ty);
                 }
 
+                let qualified_ty_name = RawName::from_name(
+                    RawName::new_from_unreserved(ty_name.clone(), None)
+                        .qualify_with_name(namespace.as_ref()),
+                );
                 // Encode as record if possible and allowed
-                if self.config.objects_as_records && tags.is_none() {
+                let type_reference = if self.config.objects_as_records && tags.is_none() {
                     let ty = Type::Type {
                         ty: TypeVariant::Record(RecordType {
                             attributes,
@@ -1038,7 +1042,10 @@ impl SchemaGenerator {
                         }),
                         loc: None,
                     };
-                    self.add_commontype(namespace, ty, ty_name.clone(), true)?;
+                    self.add_commontype(namespace, ty, ty_name, true)?;
+                    TypeVariant::EntityOrCommon {
+                        type_name: self.flatten_rawname(qualified_ty_name),
+                    }
                 } else {
                     // otherwise encode as EntityType
                     let ty = EntityType {
@@ -1057,15 +1064,14 @@ impl SchemaGenerator {
                         loc: None,
                     };
 
-                    self.add_entitytype(namespace, ty, ty_name.clone(), true)?;
-                }
+                    self.add_entitytype(namespace, ty, ty_name, true)?;
+                    TypeVariant::Entity {
+                        name: self.flatten_rawname(qualified_ty_name),
+                    }
+                };
 
                 self.drop_namespace_if_empty(&ns);
-                let name = RawName::new_from_unreserved(ty_name, None);
-                let name = RawName::from_name(name.qualify_with_name(namespace.as_ref()));
-                TypeVariant::Entity {
-                    name: self.flatten_rawname(name),
-                }
+                type_reference
             }
             PropertyType::Ref { name } => match common_types.get(name) {
                 None => {
@@ -1431,7 +1437,6 @@ mod test {
             .expect("Failed to add tool description");
 
         let schema = schema_generator.get_schema();
-
         let root_namespace = Some("Test".parse::<Name>().unwrap());
         let input_namespace = Some("Test::test_tool::Input".parse::<Name>().unwrap());
 
@@ -1445,6 +1450,19 @@ mod test {
             .expect("Expected namespace Test::test_tool::Input to exist");
 
         assert!(root_nsdef.actions.contains_key("test_tool"));
+        // Check that common type references is not encoded as `Entity`
+        assert_matches!(
+            root_nsdef.common_types.get(&CommonTypeId::unchecked("test_toolInput".parse().unwrap())),
+            Some(
+                CommonType { ty: Type::Type{ ty: TypeVariant::Record(test_tool_rty), ..}, .. }
+            ) => {
+                assert_matches!(
+                    test_tool_rty.attributes.get("test_obj"),
+                    Some(TypeOfAttribute { ty: Type::Type { ty: TypeVariant::EntityOrCommon { .. }, .. }, .. })
+                );
+            }
+        );
+
         assert!(input_nsdef.actions.is_empty());
 
         assert!(input_nsdef.common_types.iter().count() == 1);
