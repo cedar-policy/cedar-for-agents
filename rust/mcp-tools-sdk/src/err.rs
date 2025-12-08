@@ -54,7 +54,7 @@ pub enum DeserializationError {
         code(deserialization_error::non_well_founded_type_definitions),
         help("Ensure that the type definitions are well-founded (all type definitions have finite size)")
     )]
-    NonWellFoundedTypeDefinitions(TypeDefinitionCycle)
+    NonWellFoundedTypeDefinitions(TypeDefinitionCycle),
 }
 
 impl DeserializationError {
@@ -227,10 +227,10 @@ pub struct ReadError {
     error: String,
 }
 
-#[allow(dead_code, reason="cycle is used implicitly in error message")]
+#[allow(dead_code, reason = "cycle is used implicitly in error message")]
 #[derive(Debug)]
 pub struct TypeDefinitionCycle {
-    cycle: Vec<SmolStr>
+    cycle: Vec<SmolStr>,
 }
 
 #[derive(Error, Debug, Diagnostic)]

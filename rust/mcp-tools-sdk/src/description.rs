@@ -1135,9 +1135,7 @@ mod test {
             ToolDescription::from_json_str(tool_description),
             Err(DeserializationError::NonWellFoundedTypeDefinitions(..))
         );
-        
     }
-
 
     //--------------- Test Input/Output Validation -------------------------
     #[test]

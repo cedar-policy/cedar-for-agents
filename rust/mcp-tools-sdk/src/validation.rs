@@ -19,7 +19,7 @@ use crate::description::{self, PropertyType, ToolDescription};
 use crate::err::ValidationError;
 use itertools::Itertools;
 use smol_str::{SmolStr, ToSmolStr};
-use std::collections::{HashMap, hash_map::Entry};
+use std::collections::{hash_map::Entry, HashMap};
 
 pub(crate) fn validate_input(
     tool: &ToolDescription,
@@ -166,7 +166,7 @@ fn validate_property_type(
                     return Ok(TypedValue::Union {
                         index,
                         value: Box::new(ty_val),
-                    })
+                    });
                 }
             }
             Err(ValidationError::InvalidValueForUnionType)
