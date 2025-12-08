@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 - Adds support for parsing and type validation of requests to (`Input` struct) and responses from (`Output` struct) MCP servers for the `tools/call` procedure.
 
+## [0.2.0] - 2025-12-05
+
 Added:
 - Adds `Unknown` `PropertyType` to represent when a property's (sub-)type is not provided.
 

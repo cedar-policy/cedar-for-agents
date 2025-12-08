@@ -7,4 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Generated JSON format schemas now correctly reference common types using `EntityOrCommon` instead `Entity`.
+
+## [0.4.0] - 2025-12-05
+
  - Initial release of `cedar-policy-mcp-schema-generator`.
