@@ -60,6 +60,9 @@ pub enum Value {
 }
 
 #[derive(Debug, Clone)]
+/// An enum representing the result of validating a MCP tool argument / result in which
+/// the `Value` is tagged with the `PropertyType the` `Value` was validated against.
+/// For exampel string `Values` can be validated as a String, Enum, Decimal, Datetime, Duration or IpAddr.
 pub enum TypedValue {
     Null,
     Bool(bool),

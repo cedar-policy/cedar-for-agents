@@ -6,14 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added:
 - Adds support for parsing and type validation of requests to (`Input` struct) and responses from (`Output` struct) MCP servers for the `tools/call` procedure.
 
 ## [0.2.0] - 2025-12-05
 
-Added:
+### Added:
 - Adds `Unknown` `PropertyType` to represent when a property's (sub-)type is not provided.
 
-Fixed:
+### Fixed:
 - Fixed a bug in MCP Tool description parser that would reject legal JSON schemas when the schemas included 
 array and property types that are unspecified.
 

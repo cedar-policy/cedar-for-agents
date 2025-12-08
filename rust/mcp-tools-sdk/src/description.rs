@@ -260,7 +260,7 @@ impl ToolDescription {
     pub fn validate_input(
         &self,
         input: &Input,
-        type_defs: &HashMap<SmolStr, PropertyTypeDef>,
+        type_defs: HashMap<SmolStr, PropertyTypeDef>,
     ) -> Result<data::TypedInput, ValidationError> {
         validate_input(self, input, type_defs)
     }
@@ -269,7 +269,7 @@ impl ToolDescription {
     pub fn validate_output(
         &self,
         output: &Output,
-        type_defs: &HashMap<SmolStr, PropertyTypeDef>,
+        type_defs: HashMap<SmolStr, PropertyTypeDef>,
     ) -> Result<data::TypedOutput, ValidationError> {
         validate_output(self, output, type_defs)
     }
@@ -322,7 +322,7 @@ impl ServerDescription {
     /// Validate the `Input` against the corresponding tool within this `ServerDescription`
     pub fn validate_input(&self, input: &Input) -> Result<data::TypedInput, ValidationError> {
         match self.tools.get(input.name()) {
-            Some(tool) => tool.validate_input(input, &self.type_defs.type_defs),
+            Some(tool) => tool.validate_input(input, self.type_defs.type_defs.clone()),
             None => Err(ValidationError::tool_not_found(input.name().into())),
         }
     }
@@ -334,7 +334,7 @@ impl ServerDescription {
         output: &Output,
     ) -> Result<data::TypedOutput, ValidationError> {
         match self.tools.get(tool_name) {
-            Some(tool) => tool.validate_output(output, &self.type_defs.type_defs),
+            Some(tool) => tool.validate_output(output, self.type_defs.type_defs.clone()),
             None => Err(ValidationError::tool_not_found(tool_name.into())),
         }
     }
@@ -1317,7 +1317,7 @@ mod test {
 }"#;
         let input = Input::from_json_str(tool_input).unwrap();
         assert_matches!(
-            tool.validate_input(&input, &HashMap::new()),
+            tool.validate_input(&input, HashMap::new()),
             Err(ValidationError::MismatchedToolNames(..))
         )
     }
