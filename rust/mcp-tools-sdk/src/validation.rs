@@ -14,17 +14,18 @@
  * limitations under the License.
  */
 
-use crate::data::{self, Input, Output};
+use crate::data::{self, Input, Output, TypedInput, TypedOutput, TypedValue, Value};
 use crate::description::{self, PropertyType, ToolDescription};
 use crate::err::ValidationError;
+use itertools::Itertools;
 use smol_str::{SmolStr, ToSmolStr};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 pub(crate) fn validate_input(
     tool: &ToolDescription,
     input: &Input,
     type_defs: &HashMap<SmolStr, description::PropertyTypeDef>,
-) -> Result<(), ValidationError> {
+) -> Result<TypedInput, ValidationError> {
     if tool.name() != input.name() {
         return Err(ValidationError::mismatched_names(
             tool.name().to_smolstr(),
@@ -36,33 +37,44 @@ pub(crate) fn validate_input(
     type_defs.extend(tool.type_defs.type_defs.clone());
 
     let args = input.get_args().collect();
-    validate_parameters(&tool.inputs, &args, &mut type_defs)
+    let args = validate_parameters(&tool.inputs, args, &mut type_defs)?;
+    Ok(TypedInput {
+        name: input.name.clone(),
+        args,
+    })
 }
 
 pub(crate) fn validate_output(
     tool: &ToolDescription,
     output: &Output,
     type_defs: &HashMap<SmolStr, description::PropertyTypeDef>,
-) -> Result<(), ValidationError> {
+) -> Result<TypedOutput, ValidationError> {
     let mut type_defs = type_defs.clone();
     type_defs.extend(tool.type_defs.type_defs.clone());
 
     let results = output.get_results().collect();
-    validate_parameters(&tool.outputs, &results, &mut type_defs)
+    let results = validate_parameters(&tool.outputs, results, &mut type_defs)?;
+    Ok(TypedOutput { results })
 }
 
 fn validate_parameters(
     types: &description::Parameters,
-    vals: &HashMap<&str, data::BorrowedValue<'_>>,
+    vals: HashMap<&str, data::BorrowedValue<'_>>,
     type_defs: &mut HashMap<SmolStr, description::PropertyTypeDef>,
-) -> Result<(), ValidationError> {
+) -> Result<HashMap<SmolStr, TypedValue>, ValidationError> {
     type_defs.extend(types.type_defs.type_defs.clone());
 
-    let mut props = HashSet::new();
+    let mut props = HashMap::new();
     for property in types.properties() {
-        props.insert(property.name());
         match vals.get(property.name()) {
-            Some(val) => validate_property_type(property.property_type(), val, type_defs)?,
+            Some(val) => {
+                let ty_val = validate_property_type(
+                    property.property_type(),
+                    val.clone().into(),
+                    type_defs,
+                )?;
+                props.insert(property.name().to_smolstr(), ty_val);
+            }
             None if property.is_required() => {
                 return Err(ValidationError::missing_required_property(
                     property.name().into(),
@@ -72,149 +84,118 @@ fn validate_parameters(
         }
     }
     for val in vals.keys() {
-        if !props.contains(*val) {
+        if !props.contains_key(*val) {
             return Err(ValidationError::unexpected_property(val));
         }
     }
-
-    Ok(())
+    Ok(props)
 }
 
 fn validate_property_type(
     ty: &PropertyType,
-    val: &data::BorrowedValue<'_>,
+    val: Value,
     type_defs: &HashMap<SmolStr, description::PropertyTypeDef>,
-) -> Result<(), ValidationError> {
-    match ty {
-        PropertyType::Bool if val.is_bool() => (),
-        PropertyType::Integer if val.is_number() => {
-            if val.get_i64().is_none() {
-                // PANIC SAFETY: the value is a number. Converting to a number should not error
-                #[allow(
-                    clippy::unwrap_used,
-                    reason = "val is a number. Converting to number should not error"
-                )]
-                let val = val.get_number().unwrap();
-                return Err(ValidationError::invalid_integer_literal(val.as_str()));
+) -> Result<TypedValue, ValidationError> {
+    match (ty, val) {
+        (PropertyType::Bool, Value::Bool(b)) => Ok(TypedValue::Bool(b)),
+        (PropertyType::Integer, Value::Number(num)) => match num.to_i64() {
+            Some(i) => Ok(TypedValue::Integer(i)),
+            None => Err(ValidationError::invalid_integer_literal(num.as_str())),
+        },
+        (PropertyType::Float, Value::Number(num)) => match num.to_f64() {
+            Some(f) => Ok(TypedValue::Float(f)),
+            None => Err(ValidationError::invalid_float_literal(num.as_str())),
+        },
+        (PropertyType::Number, Value::Number(num)) => Ok(TypedValue::Number(num)),
+        (PropertyType::String, Value::String(s)) => Ok(TypedValue::String(s)),
+        (PropertyType::Decimal, Value::String(s)) => {
+            if !is_decimal(&s) {
+                Err(ValidationError::invalid_decimal_literal(&s))
+            } else {
+                Ok(TypedValue::Decimal(s))
             }
         }
-        PropertyType::Float if val.is_number() => {
-            if val.get_f64().is_none() {
-                // PANIC SAFETY: the value is a number. Converting to a number should not error
-                #[allow(
-                    clippy::unwrap_used,
-                    reason = "val is a number. Converting to number should not error"
-                )]
-                let val = val.get_number().unwrap();
-                return Err(ValidationError::invalid_float_literal(val.as_str()));
+        (PropertyType::Datetime, Value::String(s)) => {
+            if !is_datetime(&s) {
+                Err(ValidationError::invalid_datetime_literal(&s))
+            } else {
+                Ok(TypedValue::Datetime(s))
             }
         }
-        PropertyType::Number if val.is_number() => (),
-        PropertyType::String if val.is_string() => (),
-        PropertyType::Decimal if val.is_string() => {
-            // PANIC SAFETY: the value is a string. Converting to str should not error
-            #[allow(
-                clippy::unwrap_used,
-                reason = "val is a string. Converstion to str should not error"
-            )]
-            let val = val.get_str().unwrap();
-            if !is_decimal(val) {
-                return Err(ValidationError::invalid_decimal_literal(val));
+        (PropertyType::Duration, Value::String(s)) => {
+            if !is_duration(&s) {
+                Err(ValidationError::invalid_duration_literal(&s))
+            } else {
+                Ok(TypedValue::Duration(s))
             }
         }
-        PropertyType::Datetime if val.is_string() => {
-            // PANIC SAFETY: the value is a string. Converting to str should not error
-            #[allow(
-                clippy::unwrap_used,
-                reason = "val is a string. Converstion to str should not error"
-            )]
-            let val = val.get_str().unwrap();
-            if !is_datetime(val) {
-                return Err(ValidationError::invalid_datetime_literal(val));
+        (PropertyType::IpAddr, Value::String(s)) => {
+            if !is_ipaddr(&s) {
+                Err(ValidationError::invalid_ipaddr_literal(&s))
+            } else {
+                Ok(TypedValue::IpAddr(s))
             }
         }
-        PropertyType::Duration if val.is_string() => {
-            // PANIC SAFETY: the value is a string. Converting to str should not error
-            #[allow(
-                clippy::unwrap_used,
-                reason = "val is a string. Converstion to str should not error"
-            )]
-            let val = val.get_str().unwrap();
-            if !is_duration(val) {
-                return Err(ValidationError::invalid_duration_literal(val));
+        (PropertyType::Null, Value::Null) => Ok(TypedValue::Null),
+        (PropertyType::Enum { variants }, Value::String(s)) => {
+            if !variants.contains(&s) {
+                Err(ValidationError::invalid_enum_variant(&s))
+            } else {
+                Ok(TypedValue::String(s))
             }
         }
-        PropertyType::IpAddr if val.is_string() => {
-            // PANIC SAFETY: the value is a string. Converting to str should not error
-            #[allow(
-                clippy::unwrap_used,
-                reason = "val is a string. Converstion to str should not error"
-            )]
-            let val = val.get_str().unwrap();
-            if !is_ipaddr(val) {
-                return Err(ValidationError::invalid_ipaddr_literal(val));
-            }
+        (PropertyType::Array { element_ty }, Value::Array(vals)) => {
+            let vals = vals
+                .into_iter()
+                .map(|v| validate_property_type(element_ty, v, type_defs))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(TypedValue::Array(vals))
         }
-        PropertyType::Null if val.is_null() => (),
-        PropertyType::Enum { variants } if val.is_string() => {
-            // PANIC SAFETY: the value is a string. Converting to smolstr should not error
-            #[allow(
-                clippy::unwrap_used,
-                reason = "val is a string. Converting to smolstr should not error"
-            )]
-            let val = val.get_smolstr().unwrap();
-            if !variants.contains(&val) {
-                return Err(ValidationError::invalid_enum_variant(val.as_str()));
-            }
-        }
-        PropertyType::Array { element_ty } if val.is_array() => {
+        (PropertyType::Tuple { types }, Value::Array(vals)) => {
             // PANIC SAFETY: the value is an array. Getting as an array should not error
             #[allow(
                 clippy::unwrap_used,
                 reason = "val is an array. Getting as an array should not error"
             )]
-            let val = val.get_array().unwrap();
-            for v in val {
-                validate_property_type(element_ty, &v, type_defs)?
+            if types.len() != vals.len() {
+                return Err(ValidationError::wrong_tuple_size(types.len(), vals.len()));
             }
+            let vals = vals
+                .into_iter()
+                .zip(types.iter())
+                .map(|(val, ty)| validate_property_type(ty, val, type_defs))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(TypedValue::Tuple(vals))
         }
-        PropertyType::Tuple { types } if val.is_array() => {
-            // PANIC SAFETY: the value is an array. Getting as an array should not error
-            #[allow(
-                clippy::unwrap_used,
-                reason = "val is an array. Getting as an array should not error"
-            )]
-            let val = val.get_array().unwrap();
-            if types.len() != val.len() {
-                return Err(ValidationError::wrong_tuple_size(types.len(), val.len()));
+        (PropertyType::Union { types }, val) => {
+            for (index, ty) in types.iter().enumerate() {
+                match validate_property_type(ty, val.clone(), type_defs) {
+                    Ok(ty_val) => {
+                        return Ok(TypedValue::Union {
+                            index,
+                            value: Box::new(ty_val),
+                        })
+                    }
+                    Err(_) => (),
+                }
             }
-            for (ty, val) in types.iter().zip(val.iter()) {
-                validate_property_type(ty, val, type_defs)?
-            }
+            Err(ValidationError::InvalidValueForUnionType)
         }
-        PropertyType::Union { types } => {
-            if !types
-                .iter()
-                .any(|ty| validate_property_type(ty, val, type_defs).is_ok())
-            {
-                return Err(ValidationError::InvalidValueForUnionType);
-            }
-        }
-        PropertyType::Object {
-            properties,
-            additional_properties,
-        } if val.is_map() => {
-            // PANIC SAFETY: the value is a map, conversion to a map should not error
-            #[allow(
-                clippy::unwrap_used,
-                reason = "val is a map, conversion to a map should not error"
-            )]
-            let val = val.get_map().unwrap();
-            let mut props = HashSet::new();
+        (
+            PropertyType::Object {
+                properties,
+                additional_properties,
+            },
+            Value::Map(vals),
+        ) => {
+            let mut props = HashMap::new();
             for property in properties {
-                props.insert(property.name());
-                match val.get(property.name()) {
-                    Some(v) => validate_property_type(property.property_type(), v, type_defs)?,
+                match vals.get(property.name()) {
+                    Some(v) => {
+                        let ty_val =
+                            validate_property_type(property.property_type(), v.clone(), type_defs)?;
+                        props.insert(property.name().to_smolstr(), ty_val);
+                    }
                     None if property.is_required() => {
                         return Err(ValidationError::missing_required_property(
                             property.name().into(),
@@ -223,22 +204,32 @@ fn validate_property_type(
                     None => (),
                 }
             }
-            for (name, v) in val.iter() {
-                if !props.contains(name.as_str()) {
+            for (name, v) in vals.into_iter() {
+                if !props.contains_key(&name) {
                     match additional_properties {
-                        Some(ty) => validate_property_type(ty, v, type_defs)?,
+                        Some(ty) => {
+                            let ty_val = validate_property_type(ty, v, type_defs)?;
+                            props.insert(name, ty_val);
+                        }
                         None => return Err(ValidationError::unexpected_property(name.as_str())),
                     }
                 }
             }
+            Ok(TypedValue::Object(props))
         }
-        PropertyType::Ref { name } => match type_defs.get(name) {
-            Some(ty) => validate_property_type(ty.property_type(), val, type_defs)?,
-            None => return Err(ValidationError::unexpected_type_name(name.as_str())),
+        (PropertyType::Ref { name }, val) => match type_defs.get(name) {
+            Some(ty) => {
+                let ty_val = validate_property_type(ty.property_type(), val, type_defs)?;
+                Ok(TypedValue::Ref {
+                    name: name.clone(),
+                    val: Box::new(ty_val),
+                })
+            }
+            None => Err(ValidationError::unexpected_type_name(name.as_str())),
         },
+        (PropertyType::Unknown, val) => Ok(TypedValue::Unknown(val)),
         _ => return Err(ValidationError::InvalidValueForType),
     }
-    Ok(())
 }
 
 // PANIC SAFETY: Indexing vec of length 2 by 0 and 1 should not panic
@@ -252,8 +243,10 @@ fn is_decimal(str: &str) -> bool {
     if parts.len() != 2 {
         return false;
     }
-    let integer_part = parts[0];
-    let fractional_part = parts[1];
+
+    let Some((integer_part, fractional_part)) = str.split('.').collect_tuple() else {
+        return false;
+    };
 
     // Validate integer part: 0 or [1-9][0-9]*
     if integer_part.is_empty()
@@ -281,10 +274,10 @@ fn is_decimal(str: &str) -> bool {
     let scale = 10_i64.pow(4);
 
     // Parse parts
-    let int_val: i64 = match integer_part.parse() {
-        Ok(v) => v,
-        Err(_) => return false,
+    let Ok(int_val) = integer_part.parse::<i64>() else {
+        return false;
     };
+
     // PANIC SAFETY: above checks ensures fractional_part is a string containing
     // only ascii digits and has length 1-4 (thus parsing will not fail)
     #[allow(clippy::unwrap_used, reason = "integer or length 4 cannot overflow")]

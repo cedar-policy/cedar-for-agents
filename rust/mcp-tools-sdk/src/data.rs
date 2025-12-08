@@ -24,7 +24,7 @@ use super::parser::{self, json_value::LocatedValue};
 
 #[derive(Debug, Clone)]
 /// A struct representing a JSON encodable `Number`.
-pub struct Number(String);
+pub struct Number(SmolStr);
 
 impl Number {
     /// Get the string representation of this `Number`.
@@ -33,17 +33,17 @@ impl Number {
     }
 
     /// Get this `Number` as a 64-bit integer if possible. Otherwise return None.
-    pub fn as_i64(&self) -> Option<i64> {
+    pub fn to_i64(&self) -> Option<i64> {
         self.0.parse().ok()
     }
 
     /// Get this `Number` as a 64-bit unsigned integer if possible. Otherwise return None.
-    pub fn as_u64(&self) -> Option<u64> {
+    pub fn to_u64(&self) -> Option<u64> {
         self.0.parse().ok()
     }
 
     /// Get this `Number` as a 64-bit float if possible. Otherwise return None.
-    pub fn as_f64(&self) -> Option<f64> {
+    pub fn to_f64(&self) -> Option<f64> {
         self.0.parse().ok().filter(|f: &f64| f.is_finite())
     }
 }
@@ -59,6 +59,34 @@ pub enum Value {
     Map(HashMap<SmolStr, Value>),
 }
 
+#[derive(Debug, Clone)]
+pub enum TypedValue {
+    Null,
+    Bool(bool),
+    Integer(i64),
+    Float(f64),
+    Number(Number),
+    String(SmolStr),
+    Decimal(SmolStr),
+    Datetime(SmolStr),
+    Duration(SmolStr),
+    IpAddr(SmolStr),
+    Enum(SmolStr),
+    Array(Vec<TypedValue>),
+    Tuple(Vec<TypedValue>),
+    Union {
+        // index of which type within union type this validates against
+        index: usize,
+        value: Box<TypedValue>,
+    },
+    Object(HashMap<SmolStr, TypedValue>),
+    Ref {
+        name: SmolStr,
+        val: Box<TypedValue>,
+    },
+    Unknown(Value),
+}
+
 #[doc(hidden)]
 impl From<&LocatedValue> for Value {
     // PANIC SAFETY: A Located Value should be one-to-one with Value
@@ -72,9 +100,9 @@ impl From<&LocatedValue> for Value {
         } else if let Some(b) = val.get_bool() {
             Value::Bool(b)
         } else if let Some(num_str) = val.get_numeric_str() {
-            Value::Number(Number(num_str.to_string()))
-        } else if let Some(s) = val.get_string() {
-            Value::String(s.to_smolstr())
+            Value::Number(Number(num_str.to_smolstr()))
+        } else if let Some(s) = val.get_smolstr() {
+            Value::String(s)
         } else if let Some(arr) = val.get_array() {
             Value::Array(arr.iter().map(Value::from).collect())
         } else if let Some(map) = val.get_object() {
@@ -86,6 +114,12 @@ impl From<&LocatedValue> for Value {
         } else {
             unreachable!("A Located Value should be one-to-one with Value")
         }
+    }
+}
+
+impl From<BorrowedValue<'_>> for Value {
+    fn from(val: BorrowedValue<'_>) -> Self {
+        val.0.into()
     }
 }
 
@@ -123,25 +157,25 @@ impl BorrowedValue<'_> {
     /// Returns `Some(n)` if this `BorrowedValue` is a number;
     /// otherwise, returns None.
     pub fn get_number(&self) -> Option<Number> {
-        self.0.get_numeric_str().map(|s| Number(s.to_string()))
+        self.0.get_numeric_str().map(|s| Number(s.to_smolstr()))
     }
 
     /// Returns `Some(n)` if this `BorrowedValue` is a number
     /// representable as a 64bit integer; otherwise, returns None.
     pub fn get_i64(&self) -> Option<i64> {
-        self.get_number().and_then(|n| n.as_i64())
+        self.get_number().and_then(|n| n.to_i64())
     }
 
     /// Returns `Some(n)` if this `BorrowedValue` is a number
     /// representable as a 64bit unsigned integer; otherwise, returns None.
     pub fn get_u64(&self) -> Option<u64> {
-        self.get_number().and_then(|n| n.as_u64())
+        self.get_number().and_then(|n| n.to_u64())
     }
 
     /// Returns `Some(n)` if this `BorrowedValue` is a number
     /// representable as a 64bit float; otherwise, returns None.
     pub fn get_f64(&self) -> Option<f64> {
-        self.get_number().and_then(|n| n.as_f64())
+        self.get_number().and_then(|n| n.to_f64())
     }
 
     /// Returns if this `BorrowedValue` is a string `Value`
@@ -237,6 +271,29 @@ impl Input {
 }
 
 #[derive(Debug, Clone)]
+pub struct TypedInput {
+    pub(crate) name: SmolStr,
+    pub(crate) args: HashMap<SmolStr, TypedValue>,
+}
+
+impl TypedInput {
+    /// Get the name of the requested tool
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Get all arguments to the tool
+    pub fn get_args(&self) -> impl Iterator<Item = (&str, &TypedValue)> {
+        self.args.iter().map(|(k, v)| (k.as_str(), v))
+    }
+
+    /// Get an argument to the tool if it exists
+    pub fn get_arg(&self, arg: &str) -> Option<&TypedValue> {
+        self.args.get(arg)
+    }
+}
+
+#[derive(Debug, Clone)]
 /// A struct representing an MCP `call/tool` response
 pub struct Output {
     pub(crate) results: HashMap<SmolStr, LocatedValue>,
@@ -270,6 +327,24 @@ impl Output {
     }
 }
 
+#[derive(Debug, Clone)]
+/// A struct representing an MCP `call/tool` response
+pub struct TypedOutput {
+    pub(crate) results: HashMap<SmolStr, TypedValue>,
+}
+
+impl TypedOutput {
+    /// Get all returned results from calling an MCP tool
+    pub fn get_results(&self) -> impl Iterator<Item = (&str, &TypedValue)> {
+        self.results.iter().map(|(k, v)| (k.as_str(), v))
+    }
+
+    /// Get a returned result from an MCP tool if it exists
+    pub fn get_result(&self, res: &str) -> Option<&TypedValue> {
+        self.results.get(res)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use crate::parser::json_parser;
@@ -281,230 +356,230 @@ mod test {
     //------------------- test number converions ----------------------------
     #[test]
     fn test_number_as_str() {
-        let num = Number("0".to_string());
+        let num = Number("0".to_smolstr());
         assert!(num.as_str() == "0")
     }
 
     #[test]
-    fn test_number_as_i64_int_zero() {
-        let num = Number("0".to_string());
-        assert_matches!(num.as_i64(), Some(0))
+    fn test_number_to_i64_int_zero() {
+        let num = Number("0".to_smolstr());
+        assert_matches!(num.to_i64(), Some(0))
     }
 
     #[test]
-    fn test_number_as_i64_int_neg() {
-        let num = Number("-123".to_string());
-        assert_matches!(num.as_i64(), Some(-123))
+    fn test_number_to_i64_int_neg() {
+        let num = Number("-123".to_smolstr());
+        assert_matches!(num.to_i64(), Some(-123))
     }
 
     #[test]
-    fn test_number_as_i64_int_pos() {
-        let num = Number("9845".to_string());
-        assert_matches!(num.as_i64(), Some(9845))
+    fn test_number_to_i64_int_pos() {
+        let num = Number("9845".to_smolstr());
+        assert_matches!(num.to_i64(), Some(9845))
     }
 
     #[test]
-    fn test_number_as_i64_max_pos_int() {
-        let num = Number("9223372036854775807".to_string());
-        assert_matches!(num.as_i64(), Some(9223372036854775807))
+    fn test_number_to_i64_max_pos_int() {
+        let num = Number("9223372036854775807".to_smolstr());
+        assert_matches!(num.to_i64(), Some(9223372036854775807))
     }
 
     #[test]
-    fn test_number_as_i64_max_neg_int() {
-        let num = Number("-9223372036854775808".to_string());
-        assert_matches!(num.as_i64(), Some(-9223372036854775808))
+    fn test_number_to_i64_max_neg_int() {
+        let num = Number("-9223372036854775808".to_smolstr());
+        assert_matches!(num.to_i64(), Some(-9223372036854775808))
     }
 
     #[test]
-    fn test_number_as_i64_float_zero() {
-        let num = Number("0.0".to_string());
-        assert!(num.as_i64().is_none())
+    fn test_number_to_i64_float_zero() {
+        let num = Number("0.0".to_smolstr());
+        assert!(num.to_i64().is_none())
     }
 
     #[test]
-    fn test_number_as_i64_float_pos() {
-        let num = Number("123.0".to_string());
-        assert!(num.as_i64().is_none())
+    fn test_number_to_i64_float_pos() {
+        let num = Number("123.0".to_smolstr());
+        assert!(num.to_i64().is_none())
     }
 
     #[test]
-    fn test_number_as_i64_float_neg() {
-        let num = Number("-8090.0".to_string());
-        assert!(num.as_i64().is_none())
+    fn test_number_to_i64_float_neg() {
+        let num = Number("-8090.0".to_smolstr());
+        assert!(num.to_i64().is_none())
     }
 
     #[test]
-    fn test_number_as_i64_large_pos_int() {
-        let num = Number("9223372036854775808".to_string());
-        assert!(num.as_i64().is_none())
+    fn test_number_to_i64_large_pos_int() {
+        let num = Number("9223372036854775808".to_smolstr());
+        assert!(num.to_i64().is_none())
     }
 
     #[test]
-    fn test_number_as_i64_large_neg_int() {
-        let num = Number("-9223372036854775809".to_string());
-        assert!(num.as_i64().is_none())
+    fn test_number_to_i64_large_neg_int() {
+        let num = Number("-9223372036854775809".to_smolstr());
+        assert!(num.to_i64().is_none())
     }
 
     #[test]
-    fn test_number_as_i64_pos_exp() {
-        let num = Number("1e3".to_string());
-        assert!(num.as_i64().is_none())
+    fn test_number_to_i64_pos_exp() {
+        let num = Number("1e3".to_smolstr());
+        assert!(num.to_i64().is_none())
     }
 
     #[test]
-    fn test_number_as_u64_int_zero() {
-        let num = Number("0".to_string());
-        assert_matches!(num.as_u64(), Some(0))
+    fn test_number_to_u64_int_zero() {
+        let num = Number("0".to_smolstr());
+        assert_matches!(num.to_u64(), Some(0))
     }
 
     #[test]
-    fn test_number_as_u64_int_pos() {
-        let num = Number("9845".to_string());
-        assert_matches!(num.as_u64(), Some(9845))
+    fn test_number_to_u64_int_pos() {
+        let num = Number("9845".to_smolstr());
+        assert_matches!(num.to_u64(), Some(9845))
     }
 
     #[test]
-    fn test_number_as_u64_max_pos_int() {
-        let num = Number("18446744073709551615".to_string());
-        assert_matches!(num.as_u64(), Some(18446744073709551615))
+    fn test_number_to_u64_max_pos_int() {
+        let num = Number("18446744073709551615".to_smolstr());
+        assert_matches!(num.to_u64(), Some(18446744073709551615))
     }
 
     #[test]
-    fn test_number_as_u64_int_neg() {
-        let num = Number("-123".to_string());
-        assert!(num.as_u64().is_none())
+    fn test_number_to_u64_int_neg() {
+        let num = Number("-123".to_smolstr());
+        assert!(num.to_u64().is_none())
     }
 
     #[test]
-    fn test_number_as_u64_float_zero() {
-        let num = Number("0.0".to_string());
-        assert!(num.as_u64().is_none())
+    fn test_number_to_u64_float_zero() {
+        let num = Number("0.0".to_smolstr());
+        assert!(num.to_u64().is_none())
     }
 
     #[test]
-    fn test_number_as_u64_float_pos() {
-        let num = Number("123.0".to_string());
-        assert!(num.as_u64().is_none())
+    fn test_number_to_u64_float_pos() {
+        let num = Number("123.0".to_smolstr());
+        assert!(num.to_u64().is_none())
     }
 
     #[test]
-    fn test_number_as_u64_float_neg() {
-        let num = Number("-8090.0".to_string());
-        assert!(num.as_u64().is_none())
+    fn test_number_to_u64_float_neg() {
+        let num = Number("-8090.0".to_smolstr());
+        assert!(num.to_u64().is_none())
     }
 
     #[test]
-    fn test_number_as_u64_large_pos_int() {
-        let num = Number("18446744073709551616".to_string());
-        assert!(num.as_u64().is_none())
+    fn test_number_to_u64_large_pos_int() {
+        let num = Number("18446744073709551616".to_smolstr());
+        assert!(num.to_u64().is_none())
     }
 
     #[test]
-    fn test_number_as_u64_pos_exp() {
-        let num = Number("1e3".to_string());
-        assert!(num.as_u64().is_none())
+    fn test_number_to_u64_pos_exp() {
+        let num = Number("1e3".to_smolstr());
+        assert!(num.to_u64().is_none())
     }
 
     #[test]
-    fn test_number_as_f64_int_zero() {
-        let num = Number("0".to_string());
-        assert_matches!(num.as_f64(), Some(0.0))
+    fn test_number_to_f64_int_zero() {
+        let num = Number("0".to_smolstr());
+        assert_matches!(num.to_f64(), Some(0.0))
     }
 
     #[test]
-    fn test_number_as_f64_float_zero() {
-        let num = Number("0.00".to_string());
-        assert_matches!(num.as_f64(), Some(0.0))
+    fn test_number_to_f64_float_zero() {
+        let num = Number("0.00".to_smolstr());
+        assert_matches!(num.to_f64(), Some(0.0))
     }
 
     #[test]
-    fn test_number_as_f64_float_neg_zero() {
-        let num = Number("-0.0".to_string());
-        assert_matches!(num.as_f64(), Some(0.0))
+    fn test_number_to_f64_float_neg_zero() {
+        let num = Number("-0.0".to_smolstr());
+        assert_matches!(num.to_f64(), Some(0.0))
     }
 
     #[test]
-    fn test_number_as_f64_int_neg() {
-        let num = Number("-123".to_string());
-        assert_matches!(num.as_f64(), Some(-123.0))
+    fn test_number_to_f64_int_neg() {
+        let num = Number("-123".to_smolstr());
+        assert_matches!(num.to_f64(), Some(-123.0))
     }
 
     #[test]
-    fn test_number_as_f64_int_pos() {
-        let num = Number("9845".to_string());
-        assert_matches!(num.as_f64(), Some(9845.0))
+    fn test_number_to_f64_int_pos() {
+        let num = Number("9845".to_smolstr());
+        assert_matches!(num.to_f64(), Some(9845.0))
     }
 
     #[test]
-    fn test_number_as_f64_float_neg() {
-        let num = Number("-123.0".to_string());
-        assert_matches!(num.as_f64(), Some(-123.0))
+    fn test_number_to_f64_float_neg() {
+        let num = Number("-123.0".to_smolstr());
+        assert_matches!(num.to_f64(), Some(-123.0))
     }
 
     #[test]
-    fn test_number_as_f64_float_pos() {
-        let num = Number("-8093.01".to_string());
-        assert_matches!(num.as_f64(), Some(-8093.01))
+    fn test_number_to_f64_float_pos() {
+        let num = Number("-8093.01".to_smolstr());
+        assert_matches!(num.to_f64(), Some(-8093.01))
     }
 
     #[test]
-    fn test_number_as_f64_float_pos_max() {
-        let num = Number("1.7976931348623157e308".to_string());
-        assert_matches!(num.as_f64(), Some(1.7976931348623157e308))
+    fn test_number_to_f64_float_pos_max() {
+        let num = Number("1.7976931348623157e308".to_smolstr());
+        assert_matches!(num.to_f64(), Some(1.7976931348623157e308))
     }
 
     #[test]
-    fn test_number_as_f64_float_pos_overflow() {
-        let num = Number("1.7976931348623159e308".to_string());
-        assert_matches!(num.as_f64(), None)
+    fn test_number_to_f64_float_pos_overflow() {
+        let num = Number("1.7976931348623159e308".to_smolstr());
+        assert_matches!(num.to_f64(), None)
     }
 
     #[test]
-    fn test_number_as_f64_float_neg_max() {
-        let num = Number("-1.7976931348623157e308".to_string());
-        assert_matches!(num.as_f64(), Some(-1.7976931348623157e308))
+    fn test_number_to_f64_float_neg_max() {
+        let num = Number("-1.7976931348623157e308".to_smolstr());
+        assert_matches!(num.to_f64(), Some(-1.7976931348623157e308))
     }
 
     #[test]
-    fn test_number_as_f64_float_neg_overflow() {
-        let num = Number("-1.7976931348623159e308".to_string());
-        assert!(num.as_f64().is_none())
+    fn test_number_to_f64_float_neg_overflow() {
+        let num = Number("-1.7976931348623159e308".to_smolstr());
+        assert!(num.to_f64().is_none())
     }
 
     #[test]
-    fn test_number_as_f64_float_min_normal_pos() {
-        let num = Number("2.2250738585072014e-308".to_string());
-        assert_matches!(num.as_f64(), Some(2.2250738585072014e-308))
+    fn test_number_to_f64_float_min_normal_pos() {
+        let num = Number("2.2250738585072014e-308".to_smolstr());
+        assert_matches!(num.to_f64(), Some(2.2250738585072014e-308))
     }
 
     #[test]
-    fn test_number_as_f64_float_min_subnormal_pos() {
-        let num = Number("5e-324".to_string());
-        assert_matches!(num.as_f64(), Some(5e-324))
+    fn test_number_to_f64_float_min_subnormal_pos() {
+        let num = Number("5e-324".to_smolstr());
+        assert_matches!(num.to_f64(), Some(5e-324))
     }
 
     #[test]
-    fn test_number_as_f64_float_subnormal_rounds() {
-        let num = Number("2.5e-324".to_string());
-        assert_matches!(num.as_f64(), Some(5e-324))
+    fn test_number_to_f64_float_subnormal_rounds() {
+        let num = Number("2.5e-324".to_smolstr());
+        assert_matches!(num.to_f64(), Some(5e-324))
     }
 
     #[test]
-    fn test_number_as_f64_float_subnormal_underflows() {
-        let num = Number("1e-400".to_string());
-        assert_matches!(num.as_f64(), Some(0.0))
+    fn test_number_to_f64_float_subnormal_underflows() {
+        let num = Number("1e-400".to_smolstr());
+        assert_matches!(num.to_f64(), Some(0.0))
     }
 
     #[test]
-    fn test_number_as_f64_max_precision_under_1() {
-        let num = Number("0.9999999999999999".to_string());
-        assert_matches!(num.as_f64(), Some(0.9999999999999999))
+    fn test_number_to_f64_max_precision_under_1() {
+        let num = Number("0.9999999999999999".to_smolstr());
+        assert_matches!(num.to_f64(), Some(0.9999999999999999))
     }
 
     #[test]
-    fn test_number_as_f64_loses_precision_under_1() {
-        let num = Number("0.99999999999999999".to_string());
-        assert_matches!(num.as_f64(), Some(1.0))
+    fn test_number_to_f64_loses_precision_under_1() {
+        let num = Number("0.99999999999999999".to_smolstr());
+        assert_matches!(num.to_f64(), Some(1.0))
     }
 
     //------------------- test BorrowedValues ----------------------------
@@ -666,7 +741,7 @@ mod test {
             if matches!(
                 v.to_owned(),
                 Value::Number(n)
-                if n.as_u64() == Some(0)
+                if n.to_u64() == Some(0)
             )
         )
     }
@@ -710,7 +785,7 @@ mod test {
             if matches!(
                 v.to_owned(),
                 Value::Number(n)
-                if n.as_u64() == Some(0)
+                if n.to_u64() == Some(0)
             )
         )
     }

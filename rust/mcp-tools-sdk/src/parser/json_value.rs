@@ -24,7 +24,7 @@ use super::loc::Loc;
 
 // The kind of a Located (JSON) Value
 #[derive(Debug, Clone)]
-enum ValueKind {
+pub(crate) enum ValueKind {
     Null,
     Bool(bool),
     Number,
@@ -155,6 +155,18 @@ impl LocatedValue {
             kind: ValueKind::Object(items),
             loc,
         }
+    }
+
+    /// Retrieve the kind of the `LocatedValue`
+    #[allow(dead_code, reason = "Added for completeness.")]
+    pub(crate) fn as_kind(&self) -> &ValueKind {
+        &self.kind
+    }
+
+    /// Unwrap the `LocatedValue` to get its underlying `ValueKind`
+    #[allow(dead_code, reason = "Added for completeness.")]
+    pub(crate) fn into_kind(self) -> ValueKind {
+        self.kind
     }
 
     /// Retrieve the location of the `LocatedValue`
