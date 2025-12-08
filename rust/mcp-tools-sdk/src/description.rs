@@ -1117,6 +1117,28 @@ mod test {
         );
     }
 
+    #[test]
+    fn test_infinite_typedef_is_error() {
+        let tool_description = r##"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "$defs": {
+            "A": { "$ref": "#/$defs/B" },
+            "B": { "$ref": "#/$defs/C" },
+            "C": { "$ref": "#/$defs/A" }
+        },
+        "properties": {}
+    }
+}"##;
+        assert_matches!(
+            ToolDescription::from_json_str(tool_description),
+            Err(DeserializationError::NonWellFoundedTypeDefinitions(..))
+        );
+        
+    }
+
+
     //--------------- Test Input/Output Validation -------------------------
     #[test]
     fn test_validate_input_simple() {

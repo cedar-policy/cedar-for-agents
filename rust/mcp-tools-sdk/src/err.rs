@@ -47,6 +47,14 @@ pub enum DeserializationError {
     #[error("Error reading {}: {}", .0.file_name.display(), .0.error)]
     #[diagnostic()]
     ReadError(ReadError),
+
+    /// Deserializer found non well-founded type definitions (infinite recursion)
+    #[error("Non well-founded type definitions: {0:?}")]
+    #[diagnostic(
+        code(deserialization_error::non_well_founded_type_definitions),
+        help("Ensure that the type definitions are well-founded (all type definitions have finite size)")
+    )]
+    NonWellFoundedTypeDefinitions(TypeDefinitionCycle)
 }
 
 impl DeserializationError {
@@ -103,6 +111,10 @@ impl DeserializationError {
     /// Construct a new `DeserizlizerError` signaling that input JSON file could not be read
     pub(crate) fn read_error(file_name: PathBuf, error: String) -> Self {
         Self::ReadError(ReadError { file_name, error })
+    }
+
+    pub(crate) fn type_definition_cycle(cycle: Vec<SmolStr>) -> Self {
+        Self::NonWellFoundedTypeDefinitions(TypeDefinitionCycle { cycle })
     }
 }
 
@@ -213,6 +225,12 @@ impl std::fmt::Display for ContentType {
 pub struct ReadError {
     file_name: PathBuf,
     error: String,
+}
+
+#[allow(dead_code, reason="cycle is used implicitly in error message")]
+#[derive(Debug)]
+pub struct TypeDefinitionCycle {
+    cycle: Vec<SmolStr>
 }
 
 #[derive(Error, Debug, Diagnostic)]

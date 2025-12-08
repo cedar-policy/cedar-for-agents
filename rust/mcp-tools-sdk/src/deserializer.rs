@@ -164,7 +164,7 @@ fn typedefs_from_json_value(
     json_value: Option<&LocatedValue>,
     content_type: ContentType,
 ) -> Result<HashMap<SmolStr, PropertyTypeDef>, DeserializationError> {
-    json_value.map(|json_value| {
+    let type_defs = json_value.map(|json_value| {
         let defs = json_value.get_object().ok_or_else(|| DeserializationError::unexpected_type(
             json_value,
             "Expected attribute `$defs` to be a JSON object mapping type names to JSON Type Schemas.",
@@ -179,7 +179,9 @@ fn typedefs_from_json_value(
                 })
             })
             .collect::<Result<_, _>>()
-    }).unwrap_or_else(|| Ok(HashMap::new()))
+    }).unwrap_or_else(|| Ok(HashMap::new()))?;
+    typedefs_are_well_founded(&type_defs)?;
+    Ok(type_defs)
 }
 
 fn required_from_json_value(
@@ -513,4 +515,37 @@ pub(crate) fn mcp_tool_output_from_json_value(
         .map(|(k, v)| (k.to_smolstr(), v.clone()))
         .collect();
     Ok(Output { results })
+}
+
+fn typedefs_are_well_founded(
+    type_defs: &HashMap<SmolStr, PropertyTypeDef>
+) -> Result<(), DeserializationError> {
+    // Effectively perform a BFS from each type def to see if
+    // there is any cycle of type defs that directly reference each other
+    // e.g., type A = B; type B = C; type C = a;
+    // Note: other mutually recursive types are acceptable
+    // e.g., type A = B; type B = { "a": A }
+    for (name, ty_def) in type_defs {
+        let mut cycle= vec![name.clone()];
+        let mut ty_def = ty_def;
+        loop {
+            match ty_def.property_type() {
+                PropertyType::Ref { name } => {
+                    if cycle.contains(name) {
+                        cycle.push(name.clone());
+                        return Err(DeserializationError::type_definition_cycle(cycle));
+                    }
+                    match type_defs.get(name) {
+                        Some(tdef) => {
+                            cycle.push(name.clone());
+                            ty_def = tdef
+                        }
+                        _ => break,
+                    }
+                }
+                _ => break,
+            }
+        }
+    }
+    Ok(())
 }
