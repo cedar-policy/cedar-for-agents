@@ -34,6 +34,77 @@ use smol_str::{SmolStr, ToSmolStr};
 
 use std::collections::{btree_map::Entry, BTreeMap};
 
+// PANIC SAFETY: All parsed identifiers are constants which we know are valid
+#[allow(clippy::unwrap_used)]
+mod identifiers {
+    use cedar_policy_core::ast::{AnyId, Name, UnreservedId};
+    use cedar_policy_core::validator::RawName;
+    use std::sync::LazyLock;
+
+    // MCP annotation identifiers
+    pub(super) static MCP_PRINCIPAL: LazyLock<AnyId> =
+        LazyLock::new(|| "mcp_principal".parse().unwrap());
+    pub(super) static MCP_RESOURCE: LazyLock<AnyId> =
+        LazyLock::new(|| "mcp_resource".parse().unwrap());
+    pub(super) static MCP_CONTEXT: LazyLock<AnyId> =
+        LazyLock::new(|| "mcp_context".parse().unwrap());
+    pub(super) static MCP_ACTION: LazyLock<AnyId> = LazyLock::new(|| "mcp_action".parse().unwrap());
+
+    // Namespace names
+    pub(super) static INPUT_NAME: LazyLock<Name> = LazyLock::new(|| "Input".parse().unwrap());
+    pub(super) static OUTPUT_NAME: LazyLock<Name> = LazyLock::new(|| "Output".parse().unwrap());
+
+    // Cedar built-in and extension types
+    pub(super) static BOOL_TYPE: LazyLock<RawName> = LazyLock::new(|| "Bool".parse().unwrap());
+    pub(super) static LONG_TYPE: LazyLock<RawName> = LazyLock::new(|| "Long".parse().unwrap());
+    pub(super) static STRING_TYPE: LazyLock<RawName> = LazyLock::new(|| "String".parse().unwrap());
+    pub(super) static DECIMAL_TYPE: LazyLock<RawName> =
+        LazyLock::new(|| "decimal".parse().unwrap());
+    pub(super) static DATETIME_TYPE: LazyLock<RawName> =
+        LazyLock::new(|| "datetime".parse().unwrap());
+    pub(super) static DURATION_TYPE: LazyLock<RawName> =
+        LazyLock::new(|| "duration".parse().unwrap());
+    pub(super) static IPADDR_TYPE: LazyLock<RawName> = LazyLock::new(|| "ipaddr".parse().unwrap());
+
+    // Special entity type names
+    pub(super) static FLOAT_TYPE: LazyLock<UnreservedId> =
+        LazyLock::new(|| "Float".parse().unwrap());
+    pub(super) static NUMBER_TYPE: LazyLock<UnreservedId> =
+        LazyLock::new(|| "Number".parse().unwrap());
+    pub(super) static NULL_TYPE: LazyLock<UnreservedId> = LazyLock::new(|| "Null".parse().unwrap());
+    pub(super) static UNKNOWN_TYPE: LazyLock<UnreservedId> =
+        LazyLock::new(|| "Unknown".parse().unwrap());
+
+    #[cfg(test)]
+    mod test {
+        use super::*;
+
+        // Forces evaluation of lazy locks, so that we'll see any parse errors
+        // regardless of whether the code that uses the identifier is covered by
+        // other tests.
+        #[test]
+        fn identifiers_are_valid() {
+            let _ = *MCP_PRINCIPAL;
+            let _ = *MCP_RESOURCE;
+            let _ = *MCP_CONTEXT;
+            let _ = *MCP_ACTION;
+            let _ = *INPUT_NAME;
+            let _ = *OUTPUT_NAME;
+            let _ = *BOOL_TYPE;
+            let _ = *LONG_TYPE;
+            let _ = *STRING_TYPE;
+            let _ = *DECIMAL_TYPE;
+            let _ = *DATETIME_TYPE;
+            let _ = *DURATION_TYPE;
+            let _ = *IPADDR_TYPE;
+            let _ = *FLOAT_TYPE;
+            let _ = *NUMBER_TYPE;
+            let _ = *NULL_TYPE;
+            let _ = *UNKNOWN_TYPE;
+        }
+    }
+}
+
 /// A type reserved to configure how the schema generator functions
 #[derive(Debug, Clone)]
 pub struct SchemaGeneratorConfig {
@@ -171,57 +242,39 @@ impl SchemaGenerator {
             return Err(SchemaGeneratorError::WrongNumberOfNamespaces);
         }
 
-        #[allow(clippy::unwrap_used, reason = "`mcp_principal` is a valid AnyId")]
-        // PANIC SAFETY: converting "mcp_principal" into an AnyId should not error
         let users = ns
             .entity_types
             .iter()
             .filter_map(|(tyname, ty)| {
-                ty.annotations
-                    .0
-                    .get(&"mcp_principal".parse().unwrap())
-                    .map(|_| {
-                        RawName::from_name(InternalName::unqualified_name(
-                            tyname.clone().into(),
-                            None,
-                        ))
-                    })
+                ty.annotations.0.get(&*identifiers::MCP_PRINCIPAL).map(|_| {
+                    RawName::from_name(InternalName::unqualified_name(tyname.clone().into(), None))
+                })
             })
             .collect::<Vec<_>>();
         if users.is_empty() {
             return Err(SchemaGeneratorError::NoPrincipalTypes);
         }
 
-        #[allow(clippy::unwrap_used, reason = "`mcp_resource` is a valid AnyId")]
-        // PANIC SAFETY: converting "mcp_resource" into an AnyId should not error
         let resources = ns
             .entity_types
             .iter()
             .filter_map(|(tyname, ty)| {
-                ty.annotations
-                    .0
-                    .get(&"mcp_resource".parse().unwrap())
-                    .map(|_| {
-                        RawName::from_name(InternalName::unqualified_name(
-                            tyname.clone().into(),
-                            None,
-                        ))
-                    })
+                ty.annotations.0.get(&*identifiers::MCP_RESOURCE).map(|_| {
+                    RawName::from_name(InternalName::unqualified_name(tyname.clone().into(), None))
+                })
             })
             .collect::<Vec<_>>();
         if resources.is_empty() {
             return Err(SchemaGeneratorError::NoResourceTypes);
         }
 
-        #[allow(clippy::unwrap_used, reason = "`mcp_context` is a valid AnyId")]
-        // PANIC SAFETY: converting "mcp_context" into an AnyId should not error
         let contexts = ns
             .entity_types
             .iter()
             .filter_map(|(tyname, ty)| {
                 ty.annotations
                     .0
-                    .get(&"mcp_context".parse().unwrap())
+                    .get(&*identifiers::MCP_CONTEXT)
                     .and_then(|anno| anno.as_ref())
                     .map(|anno| {
                         (
@@ -236,7 +289,7 @@ impl SchemaGenerator {
             .chain(ns.common_types.iter().filter_map(|(tyname, ty)| {
                 ty.annotations
                     .0
-                    .get(&"mcp_context".parse().unwrap())
+                    .get(&*identifiers::MCP_CONTEXT)
                     .and_then(|anno| anno.as_ref())
                     .map(|anno| {
                         (
@@ -250,8 +303,6 @@ impl SchemaGenerator {
             }))
             .collect();
 
-        #[allow(clippy::unwrap_used, reason = "`mcp_action` is a valid AnyId")]
-        // PANIC SAFETY: converting "mcp_action" into an AnyId should not error
         let actions = ns
             .actions
             .iter()
@@ -259,7 +310,7 @@ impl SchemaGenerator {
                 action
                     .annotations
                     .0
-                    .get(&"mcp_action".parse().unwrap())
+                    .get(&*identifiers::MCP_ACTION)
                     .map(|_| ActionEntityUID::new(None, name.clone()))
             })
             .collect::<Vec<_>>();
@@ -414,10 +465,7 @@ impl SchemaGenerator {
             .collect::<BTreeMap<_, _>>();
 
         // Create a `toolnameInput` type to capture inputs to mcp tool
-        #[allow(clippy::unwrap_used, reason = "`Input` is a valid Name")]
-        // PANIC SAFETY: "Input" is a valid Name
-        let input_ns: Name = "Input".parse().unwrap();
-        let input_ns = Some(input_ns.qualify_with_name(namespace.as_ref()));
+        let input_ns = Some(identifiers::INPUT_NAME.qualify_with_name(namespace.as_ref()));
 
         self.add_namespace(input_ns.clone());
         let inputs =
@@ -451,10 +499,7 @@ impl SchemaGenerator {
         );
 
         if self.config.include_outputs {
-            #[allow(clippy::unwrap_used, reason = "`Output` is a valid Name")]
-            // PANIC SAFETY: "Outputs" is a valid Name
-            let output_ns: Name = "Output".parse().unwrap();
-            let output_ns = Some(output_ns.qualify_with_name(namespace.as_ref()));
+            let output_ns = Some(identifiers::OUTPUT_NAME.qualify_with_name(namespace.as_ref()));
 
             self.add_namespace(output_ns.clone());
             let outputs = self.record_from_parameters(
@@ -798,40 +843,26 @@ impl SchemaGenerator {
         property_type: &PropertyType,
         common_types: &BTreeMap<SmolStr, RawName>,
     ) -> Result<Type<RawName>, SchemaGeneratorError> {
-        // PANIC SAFETY: `Bool` is a valid `RawName`
-        #[allow(clippy::unwrap_used, reason = "`Bool` is a valid `RawName`")]
         let bool = TypeVariant::EntityOrCommon {
-            type_name: "Bool".parse().unwrap(),
+            type_name: identifiers::BOOL_TYPE.clone(),
         };
-        // PANIC SAFETY: `Long` is a valid `RawName`
-        #[allow(clippy::unwrap_used, reason = "`Long` is a valid `RawName`")]
         let long = TypeVariant::EntityOrCommon {
-            type_name: "Long".parse().unwrap(),
+            type_name: identifiers::LONG_TYPE.clone(),
         };
-        // PANIC SAFETY: `String` is a valid `RawName`
-        #[allow(clippy::unwrap_used, reason = "`String` is a valid `RawName`")]
         let string = TypeVariant::EntityOrCommon {
-            type_name: "String".parse().unwrap(),
+            type_name: identifiers::STRING_TYPE.clone(),
         };
-        // PANIC SAFETY: `decimal` is a valid `RawName`
-        #[allow(clippy::unwrap_used, reason = "`decimal` is a valid `RawName`")]
         let decimal = TypeVariant::EntityOrCommon {
-            type_name: "decimal".parse().unwrap(),
+            type_name: identifiers::DECIMAL_TYPE.clone(),
         };
-        // PANIC SAFETY: `datetime` is a valid `RawName`
-        #[allow(clippy::unwrap_used, reason = "`datetime` is a valid `RawName`")]
         let datetime = TypeVariant::EntityOrCommon {
-            type_name: "datetime".parse().unwrap(),
+            type_name: identifiers::DATETIME_TYPE.clone(),
         };
-        // PANIC SAFETY: `duration` is a valid `RawName`
-        #[allow(clippy::unwrap_used, reason = "`duration` is a valid `RawName`")]
         let duration = TypeVariant::EntityOrCommon {
-            type_name: "duration".parse().unwrap(),
+            type_name: identifiers::DURATION_TYPE.clone(),
         };
-        // PANIC SAFETY: `ipaddr` is a valid `RawName`
-        #[allow(clippy::unwrap_used, reason = "`ipaddr` is a valid `RawName`")]
         let ipaddr = TypeVariant::EntityOrCommon {
-            type_name: "ipaddr".parse().unwrap(),
+            type_name: identifiers::IPADDR_TYPE.clone(),
         };
 
         let variant = match property_type {
@@ -841,11 +872,11 @@ impl SchemaGenerator {
                 if self.config.numbers_as_decimal {
                     decimal
                 } else {
-                    #[allow(clippy::unwrap_used, reason = "`Float` is a valid UnreservedId")]
-                    // PANIC SAFETY: `"Float"` should not be a reserved id
-                    let name: UnreservedId = "Float".parse().unwrap();
-                    self.add_opaque_entity_type(&self.namespace.clone(), name.clone())?;
-                    let name = RawName::new_from_unreserved(name, None);
+                    self.add_opaque_entity_type(
+                        &self.namespace.clone(),
+                        identifiers::FLOAT_TYPE.clone(),
+                    )?;
+                    let name = RawName::new_from_unreserved(identifiers::FLOAT_TYPE.clone(), None);
                     let name = RawName::from_name(name.qualify_with_name(self.namespace.as_ref()));
                     TypeVariant::Entity { name }
                 }
@@ -854,11 +885,11 @@ impl SchemaGenerator {
                 if self.config.numbers_as_decimal {
                     decimal
                 } else {
-                    #[allow(clippy::unwrap_used, reason = "`Number` is a valid UnreservedId")]
-                    // PANIC SAFETY: `"Number"` should not be a reserved id
-                    let name: UnreservedId = "Number".parse().unwrap();
-                    self.add_opaque_entity_type(&self.namespace.clone(), name.clone())?;
-                    let name = RawName::new_from_unreserved(name, None);
+                    self.add_opaque_entity_type(
+                        &self.namespace.clone(),
+                        identifiers::NUMBER_TYPE.clone(),
+                    )?;
+                    let name = RawName::new_from_unreserved(identifiers::NUMBER_TYPE.clone(), None);
                     let name = RawName::from_name(name.qualify_with_name(self.namespace.as_ref()));
                     TypeVariant::Entity { name }
                 }
@@ -869,20 +900,20 @@ impl SchemaGenerator {
             PropertyType::Duration => duration,
             PropertyType::IpAddr => ipaddr,
             PropertyType::Null => {
-                #[allow(clippy::unwrap_used, reason = "`Null` is a valid UnreservedId")]
-                // PANIC SAFETY: `"Null"` should not be a reserved id
-                let name: UnreservedId = "Null".parse().unwrap();
-                self.add_opaque_entity_type(&self.namespace.clone(), name.clone())?;
-                let name = RawName::new_from_unreserved(name, None);
+                self.add_opaque_entity_type(
+                    &self.namespace.clone(),
+                    identifiers::NULL_TYPE.clone(),
+                )?;
+                let name = RawName::new_from_unreserved(identifiers::NULL_TYPE.clone(), None);
                 let name = RawName::from_name(name.qualify_with_name(self.namespace.as_ref()));
                 TypeVariant::Entity { name }
             }
             PropertyType::Unknown => {
-                #[allow(clippy::unwrap_used, reason = "`Unknown` is a valid UnreservedId")]
-                // PANIC SAFETY: `"Unknown"` should not be a reserved id
-                let name: UnreservedId = "Unknown".parse().unwrap();
-                self.add_opaque_entity_type(&self.namespace.clone(), name.clone())?;
-                let name = RawName::new_from_unreserved(name, None);
+                self.add_opaque_entity_type(
+                    &self.namespace.clone(),
+                    identifiers::UNKNOWN_TYPE.clone(),
+                )?;
+                let name = RawName::new_from_unreserved(identifiers::UNKNOWN_TYPE.clone(), None);
                 let name = RawName::from_name(name.qualify_with_name(self.namespace.as_ref()));
                 TypeVariant::Entity { name }
             }
