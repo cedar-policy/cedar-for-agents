@@ -141,7 +141,7 @@ fn parameters_from_json_value(
     json_value: &LocatedValue,
 ) -> Result<Parameters, DeserializationError> {
     // Unwrap "json" wrapper it exists
-    let json_value = json_value.get("json").unwrap_or_else(|| json_value);
+    let json_value = json_value.get("json").unwrap_or(json_value);
     let params_obj = json_value.get_object().ok_or_else(|| {
         DeserializationError::unexpected_type(
             json_value,
@@ -164,7 +164,7 @@ fn typedefs_from_json_value(
     json_value: Option<&LocatedValue>,
     content_type: ContentType,
 ) -> Result<HashMap<SmolStr, PropertyTypeDef>, DeserializationError> {
-    json_value.map(|json_value| {
+    let type_defs = json_value.map(|json_value| {
         let defs = json_value.get_object().ok_or_else(|| DeserializationError::unexpected_type(
             json_value,
             "Expected attribute `$defs` to be a JSON object mapping type names to JSON Type Schemas.",
@@ -179,7 +179,9 @@ fn typedefs_from_json_value(
                 })
             })
             .collect::<Result<_, _>>()
-    }).unwrap_or_else(|| Ok(HashMap::new()))
+    }).unwrap_or_else(|| Ok(HashMap::new()))?;
+    typedefs_are_well_founded(&type_defs)?;
+    Ok(type_defs)
 }
 
 fn required_from_json_value(
@@ -331,16 +333,14 @@ fn property_type_from_json_value(
                     if items_json.is_object() {
                         let items_type = property_type_from_json_value(items_json)?;
                         Ok(PropertyType::Array { element_ty: Box::new(items_type) })
+                    } else if items_json.is_bool() || items_json.is_null() {
+                        Ok(PropertyType::Array { element_ty: Box::new(PropertyType::Unknown) })
                     } else {
-                        if items_json.is_bool() || items_json.is_null() {
-                            Ok(PropertyType::Array { element_ty: Box::new(PropertyType::Unknown) })
-                        } else {
-                            Err(DeserializationError::unexpected_type(
-                                items_json,
-                                "Expected `items` attribute to be a JSON Schema (object) describing the type of array items.",
-                                ContentType::PropertyType
-                            ))
-                        }
+                        Err(DeserializationError::unexpected_type(
+                            items_json,
+                            "Expected `items` attribute to be a JSON Schema (object) describing the type of array items.",
+                            ContentType::PropertyType
+                        ))
                     }
                 }).unwrap_or_else(|| Ok(PropertyType::Array { element_ty: Box::new(PropertyType::Unknown) }))
             }
@@ -379,16 +379,14 @@ fn property_type_from_json_value(
                         })
                         .collect::<Result<_,_>>()?;
                     Ok(PropertyType::Tuple { types })
+                } else if type_json.is_bool() || type_json.is_null() {
+                    Ok(PropertyType::Unknown)
                 } else {
-                    if type_json.is_bool() || type_json.is_null() {
-                        Ok(PropertyType::Unknown)
-                    } else {
-                        Err(DeserializationError::unexpected_type(
-                            type_json,
-                            "Expected `type` attribute to be a string.",
-                            ContentType::PropertyType
-                        ))
-                    }
+                    Err(DeserializationError::unexpected_type(
+                        type_json,
+                        "Expected `type` attribute to be a string.",
+                        ContentType::PropertyType
+                    ))
                 }
             }
         }
@@ -517,4 +515,32 @@ pub(crate) fn mcp_tool_output_from_json_value(
         .map(|(k, v)| (k.to_smolstr(), v.clone()))
         .collect();
     Ok(Output { results })
+}
+
+fn typedefs_are_well_founded(
+    type_defs: &HashMap<SmolStr, PropertyTypeDef>,
+) -> Result<(), DeserializationError> {
+    // Effectively perform a BFS from each type def to see if
+    // there is any cycle of type defs that directly reference each other
+    // e.g., type A = B; type B = C; type C = a;
+    // Note: other mutually recursive types are acceptable
+    // e.g., type A = B; type B = { "a": A }
+    for (name, ty_def) in type_defs {
+        let mut cycle = vec![name.clone()];
+        let mut ty_def = ty_def;
+        while let PropertyType::Ref { name } = ty_def.property_type() {
+            if cycle.contains(name) {
+                cycle.push(name.clone());
+                return Err(DeserializationError::type_definition_cycle(cycle));
+            }
+            match type_defs.get(name) {
+                Some(tdef) => {
+                    cycle.push(name.clone());
+                    ty_def = tdef
+                }
+                _ => break,
+            }
+        }
+    }
+    Ok(())
 }

@@ -19,12 +19,12 @@ use crate::description::{self, PropertyType, ToolDescription};
 use crate::err::ValidationError;
 use itertools::Itertools;
 use smol_str::{SmolStr, ToSmolStr};
-use std::collections::HashMap;
+use std::collections::{hash_map::Entry, HashMap};
 
 pub(crate) fn validate_input(
     tool: &ToolDescription,
     input: &Input,
-    type_defs: &HashMap<SmolStr, description::PropertyTypeDef>,
+    mut type_defs: HashMap<SmolStr, description::PropertyTypeDef>,
 ) -> Result<TypedInput, ValidationError> {
     if tool.name() != input.name() {
         return Err(ValidationError::mismatched_names(
@@ -33,11 +33,10 @@ pub(crate) fn validate_input(
         ));
     }
 
-    let mut type_defs = type_defs.clone();
     type_defs.extend(tool.type_defs.type_defs.clone());
 
     let args = input.get_args().collect();
-    let args = validate_parameters(&tool.inputs, args, &mut type_defs)?;
+    let args = validate_parameters(&tool.inputs, &args, &mut type_defs)?;
     Ok(TypedInput {
         name: input.name.clone(),
         args,
@@ -47,19 +46,18 @@ pub(crate) fn validate_input(
 pub(crate) fn validate_output(
     tool: &ToolDescription,
     output: &Output,
-    type_defs: &HashMap<SmolStr, description::PropertyTypeDef>,
+    mut type_defs: HashMap<SmolStr, description::PropertyTypeDef>,
 ) -> Result<TypedOutput, ValidationError> {
-    let mut type_defs = type_defs.clone();
     type_defs.extend(tool.type_defs.type_defs.clone());
 
     let results = output.get_results().collect();
-    let results = validate_parameters(&tool.outputs, results, &mut type_defs)?;
+    let results = validate_parameters(&tool.outputs, &results, &mut type_defs)?;
     Ok(TypedOutput { results })
 }
 
 fn validate_parameters(
     types: &description::Parameters,
-    vals: HashMap<&str, data::BorrowedValue<'_>>,
+    vals: &HashMap<&str, data::BorrowedValue<'_>>,
     type_defs: &mut HashMap<SmolStr, description::PropertyTypeDef>,
 ) -> Result<HashMap<SmolStr, TypedValue>, ValidationError> {
     type_defs.extend(types.type_defs.type_defs.clone());
@@ -152,11 +150,6 @@ fn validate_property_type(
             Ok(TypedValue::Array(vals))
         }
         (PropertyType::Tuple { types }, Value::Array(vals)) => {
-            // PANIC SAFETY: the value is an array. Getting as an array should not error
-            #[allow(
-                clippy::unwrap_used,
-                reason = "val is an array. Getting as an array should not error"
-            )]
             if types.len() != vals.len() {
                 return Err(ValidationError::wrong_tuple_size(types.len(), vals.len()));
             }
@@ -169,14 +162,11 @@ fn validate_property_type(
         }
         (PropertyType::Union { types }, val) => {
             for (index, ty) in types.iter().enumerate() {
-                match validate_property_type(ty, val.clone(), type_defs) {
-                    Ok(ty_val) => {
-                        return Ok(TypedValue::Union {
-                            index,
-                            value: Box::new(ty_val),
-                        })
-                    }
-                    Err(_) => (),
+                if let Ok(ty_val) = validate_property_type(ty, val.clone(), type_defs) {
+                    return Ok(TypedValue::Union {
+                        index,
+                        value: Box::new(ty_val),
+                    });
                 }
             }
             Err(ValidationError::InvalidValueForUnionType)
@@ -205,13 +195,13 @@ fn validate_property_type(
                 }
             }
             for (name, v) in vals.into_iter() {
-                if !props.contains_key(&name) {
+                if let Entry::Vacant(e) = props.entry(name) {
                     match additional_properties {
                         Some(ty) => {
                             let ty_val = validate_property_type(ty, v, type_defs)?;
-                            props.insert(name, ty_val);
+                            e.insert(ty_val);
                         }
-                        None => return Err(ValidationError::unexpected_property(name.as_str())),
+                        None => return Err(ValidationError::unexpected_property(e.key())),
                     }
                 }
             }
@@ -228,7 +218,7 @@ fn validate_property_type(
             None => Err(ValidationError::unexpected_type_name(name.as_str())),
         },
         (PropertyType::Unknown, val) => Ok(TypedValue::Unknown(val)),
-        _ => return Err(ValidationError::InvalidValueForType),
+        _ => Err(ValidationError::InvalidValueForType),
     }
 }
 
@@ -238,12 +228,6 @@ fn validate_property_type(
     reason = "Indexing vec of length 2 by 0 and 1 should not panic"
 )]
 fn is_decimal(str: &str) -> bool {
-    let parts: Vec<&str> = str.split('.').collect();
-
-    if parts.len() != 2 {
-        return false;
-    }
-
     let Some((integer_part, fractional_part)) = str.split('.').collect_tuple() else {
         return false;
     };
