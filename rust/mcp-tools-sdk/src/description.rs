@@ -14,13 +14,17 @@
  * limitations under the License.
  */
 
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use std::collections::HashMap;
 use std::path::Path;
 
+use crate::data;
+
+use super::data::{Input, Output};
 use super::deserializer;
-pub use super::err::DeserializationError;
+use super::err::{DeserializationError, ValidationError};
 use super::parser;
+use super::validation::{validate_input, validate_output};
 
 /// The type a `Property` can take
 #[derive(Debug, Clone)]
@@ -140,7 +144,7 @@ impl PropertyTypeDef {
 /// Container for convienently representing a collection of TypeDefs
 #[derive(Debug, Clone)]
 pub(crate) struct PropertyTypeDefs {
-    type_defs: HashMap<SmolStr, PropertyTypeDef>,
+    pub(crate) type_defs: HashMap<SmolStr, PropertyTypeDef>,
 }
 
 impl PropertyTypeDefs {
@@ -251,18 +255,40 @@ impl ToolDescription {
         })?;
         Self::from_json_str(&contents)
     }
+
+    /// Validates the `Input` matches this `ToolDescription`'s input schema.
+    pub fn validate_input(
+        &self,
+        input: &Input,
+        type_defs: HashMap<SmolStr, PropertyTypeDef>,
+    ) -> Result<data::TypedInput, ValidationError> {
+        validate_input(self, input, type_defs)
+    }
+
+    /// Validates the `Output` matches this `ToolDescription`'s output schema.
+    pub fn validate_output(
+        &self,
+        output: &Output,
+        type_defs: HashMap<SmolStr, PropertyTypeDef>,
+    ) -> Result<data::TypedOutput, ValidationError> {
+        validate_output(self, output, type_defs)
+    }
 }
 
 /// A representation of a collection of MCP Tools (e.g., all the tools provided by an MCP Server)
 #[derive(Debug, Clone)]
 pub struct ServerDescription {
-    pub(crate) tools: Vec<ToolDescription>,
-    pub(crate) type_defs: PropertyTypeDefs,
+    tools: HashMap<SmolStr, ToolDescription>,
+    type_defs: PropertyTypeDefs,
 }
 
 impl ServerDescription {
     /// Create a new Server Description from its components
-    pub fn new(tools: Vec<ToolDescription>, type_defs: HashMap<SmolStr, PropertyTypeDef>) -> Self {
+    pub fn new(
+        tools: impl Iterator<Item = ToolDescription>,
+        type_defs: HashMap<SmolStr, PropertyTypeDef>,
+    ) -> Self {
+        let tools = tools.map(|tool| (tool.name().to_smolstr(), tool)).collect();
         Self {
             tools,
             type_defs: PropertyTypeDefs::new(type_defs),
@@ -271,7 +297,7 @@ impl ServerDescription {
 
     /// Get an iterator to all tool descriptions within this `ServerDescription`
     pub fn tool_descriptions(&self) -> impl Iterator<Item = &ToolDescription> {
-        self.tools.iter()
+        self.tools.values()
     }
 
     /// Get any TypeDefs defined within this ServerDescription (i.e., TypeDefs shared between tools)
@@ -279,18 +305,38 @@ impl ServerDescription {
         self.type_defs.values()
     }
 
-    /// Deserialize an MCP `list_tool` json response (or JSON Array of Tool Descriptions) into a `ServerDescription`
+    /// Deserialize an MCP `tools/list` json response (or JSON Array of Tool Descriptions) into a `ServerDescription`
     pub fn from_json_str(json_str: &str) -> Result<Self, DeserializationError> {
         let mut parser = parser::json_parser::JsonParser::new(json_str);
         deserializer::server_description_from_json_value(parser.get_value()?)
     }
 
-    /// Deserialize an MCP `list_tool` json response (or JSON Array of Tool Descriptions) into a `ServerDescription`
+    /// Deserialize an MCP `tools/list` json response (or JSON Array of Tool Descriptions) into a `ServerDescription`
     pub fn from_json_file<P: AsRef<Path>>(json_file: P) -> Result<Self, DeserializationError> {
         let contents = std::fs::read_to_string(json_file.as_ref()).map_err(|e| {
             DeserializationError::read_error(json_file.as_ref().into(), format!("{e}"))
         })?;
         Self::from_json_str(&contents)
+    }
+
+    /// Validate the `Input` against the corresponding tool within this `ServerDescription`
+    pub fn validate_input(&self, input: &Input) -> Result<data::TypedInput, ValidationError> {
+        match self.tools.get(input.name()) {
+            Some(tool) => tool.validate_input(input, self.type_defs.type_defs.clone()),
+            None => Err(ValidationError::tool_not_found(input.name().into())),
+        }
+    }
+
+    /// Validate the `Output` against the corresponding tool within this `ServerDescription`
+    pub fn validate_output(
+        &self,
+        tool_name: &str,
+        output: &Output,
+    ) -> Result<data::TypedOutput, ValidationError> {
+        match self.tools.get(tool_name) {
+            Some(tool) => tool.validate_output(output, self.type_defs.type_defs.clone()),
+            None => Err(ValidationError::tool_not_found(tool_name.into())),
+        }
     }
 }
 
@@ -802,6 +848,67 @@ mod test {
     }
 
     #[test]
+    fn test_enum_non_array_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+                "type": "string",
+                "enum": true
+            }
+        }
+    }
+}"#;
+        assert_matches!(
+            ToolDescription::from_json_str(tool_description),
+            Err(DeserializationError::UnexpectedType(..))
+        );
+    }
+
+    #[test]
+    fn test_unrecognized_string_format_is_string() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+                "type": "string",
+                "format": "unknown"
+            }
+        }
+    }
+}"#;
+        let tool = ToolDescription::from_json_str(tool_description).unwrap();
+        assert_matches!(
+            tool.inputs().properties().next(),
+            Some(v) if matches!(v.property_type(), PropertyType::String)
+        );
+    }
+
+    #[test]
+    fn test_string_format_is_not_string_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+                "type": "string",
+                "format": false
+            }
+        }
+    }
+}"#;
+        assert_matches!(
+            ToolDescription::from_json_str(tool_description),
+            Err(DeserializationError::UnexpectedType(..))
+        );
+    }
+
+    #[test]
     fn test_array_items_missing_is_unknown() {
         let tool_description = r#"{
     "name": "test_tool",
@@ -969,6 +1076,976 @@ mod test {
         assert_matches!(
             ToolDescription::from_json_str(tool_description),
             Err(DeserializationError::UnexpectedType(..))
+        );
+    }
+
+    #[test]
+    fn test_reftype_has_unrecognized_prefix_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+                "$ref": "does not start with required prefix"
+            }
+        }
+    }
+}"#;
+        assert_matches!(
+            ToolDescription::from_json_str(tool_description),
+            Err(DeserializationError::UnexpectedValue(..))
+        );
+    }
+
+    #[test]
+    fn test_reftype_is_not_string_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "test_attr": {
+                "$ref": false
+            }
+        }
+    }
+}"#;
+        assert_matches!(
+            ToolDescription::from_json_str(tool_description),
+            Err(DeserializationError::UnexpectedType(..))
+        );
+    }
+
+    #[test]
+    fn test_infinite_typedef_is_error() {
+        let tool_description = r##"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "$defs": {
+            "A": { "$ref": "#/$defs/B" },
+            "B": { "$ref": "#/$defs/C" },
+            "C": { "$ref": "#/$defs/A" }
+        },
+        "properties": {}
+    }
+}"##;
+        assert_matches!(
+            ToolDescription::from_json_str(tool_description),
+            Err(DeserializationError::NonWellFoundedTypeDefinitions(..))
+        );
+    }
+
+    //--------------- Test Input/Output Validation -------------------------
+    #[test]
+    fn test_validate_input_simple() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "attr": { "type": "boolean" }
+        },
+        "required": ["attr"]
+    }
+}"#;
+        let tools = ServerDescription::from_json_str(tool_description).unwrap();
+
+        let tool_input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "attr": false
+        }
+    }
+}"#;
+        let input = Input::from_json_str(tool_input).unwrap();
+        tools.validate_input(&input).unwrap();
+    }
+
+    #[test]
+    fn test_validate_input_all_types() {
+        let tool_description = r##"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "$defs": {
+            "my_bool": { "type": "boolean" }
+        },
+        "properties": {
+            "bool_attr": { "type": "boolean" },
+            "int_attr": { "type": "integer" },
+            "float_attr": { "type": "float" },
+            "num_attr": { "type": "number" },
+            "str_attr": { "type": "string" },
+            "dec_attr": { "type": "string", "format": "decimal" },
+            "date_attr": { "type": "string", "format": "date" },
+            "dt_attr": { "type": "string", "format": "date-time" },
+            "dur_attr": { "type": "string", "format": "duration" },
+            "ipv4_attr": { "type": "string", "format": "ipv4" },
+            "ipv6_attr": { "type": "string", "format": "ipv6" },
+            "null_attr": { "type": "null" },
+            "enum_attr": { "type": "string", "enum": ["this", "that"] },
+            "arr_attr": { "type": "array", "items": { "type": "integer" } },
+            "tuple_attr": { "type": ["string", "boolean"] },
+            "union_attr": {
+                "anyOf": [
+                    { "type": "string" },
+                    { "type": "null" }
+                ]
+            },
+            "obj_attr": {
+                "type": "object",
+                "properties": {
+                    "req_attr": { "type": "boolean" },
+                    "attr": { "type": "boolean" }
+                },
+                "additionalProperties": { "type": "string" },
+                "required": ["req_attr"]
+            },
+            "ref_attr": { "$ref": "#/$defs/my_bool" }
+        },
+        "required": [
+            "bool_attr", "int_attr", "float_attr", "num_attr",
+            "str_attr", "dec_attr", "date_attr", "dt_attr",
+            "dur_attr", "ipv4_attr", "ipv6_attr", "null_attr",
+            "enum_attr", "arr_attr", "tuple_attr", "union_attr",
+            "obj_attr", "ref_attr"
+        ]
+    }
+}"##;
+        let tools = ServerDescription::from_json_str(tool_description).unwrap();
+
+        let tool_input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "bool_attr": false,
+            "int_attr": 1,
+            "float_attr": 1.0,
+            "num_attr": 1.2e12,
+            "str_attr": "my cool str",
+            "dec_attr": "0.0001",
+            "date_attr": "2025-11-19",
+            "dt_attr": "2025-11-19T12:11:00",
+            "dur_attr": "PT1D",
+            "ipv4_attr": "0.0.0.0",
+            "ipv6_attr": "::1",
+            "null_attr": null,
+            "enum_attr": "this",
+            "arr_attr": [0, 1, 2],
+            "tuple_attr": ["a part of a pair", true],
+            "union_attr": null,
+            "obj_attr": {
+                "req_attr": false,
+                "my_additional_attr": "some additional value"
+            },
+            "ref_attr": false
+        }
+    }
+}"#;
+        let input = Input::from_json_str(tool_input).unwrap();
+        tools.validate_input(&input).unwrap();
+    }
+
+    #[test]
+    fn test_validate_input_none_required() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "attr": { "type": "boolean" }
+        },
+        "required": []
+    }
+}"#;
+        let tools = ServerDescription::from_json_str(tool_description).unwrap();
+
+        let tool_input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "tool": "test_tool",
+        "args": {}
+    }
+}"#;
+        let input = Input::from_json_str(tool_input).unwrap();
+        tools.validate_input(&input).unwrap();
+    }
+
+    #[test]
+    fn test_validate_input_tool_not_found_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "attr": { "type": "boolean" }
+        },
+        "required": []
+    }
+}"#;
+        let tools = ServerDescription::from_json_str(tool_description).unwrap();
+
+        let tool_input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "tool": "test_tool2",
+        "args": {}
+    }
+}"#;
+        let input = Input::from_json_str(tool_input).unwrap();
+        assert_matches!(
+            tools.validate_input(&input),
+            Err(ValidationError::ToolNotFound(..))
+        )
+    }
+
+    #[test]
+    fn test_validate_input_wrong_name_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "attr": { "type": "boolean" }
+        },
+        "required": []
+    }
+}"#;
+        let tool = ToolDescription::from_json_str(tool_description).unwrap();
+
+        let tool_input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "tool": "test_tool2",
+        "args": {}
+    }
+}"#;
+        let input = Input::from_json_str(tool_input).unwrap();
+        assert_matches!(
+            tool.validate_input(&input, HashMap::new()),
+            Err(ValidationError::MismatchedToolNames(..))
+        )
+    }
+
+    #[test]
+    fn test_validate_input_unrecognized_attr_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "attr": { "type": "string", "format": "date-time" }
+        },
+        "required": ["attr"]
+    }
+}"#;
+        let tools = ServerDescription::from_json_str(tool_description).unwrap();
+
+        let tool_input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "attr": "2025-11-20",
+            "unexpected_attr": true
+        }
+    }
+}"#;
+        let input = Input::from_json_str(tool_input).unwrap();
+        assert_matches!(
+            tools.validate_input(&input),
+            Err(ValidationError::UnexpectedProperty(..))
+        )
+    }
+
+    #[test]
+    fn test_validate_output_simple() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {}
+    },
+    "outputSchema": {
+        "type": "object",
+        "properties": {
+            "attr": { "type": "boolean" }
+        },
+        "required": ["attr"]
+    }
+}"#;
+        let tools = ServerDescription::from_json_str(tool_description).unwrap();
+
+        let tool_output = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+        "structuredContent": {
+            "attr": false
+        }
+    }
+}"#;
+        let output = Output::from_json_str(tool_output).unwrap();
+        tools.validate_output("test_tool", &output).unwrap();
+    }
+
+    #[test]
+    fn test_validate_output_all_types() {
+        let tool_description = r##"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {}
+    },
+    "outputSchema": {
+        "type": "object",
+        "$defs": {
+            "my_bool": { "type": "boolean" }
+        },
+        "properties": {
+            "bool_attr": { "type": "boolean" },
+            "int_attr": { "type": "integer" },
+            "float_attr": { "type": "float" },
+            "num_attr": { "type": "number" },
+            "str_attr": { "type": "string" },
+            "dec_attr": { "type": "string", "format": "decimal" },
+            "date_attr": { "type": "string", "format": "date" },
+            "dt_attr": { "type": "string", "format": "date-time" },
+            "dur_attr": { "type": "string", "format": "duration" },
+            "ipv4_attr": { "type": "string", "format": "ipv4" },
+            "ipv6_attr": { "type": "string", "format": "ipv6" },
+            "null_attr": { "type": "null" },
+            "enum_attr": { "type": "string", "enum": ["this", "that"] },
+            "arr_attr": { "type": "array", "items": { "type": "integer" } },
+            "tuple_attr": { "type": ["string", "boolean"] },
+            "union_attr": {
+                "anyOf": [
+                    { "type": "string" },
+                    { "type": "null" }
+                ]
+            },
+            "ref_attr": { "$ref": "#/$defs/my_bool" }
+        },
+        "required": [
+            "bool_attr", "int_attr", "float_attr", "num_attr",
+            "str_attr", "dec_attr", "date_attr", "dt_attr",
+            "dur_attr", "ipv4_attr", "ipv6_attr", "null_attr",
+            "enum_attr", "arr_attr", "tuple_attr", "union_attr",
+            "ref_attr"
+        ]
+    }
+}"##;
+        let tools = ServerDescription::from_json_str(tool_description).unwrap();
+
+        let tool_output = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+        "structuredContent": {
+            "bool_attr": false,
+            "int_attr": 1,
+            "float_attr": 1.0,
+            "num_attr": 1.2e12,
+            "str_attr": "my cool str",
+            "dec_attr": "0.0001",
+            "date_attr": "2025-11-19",
+            "dt_attr": "2025-11-19T12:11:00",
+            "dur_attr": "PT1D",
+            "ipv4_attr": "0.0.0.0",
+            "ipv6_attr": "::1",
+            "null_attr": null,
+            "enum_attr": "this",
+            "arr_attr": [0, 1, 2],
+            "tuple_attr": ["a part of a pair", true],
+            "union_attr": null,
+            "ref_attr": false
+        }
+    }
+}"#;
+        let output = Output::from_json_str(tool_output).unwrap();
+        tools.validate_output("test_tool", &output).unwrap();
+    }
+
+    #[test]
+    fn test_validate_ouptut_none_required() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {}
+    },
+    "outputSchema": {
+        "type": "object",
+        "properties": {
+            "attr": { "type": "boolean" }
+        }
+    }
+}"#;
+        let tools = ServerDescription::from_json_str(tool_description).unwrap();
+
+        let tool_output = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+        "structuredContent": {}
+    }
+}"#;
+        let output = Output::from_json_str(tool_output).unwrap();
+        tools.validate_output("test_tool", &output).unwrap();
+    }
+
+    #[test]
+    fn test_validate_output_tool_not_found_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {}
+    },
+    "outputSchema": {
+        "type": "object",
+        "properties": {
+            "attr": { "type": "boolean" }
+        }
+    }
+}"#;
+        let tools = ServerDescription::from_json_str(tool_description).unwrap();
+
+        let tool_output = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+        "structuredContent": {}
+    }
+}"#;
+        let output = Output::from_json_str(tool_output).unwrap();
+        assert_matches!(
+            tools.validate_output("test_tool2", &output),
+            Err(ValidationError::ToolNotFound(..))
+        )
+    }
+
+    #[test]
+    fn test_validate_input_missing_required_attr_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "attr": { "type": "boolean" }
+        },
+        "required": ["attr"]
+    }
+}"#;
+        let tools = ServerDescription::from_json_str(tool_description).unwrap();
+
+        let tool_input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "tool": "test_tool",
+        "args": {}
+    }
+}"#;
+        let input = Input::from_json_str(tool_input).unwrap();
+        assert_matches!(
+            tools.validate_input(&input),
+            Err(ValidationError::MissingRequiredProperty(..))
+        )
+    }
+
+    #[test]
+    fn test_validate_input_int_attr_not_int_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "attr": { "type": "integer" }
+        },
+        "required": ["attr"]
+    }
+}"#;
+        let tools = ServerDescription::from_json_str(tool_description).unwrap();
+
+        let tool_input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "attr": 0.0
+        }
+    }
+}"#;
+        let input = Input::from_json_str(tool_input).unwrap();
+        assert_matches!(
+            tools.validate_input(&input),
+            Err(ValidationError::InvalidIntegerLiteral(..))
+        )
+    }
+
+    #[test]
+    fn test_validate_input_float_attr_not_float_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "attr": { "type": "float" }
+        },
+        "required": ["attr"]
+    }
+}"#;
+        let tools = ServerDescription::from_json_str(tool_description).unwrap();
+
+        let tool_input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "attr": 1e309
+        }
+    }
+}"#;
+        let input = Input::from_json_str(tool_input).unwrap();
+        assert_matches!(
+            tools.validate_input(&input),
+            Err(ValidationError::InvalidFloatLiteral(..))
+        )
+    }
+
+    #[test]
+    fn test_validate_input_decimal_attr_not_decimal_point_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "attr": { "type": "string", "format": "decimal" }
+        },
+        "required": ["attr"]
+    }
+}"#;
+        let tools = ServerDescription::from_json_str(tool_description).unwrap();
+
+        let tool_input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "attr": "0"
+        }
+    }
+}"#;
+        let input = Input::from_json_str(tool_input).unwrap();
+        assert_matches!(
+            tools.validate_input(&input),
+            Err(ValidationError::InvalidDecimalLiteral(..))
+        )
+    }
+
+    #[test]
+    fn test_validate_input_datetime_attr_not_datetime_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "attr": { "type": "string", "format": "date-time" }
+        },
+        "required": ["attr"]
+    }
+}"#;
+        let tools = ServerDescription::from_json_str(tool_description).unwrap();
+
+        let tool_input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "attr": "January 2, 2025"
+        }
+    }
+}"#;
+        let input = Input::from_json_str(tool_input).unwrap();
+        assert_matches!(
+            tools.validate_input(&input),
+            Err(ValidationError::InvalidDatetimeLiteral(..))
+        )
+    }
+
+    #[test]
+    fn test_validate_input_duration_attr_not_duration_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "attr": { "type": "string", "format": "duration" }
+        },
+        "required": ["attr"]
+    }
+}"#;
+        let tools = ServerDescription::from_json_str(tool_description).unwrap();
+
+        let tool_input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "attr": "0s"
+        }
+    }
+}"#;
+        let input = Input::from_json_str(tool_input).unwrap();
+        assert_matches!(
+            tools.validate_input(&input),
+            Err(ValidationError::InvalidDurationLiteral(..))
+        )
+    }
+
+    #[test]
+    fn test_validate_input_ipaddr_attr_not_ipaddr_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "attr": { "type": "string", "format": "ipv4" }
+        },
+        "required": ["attr"]
+    }
+}"#;
+        let tools = ServerDescription::from_json_str(tool_description).unwrap();
+
+        let tool_input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "attr": "localhost"
+        }
+    }
+}"#;
+        let input = Input::from_json_str(tool_input).unwrap();
+        assert_matches!(
+            tools.validate_input(&input),
+            Err(ValidationError::InvalidIpAddrLiteral(..))
+        )
+    }
+
+    #[test]
+    fn test_validate_input_enum_unrecognized_variant_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "attr": { "type": "string", "enum": ["this", "that"] }
+        },
+        "required": ["attr"]
+    }
+}"#;
+        let tools = ServerDescription::from_json_str(tool_description).unwrap();
+
+        let tool_input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "attr": "those"
+        }
+    }
+}"#;
+        let input = Input::from_json_str(tool_input).unwrap();
+        assert_matches!(
+            tools.validate_input(&input),
+            Err(ValidationError::InvalidEnumVariant(..))
+        )
+    }
+
+    #[test]
+    fn test_validate_input_tuple_type_wrong_arity_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "attr": { "type": ["string", "boolean"] }
+        },
+        "required": ["attr"]
+    }
+}"#;
+        let tools = ServerDescription::from_json_str(tool_description).unwrap();
+
+        let tool_input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "attr": ["oops no bool"]
+        }
+    }
+}"#;
+        let input = Input::from_json_str(tool_input).unwrap();
+        assert_matches!(
+            tools.validate_input(&input),
+            Err(ValidationError::WrongTupleSize(..))
+        )
+    }
+
+    #[test]
+    fn test_validate_input_union_type_unrecognized_type_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "attr": { 
+                "anyOf": [
+                    {"type": "string", "format": "date-time" },
+                    {"type": "integer"}
+                ]
+            }
+        },
+        "required": ["attr"]
+    }
+}"#;
+        let tools = ServerDescription::from_json_str(tool_description).unwrap();
+
+        let tool_input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "attr": false
+        }
+    }
+}"#;
+        let input = Input::from_json_str(tool_input).unwrap();
+        assert_matches!(
+            tools.validate_input(&input),
+            Err(ValidationError::InvalidValueForUnionType)
+        )
+    }
+
+    #[test]
+    fn test_validate_input_object_missing_required_attr_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "attr": {
+                "type": "object",
+                "properties": {
+                    "obj_attr": { "type": "boolean" }
+                },
+                "required": ["obj_attr"]
+            }
+        },
+        "required": ["attr"]
+    }
+}"#;
+        let tools = ServerDescription::from_json_str(tool_description).unwrap();
+
+        let tool_input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "attr": {}
+        }
+    }
+}"#;
+        let input = Input::from_json_str(tool_input).unwrap();
+        assert_matches!(
+            tools.validate_input(&input),
+            Err(ValidationError::MissingRequiredProperty(..))
+        )
+    }
+
+    #[test]
+    fn test_validate_input_object_unrecognized_attr_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "attr": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        "required": ["attr"]
+    }
+}"#;
+        let tools = ServerDescription::from_json_str(tool_description).unwrap();
+
+        let tool_input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "attr": {
+                "obj_attr": "woops, shouldn't be here"
+            }
+        }
+    }
+}"#;
+        let input = Input::from_json_str(tool_input).unwrap();
+        assert_matches!(
+            tools.validate_input(&input),
+            Err(ValidationError::UnexpectedProperty(..))
+        )
+    }
+
+    #[test]
+    fn test_validate_input_object_attr_with_wrong_type_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "attr": {
+                "type": "object",
+                "properties": {
+                    "obj_attr": { "type": "string" }
+                }
+            }
+        },
+        "required": ["attr"]
+    }
+}"#;
+        let tools = ServerDescription::from_json_str(tool_description).unwrap();
+
+        let tool_input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "attr": {
+                "obj_attr": false
+            }
+        }
+    }
+}"#;
+        let input = Input::from_json_str(tool_input).unwrap();
+        assert_matches!(
+            tools.validate_input(&input),
+            Err(ValidationError::InvalidValueForType)
+        )
+    }
+
+    #[test]
+    fn test_validate_input_additional_property_wrong_type_errors() {
+        let tool_description = r#"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "attr": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": { "type": "string" }
+            }
+        },
+        "required": ["attr"]
+    }
+}"#;
+        let tools = ServerDescription::from_json_str(tool_description).unwrap();
+
+        let tool_input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "attr": {
+                "obj_attr": false
+            }
+        }
+    }
+}"#;
+        let input = Input::from_json_str(tool_input).unwrap();
+        assert_matches!(
+            tools.validate_input(&input),
+            Err(ValidationError::InvalidValueForType)
+        )
+    }
+
+    #[test]
+    fn test_validate_input_unrecognized_reftype_errors() {
+        let tool_description = r##"{
+    "name": "test_tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "attr": { "$ref": "#/$defs/my_bool" }
+        },
+        "required": ["attr"]
+    }
+}"##;
+        let tools = ServerDescription::from_json_str(tool_description).unwrap();
+
+        let tool_input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "attr": false
+        }
+    }
+}"#;
+        let input = Input::from_json_str(tool_input).unwrap();
+        assert_matches!(
+            tools.validate_input(&input),
+            Err(ValidationError::UnexpectedTypeName(..))
         )
     }
 }
