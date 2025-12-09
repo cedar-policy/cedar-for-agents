@@ -82,7 +82,10 @@ pub enum TypedValue {
         index: usize,
         value: Box<TypedValue>,
     },
-    Object(HashMap<SmolStr, TypedValue>),
+    Object {
+        properties: HashMap<SmolStr, TypedValue>,
+        additional_properties: HashMap<SmolStr, TypedValue>,
+    },
     Ref {
         name: SmolStr,
         val: Box<TypedValue>,

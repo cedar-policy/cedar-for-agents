@@ -97,7 +97,7 @@ pub enum CliError {
     ContextReadError(#[from] cedar_policy_core::entities::json::ContextJsonDeserializationError),
     #[error(transparent)]
     #[diagnostic(transparent)]
-    RequestGeneration(#[from] crate::RequestGeneratorError)
+    RequestGeneration(#[from] crate::RequestGeneratorError),
 }
 
 impl CliError {

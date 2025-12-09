@@ -19,7 +19,7 @@ use crate::description::{self, PropertyType, ToolDescription};
 use crate::err::ValidationError;
 use itertools::Itertools;
 use smol_str::{SmolStr, ToSmolStr};
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::HashMap;
 
 pub(crate) fn validate_input(
     tool: &ToolDescription,
@@ -194,18 +194,23 @@ fn validate_property_type(
                     None => (),
                 }
             }
+
+            let mut additional_props = HashMap::new();
             for (name, v) in vals.into_iter() {
-                if let Entry::Vacant(e) = props.entry(name) {
+                if props.contains_key(&name) {
                     match additional_properties {
                         Some(ty) => {
                             let ty_val = validate_property_type(ty, v, type_defs)?;
-                            e.insert(ty_val);
+                            additional_props.insert(name, ty_val);
                         }
-                        None => return Err(ValidationError::unexpected_property(e.key())),
+                        None => return Err(ValidationError::unexpected_property(&name)),
                     }
                 }
             }
-            Ok(TypedValue::Object(props))
+            Ok(TypedValue::Object {
+                properties: props,
+                additional_properties: additional_props,
+            })
         }
         (PropertyType::Ref { name }, val) => match type_defs.get(name) {
             Some(ty) => {
