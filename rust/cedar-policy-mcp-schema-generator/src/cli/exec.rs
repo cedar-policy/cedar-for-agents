@@ -127,15 +127,15 @@ impl CliArgs {
                 let input = Input::from_json_file(mcp_tool_input)?;
                 let output = mcp_tool_output
                     .as_ref()
-                    .map(|file| Output::from_json_file(file))
+                    .map(Output::from_json_file)
                     .transpose()?;
                 let (request, entities) = request_generator.generate_request(
                     principal,
                     resource,
                     context.into_iter(),
                     entities,
-                    input,
-                    output,
+                    &input,
+                    output.as_ref(),
                 )?;
                 let authorizor = cedar_policy_core::authorizer::Authorizer::new();
                 match authorizor
