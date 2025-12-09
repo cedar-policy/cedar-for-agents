@@ -176,11 +176,11 @@ fn validate_property_type(
                 properties,
                 additional_properties,
             },
-            Value::Map(vals),
+            Value::Map(mut vals),
         ) => {
             let mut props = HashMap::new();
             for property in properties {
-                match vals.get(property.name()) {
+                match vals.remove(property.name()) {
                     Some(v) => {
                         let ty_val =
                             validate_property_type(property.property_type(), v.clone(), type_defs)?;
@@ -197,7 +197,7 @@ fn validate_property_type(
 
             let mut additional_props = HashMap::new();
             for (name, v) in vals.into_iter() {
-                if props.contains_key(&name) {
+                if !props.contains_key(&name) {
                     match additional_properties {
                         Some(ty) => {
                             let ty_val = validate_property_type(ty, v, type_defs)?;

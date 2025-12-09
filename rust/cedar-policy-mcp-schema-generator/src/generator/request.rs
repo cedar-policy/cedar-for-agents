@@ -23,7 +23,9 @@ use cedar_policy_core::ast::{
 use cedar_policy_core::entities::Entities;
 use cedar_policy_core::validator::ValidatorSchema;
 
+use super::identifiers;
 use crate::{RequestGeneratorError, SchemaGeneratorConfig};
+
 use mcp_tools_sdk::data::{Input, Output, TypedValue};
 use mcp_tools_sdk::description::{self, ServerDescription};
 use smol_str::{SmolStr, ToSmolStr};
@@ -107,10 +109,7 @@ impl RequestGenerator {
                 .map(|ty_def| (ty_def.name().to_smolstr(), (Some(tool_ns.clone()), ty_def))),
         );
 
-        #[allow(clippy::unwrap_used, reason = "`Input` is a valid Name")]
-        // PANIC SAFETY: "Input" is a valid Name
-        let input_ns: Name = "Input".parse().unwrap();
-        let input_ns = input_ns.qualify_with_name(Some(&tool_ns));
+        let input_ns = identifiers::INPUT_NAME.qualify_with_name(Some(&tool_ns));
 
         // Combine server / tool / input specific type defs
         let mut inputs_type_defs = type_defs.clone();
@@ -137,10 +136,7 @@ impl RequestGenerator {
 
         let context = match &output {
             Some(output) if self.config.include_outputs => {
-                #[allow(clippy::unwrap_used, reason = "`Output` is a valid Name")]
-                // PANIC SAFETY: "Output" is a valid Name
-                let output_ns: Name = "Output".parse().unwrap();
-                let output_ns = output_ns.qualify_with_name(Some(&tool_ns));
+                let output_ns = identifiers::OUTPUT_NAME.qualify_with_name(Some(&tool_ns));
 
                 // Combine server / tool / output specific type defs
                 let mut outputputs_type_defs = type_defs.clone();
@@ -179,12 +175,9 @@ impl RequestGenerator {
             cedar_policy_core::extensions::Extensions::all_available(),
         )?;
 
-        // PANIC SAFETY: Action should parse as an EntityType
-        #[allow(clippy::unwrap_used, reason = "Action should parse as an EntityType")]
-        let action_type: EntityType = "Action".parse().unwrap();
         let action_name = Eid::new(tool.name());
         let action = EntityUID::from_components(
-            action_type.qualify_with(self.root_namespace.as_ref()),
+            identifiers::ACTION.qualify_with(self.root_namespace.as_ref()),
             action_name,
             None,
         );
@@ -209,9 +202,7 @@ impl RequestGenerator {
     ) -> Result<(RestrictedExpr, Entities), RequestGeneratorError> {
         match val {
             TypedValue::Null => {
-                // PANIC SAFETY: Null should be a valid EntityType name
-                #[allow(clippy::unwrap_used, reason = "Null should be a valid EntityType name")]
-                let ty: EntityType = "Null".parse().unwrap();
+                let ty = EntityType::from(Name::from(identifiers::NULL_TYPE.clone()));
                 let ty = ty.qualify_with(self.root_namespace.as_ref());
                 let eid = Eid::new("null");
                 let euid = EntityUID::from_components(ty, eid, None);
@@ -222,20 +213,15 @@ impl RequestGenerator {
             TypedValue::Float(f) => {
                 if self.config.numbers_as_decimal {
                     let val = RestrictedExpr::val(format!("{:.4}", f));
-                    // PANIC SAFETY: decimal should be a valid name
-                    #[allow(clippy::unwrap_used, reason = "decimal should be a valid name")]
-                    let decimal_ctor = "decimal".parse().unwrap();
                     Ok((
-                        RestrictedExpr::call_extension_fn(decimal_ctor, vec![val]),
+                        RestrictedExpr::call_extension_fn(
+                            identifiers::DECIMAL_CTOR.clone(),
+                            vec![val],
+                        ),
                         Entities::new(),
                     ))
                 } else {
-                    // PANIC SAFETY: Float should be a valid EntityType name
-                    #[allow(
-                        clippy::unwrap_used,
-                        reason = "Float should be a valid EntityType name"
-                    )]
-                    let ty: EntityType = "Float".parse().unwrap();
+                    let ty = EntityType::from(Name::from(identifiers::FLOAT_TYPE.clone()));
                     let ty = ty.qualify_with(self.root_namespace.as_ref());
                     let eid = Eid::new(format!("{}", f));
                     let euid = EntityUID::from_components(ty, eid, None);
@@ -254,20 +240,15 @@ impl RequestGenerator {
                         }
                     };
                     let val = RestrictedExpr::val(val);
-                    // PANIC SAFETY: decimal should be a valid name
-                    #[allow(clippy::unwrap_used, reason = "decimal should be a valid name")]
-                    let decimal_ctor = "decimal".parse().unwrap();
                     Ok((
-                        RestrictedExpr::call_extension_fn(decimal_ctor, vec![val]),
+                        RestrictedExpr::call_extension_fn(
+                            identifiers::DECIMAL_CTOR.clone(),
+                            vec![val],
+                        ),
                         Entities::new(),
                     ))
                 } else {
-                    // PANIC SAFETY: Number should be a valid EntityType name
-                    #[allow(
-                        clippy::unwrap_used,
-                        reason = "Number should be a valid EntityType name"
-                    )]
-                    let ty: EntityType = "Number".parse().unwrap();
+                    let ty = EntityType::from(Name::from(identifiers::NUMBER_TYPE.clone()));
                     let ty = ty.qualify_with(self.root_namespace.as_ref());
                     let eid = Eid::new(n.as_str());
                     let euid = EntityUID::from_components(ty, eid, None);
@@ -277,51 +258,40 @@ impl RequestGenerator {
             TypedValue::String(s) => Ok((RestrictedExpr::val(s.as_str()), Entities::new())),
             TypedValue::Decimal(s) => {
                 let val = RestrictedExpr::val(s.as_str());
-                // PANIC SAFETY: decimal should be a valid name
-                #[allow(clippy::unwrap_used, reason = "decimal should be a valid name")]
-                let decimal_ctor = "decimal".parse().unwrap();
                 Ok((
-                    RestrictedExpr::call_extension_fn(decimal_ctor, vec![val]),
+                    RestrictedExpr::call_extension_fn(identifiers::DECIMAL_CTOR.clone(), vec![val]),
                     Entities::new(),
                 ))
             }
             TypedValue::Datetime(s) => {
                 let val = RestrictedExpr::val(reformat_datestr(s.as_str()));
-                // PANIC SAFETY: decimal should be a valid name
-                #[allow(clippy::unwrap_used, reason = "datetime should be a valid name")]
-                let dt_ctor = "datetime".parse().unwrap();
                 Ok((
-                    RestrictedExpr::call_extension_fn(dt_ctor, vec![val]),
+                    RestrictedExpr::call_extension_fn(
+                        identifiers::DATETIME_CTOR.clone(),
+                        vec![val],
+                    ),
                     Entities::new(),
                 ))
             }
             TypedValue::Duration(s) => {
                 let val = RestrictedExpr::val(reformat_duration(s.as_str()));
-                // PANIC SAFETY: decimal should be a valid name
-                #[allow(clippy::unwrap_used, reason = "duration should be a valid name")]
-                let dur_ctor = "duration".parse().unwrap();
                 Ok((
-                    RestrictedExpr::call_extension_fn(dur_ctor, vec![val]),
+                    RestrictedExpr::call_extension_fn(
+                        identifiers::DURATION_CTOR.clone(),
+                        vec![val],
+                    ),
                     Entities::new(),
                 ))
             }
             TypedValue::IpAddr(s) => {
                 let val = RestrictedExpr::val(reformat_ipaddr(s.as_str()));
-                // PANIC SAFETY: decimal should be a valid name
-                #[allow(clippy::unwrap_used, reason = "ip should be a valid name")]
-                let ipaddr_ctor = "ip".parse().unwrap();
                 Ok((
-                    RestrictedExpr::call_extension_fn(ipaddr_ctor, vec![val]),
+                    RestrictedExpr::call_extension_fn(identifiers::IPADDR_CTOR.clone(), vec![val]),
                     Entities::new(),
                 ))
             }
             TypedValue::Unknown(_) => {
-                // PANIC SAFETY: Unknown should be a valid EntityType name
-                #[allow(
-                    clippy::unwrap_used,
-                    reason = "Unknown should be a valid EntityType name"
-                )]
-                let ty: EntityType = "Unknown".parse().unwrap();
+                let ty = EntityType::from(Name::from(identifiers::UNKNOWN_TYPE.clone()));
                 let ty = ty.qualify_with(self.root_namespace.as_ref());
                 let eid = Eid::new("unknown");
                 let euid = EntityUID::from_components(ty, eid, None);
