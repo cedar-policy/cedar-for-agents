@@ -918,10 +918,10 @@ impl SchemaGenerator {
                 TypeVariant::Entity { name }
             }
             PropertyType::Enum { variants } => {
-                let variants = NonEmpty::from_slice(variants)
-                    .ok_or_else(|| SchemaGeneratorError::empty_enum_choice(format!("{ty_name}")))?;
+                let choices = NonEmpty::from_slice(variants)
+                    .ok_or_else(|| SchemaGeneratorError::empty_enum_choice(ty_name.to_string()))?;
                 let ty = EntityType {
-                    kind: EntityTypeKind::Enum { choices: variants },
+                    kind: EntityTypeKind::Enum { choices },
                     annotations: Annotations::new(),
                     loc: None,
                 };
