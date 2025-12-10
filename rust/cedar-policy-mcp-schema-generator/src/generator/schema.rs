@@ -918,17 +918,10 @@ impl SchemaGenerator {
                 TypeVariant::Entity { name }
             }
             PropertyType::Enum { variants } => {
-                if variants.is_empty() {
-                    return Err(SchemaGeneratorError::empty_enum_choice(format!(
-                        "{ty_name}"
-                    )));
-                }
-                #[allow(clippy::unwrap_used, reason = "variants are not empty")]
-                // PANIC SAFETY: variants cannot be empty
+                let variants = NonEmpty::from_slice(variants)
+                    .ok_or_else(|| SchemaGeneratorError::empty_enum_choice(format!("{ty_name}")))?;
                 let ty = EntityType {
-                    kind: EntityTypeKind::Enum {
-                        choices: NonEmpty::from_vec(variants.clone()).unwrap(),
-                    },
+                    kind: EntityTypeKind::Enum { choices: variants },
                     annotations: Annotations::new(),
                     loc: None,
                 };
