@@ -29,7 +29,7 @@ use super::identifiers;
 use crate::{RequestGeneratorError, SchemaGeneratorConfig};
 
 use mcp_tools_sdk::data::{Input, Output, TypedValue};
-use mcp_tools_sdk::description::{self, ServerDescription};
+use mcp_tools_sdk::description::ServerDescription;
 use smol_str::{SmolStr, ToSmolStr};
 
 #[derive(Clone, Debug)]
@@ -83,13 +83,7 @@ impl RequestGenerator {
         let mut type_defs = self
             .tools
             .type_definitions()
-            .cloned()
-            .map(|ty_def| {
-                (
-                    ty_def.name().to_smolstr(),
-                    (self.root_namespace.clone(), ty_def),
-                )
-            })
+            .map(|ty_def| (ty_def.name().to_smolstr(), self.root_namespace.clone()))
             .collect::<HashMap<_, _>>();
 
         let tool_ns: Name = tool.name().parse()?;
@@ -98,8 +92,7 @@ impl RequestGenerator {
         // collect all of the tool specific type defs
         type_defs.extend(
             tool.type_definitions()
-                .cloned()
-                .map(|ty_def| (ty_def.name().to_smolstr(), (Some(tool_ns.clone()), ty_def))),
+                .map(|ty_def| (ty_def.name().to_smolstr(), Some(tool_ns.clone()))),
         );
 
         let input_ns = identifiers::INPUT_NAME.qualify_with_name(Some(&tool_ns));
@@ -109,8 +102,7 @@ impl RequestGenerator {
         inputs_type_defs.extend(
             tool.inputs()
                 .type_definitions()
-                .cloned()
-                .map(|ty_def| (ty_def.name().to_smolstr(), (Some(input_ns.clone()), ty_def))),
+                .map(|ty_def| (ty_def.name().to_smolstr(), Some(input_ns.clone()))),
         );
 
         let mut inputs = HashMap::new();
@@ -133,14 +125,11 @@ impl RequestGenerator {
 
                 // Combine server / tool / output specific type defs
                 let mut outputputs_type_defs = type_defs.clone();
-                outputputs_type_defs.extend(tool.outputs().type_definitions().cloned().map(
-                    |ty_def| {
-                        (
-                            ty_def.name().to_smolstr(),
-                            (Some(output_ns.clone()), ty_def),
-                        )
-                    },
-                ));
+                outputputs_type_defs.extend(
+                    tool.outputs()
+                        .type_definitions()
+                        .map(|ty_def| (ty_def.name().to_smolstr(), Some(output_ns.clone()))),
+                );
                 let mut outputs = HashMap::new();
                 for (name, res) in output.get_results() {
                     let (expr, new_entities) =
@@ -189,7 +178,7 @@ impl RequestGenerator {
     fn val_to_cedar(
         &self,
         val: &TypedValue,
-        type_defs: &HashMap<SmolStr, (Option<Name>, description::PropertyTypeDef)>,
+        type_defs: &HashMap<SmolStr, Option<Name>>,
         namespace: Option<&Name>,
         ty_name: &str,
     ) -> Result<(RestrictedExpr, Entities), RequestGeneratorError> {
@@ -417,7 +406,7 @@ impl RequestGenerator {
                     };
                     Err(RequestGeneratorError::undefined_ref(name.to_string(), ns))
                 }
-                Some((ns, _ty)) => self.val_to_cedar(val, type_defs, ns.as_ref(), name.as_str()),
+                Some(ns) => self.val_to_cedar(val, type_defs, ns.as_ref(), name.as_str()),
             },
         }
     }
