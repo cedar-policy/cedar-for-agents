@@ -23,6 +23,8 @@ use cedar_policy_core::ast::{
 use cedar_policy_core::entities::Entities;
 use cedar_policy_core::validator::ValidatorSchema;
 
+use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
+
 use super::identifiers;
 use crate::{RequestGeneratorError, SchemaGeneratorConfig};
 
@@ -444,14 +446,101 @@ impl RequestGenerator {
     }
 }
 
+// PANIC SAFETY: The input `str` should have been validated as a date-time str, and should parse
+#[allow(clippy::unreachable)]
+/// This function converts from JSON date or date-time formatted strings to Cedar datetime strings.
+/// This conversion uses chrono library to parse and reformat the strings appropriately.
+///
+/// Note: this function loses sub-millisecond precision
 fn reformat_datestr(str: &str) -> String {
-    str.into()
+    // Try parsing as date only (YYYY-MM-DD)
+    if let Ok(date) = NaiveDate::parse_from_str(str, "%Y-%m-%d") {
+        return date.format("%Y-%m-%d").to_string();
+    }
+
+    // Try parsing as RFC3339 (with timezone)
+    if let Ok(dt) = DateTime::parse_from_rfc3339(str) {
+        let dt_utc = dt.with_timezone(&Utc);
+
+        // Check if it has subsecond precision
+        if dt_utc.timestamp_subsec_millis() > 0 {
+            // With milliseconds
+            if dt.offset().local_minus_utc() == 0 {
+                // UTC with milliseconds: YYYY-MM-DDTHH:MM:SS.sssZ
+                return dt_utc.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+            } else {
+                // With timezone offset and milliseconds: YYYY-MM-DDTHH:MM:SS.sss+0100
+                return dt.format("%Y-%m-%dT%H:%M:%S%.3f%z").to_string();
+            }
+        } else {
+            // Without milliseconds
+            if dt.offset().local_minus_utc() == 0 {
+                // UTC: YYYY-MM-DDTHH:MM:SSZ
+                return dt_utc.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+            } else {
+                // With timezone offset: YYYY-MM-DDTHH:MM:SS+0100
+                return dt.format("%Y-%m-%dT%H:%M:%S%z").to_string();
+            }
+        }
+    }
+
+    // Try parsing as naive datetime (no timezone)
+    if let Ok(ndt) = NaiveDateTime::parse_from_str(str, "%Y-%m-%dT%H:%M:%S%.f") {
+        // Convert to UTC (assuming input is UTC)
+        let dt_utc = Utc.from_utc_datetime(&ndt);
+
+        // Check if it has subsecond precision
+        if dt_utc.timestamp_subsec_millis() > 0 {
+            // UTC with milliseconds: YYYY-MM-DDTHH:MM:SS.sssZ
+            return dt_utc.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+        } else {
+            // UTC without milliseconds: YYYY-MM-DDTHH:MM:SSZ
+            return dt_utc.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        }
+    }
+
+    unreachable!("Validated DatetimeStrings should be parsable")
 }
 
+/// This function converts from the iso8601 standard for Duration (JSON duration formatted strings) into
+/// cedar formatted durations. Unfortunately, iso8601 uses calendar based durations, and Cedar uses fixed
+/// time durations. This means that the best we can do for converting iso8601 durations that contain
+/// months or year components is to approximate (e.g., 1 year = 365 days and 1 month = 30 days).
 fn reformat_duration(str: &str) -> String {
-    str.into()
+    // PANIC SAFETY: validation ensures that the input `str` will parse as an `iso8601::Duration`
+    #[allow(clippy::unwrap_used)]
+    let duration = iso8601::duration(str).unwrap();
+
+    match duration {
+        iso8601::Duration::YMDHMS {
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+            millisecond,
+        } => {
+            // APPROXIMATE year & month into number of days
+            let n_days = year * 365 + month * 30 + day;
+            format!(
+                "{}d{}h{}m{}s{}ms",
+                n_days, hour, minute, second, millisecond
+            )
+        }
+        iso8601::Duration::Weeks(weeks) => {
+            let n_days = 7 * weeks;
+            format!("{}d", n_days)
+        }
+    }
 }
 
+/// This function converts from JSON compliant ipv4 and ipv6 formatted strings (which can be parsed by `std::net::IpAddr`)
+/// to Cedar compliant IpAddr strings (which requires a stricter formatting, e.g., no leading 0s).
+/// This is accomplished by passing through Rust's IpAddr type which allows lax formatting during deserialization and stricter formatting
+/// during serialization to string.
 fn reformat_ipaddr(str: &str) -> String {
-    str.into()
+    // PANIC SAFETY: validation ensures that the input `str` will parse as an `IpAddr`
+    #[allow(clippy::unwrap_used)]
+    str.parse::<std::net::IpAddr>().unwrap().to_string()
 }
