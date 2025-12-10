@@ -18,7 +18,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use cedar_policy_core::ast::{
-    Context, Eid, Entity, EntityType, EntityUID, Name, Request, RestrictedExpr,
+    Context, Eid, Entity, EntityType, EntityUID, InternalName, Name, Request, RestrictedExpr,
 };
 use cedar_policy_core::entities::Entities;
 use cedar_policy_core::validator::ValidatorSchema;
@@ -64,10 +64,6 @@ impl RequestGenerator {
         input: &Input,
         output: Option<&Output>,
     ) -> Result<(Request, Entities), RequestGeneratorError> {
-        if self.config.flatten_namespaces {
-            return Err(RequestGeneratorError::UnsupportedFlattenedNamespaces);
-        }
-
         let input = self.tools.validate_input(input)?;
         // PANIC SAFETY: `self.tools` must contain a tool named `input.name()` and `input` validates against `tool`
         #[allow(
@@ -96,12 +92,7 @@ impl RequestGenerator {
             })
             .collect::<HashMap<_, _>>();
 
-        // PANIC SAFETY: By assumption, `tool.name()` should be a valid namespace
-        #[allow(
-            clippy::unwrap_used,
-            reason = "By assumption, `tool.name()` should be a valid namespace"
-        )]
-        let tool_ns: Name = tool.name().parse().unwrap();
+        let tool_ns: Name = tool.name().parse()?;
         let tool_ns = tool_ns.qualify_with_name(self.root_namespace.as_ref());
 
         // collect all of the tool specific type defs
@@ -300,15 +291,15 @@ impl RequestGenerator {
                 Ok((RestrictedExpr::val(euid), Entities::new()))
             }
             TypedValue::Enum(s) => {
-                // PANIC SAFETY: By assumption (that we could generate a schema for this tool description), `ty_name` should be a valid EntityType name
-                #[allow(
-                    clippy::unwrap_used,
-                    reason = "By assumption, `ty_name` should be a valid EntityType name"
-                )]
-                let ty: EntityType = ty_name.parse().unwrap();
+                let ty: EntityType = ty_name.parse()?;
                 let ty = ty.qualify_with(namespace);
                 let eid = Eid::new(s.as_str());
                 let euid = EntityUID::from_components(ty, eid, None);
+                let euid = if self.config.flatten_namespaces {
+                    flatten_name(euid)
+                } else {
+                    euid
+                };
                 Ok((RestrictedExpr::val(euid), Entities::new()))
             }
             TypedValue::Array(vals) => {
@@ -333,12 +324,7 @@ impl RequestGenerator {
                 for (i, val) in vals.iter().enumerate() {
                     let sub_ty_name = format!("Proj{i}");
                     let name = format!("proj{i}").to_smolstr();
-                    // PANIC SAFETY: By assumption, (description must pass schema generation) ty_name should be a valid Name
-                    #[allow(
-                        clippy::unwrap_used,
-                        reason = "By assumption, (description must pass schema generation) ty_name should be a valid `Name`"
-                    )]
-                    let sub_namespace: Name = ty_name.parse().unwrap();
+                    let sub_namespace: Name = ty_name.parse()?;
                     let sub_namespace = sub_namespace.qualify_with_name(namespace);
                     let (expr, new_entities) =
                         self.val_to_cedar(val, type_defs, Some(&sub_namespace), &sub_ty_name)?;
@@ -355,12 +341,7 @@ impl RequestGenerator {
             TypedValue::Union { index, value } => {
                 let sub_ty_name = format!("TypeChoice{}", index);
                 let name = format!("typeChoice{}", index).to_smolstr();
-                // PANIC SAFETY: By assumption, (description must pass schema generation) ty_name should be a valid Name
-                #[allow(
-                    clippy::unwrap_used,
-                    reason = "By assumption, (description must pass schema generation) ty_name should be a valid `Name`"
-                )]
-                let sub_namespace: Name = ty_name.parse().unwrap();
+                let sub_namespace: Name = ty_name.parse()?;
                 let sub_namespace = sub_namespace.qualify_with_name(namespace);
                 let (expr, entities) =
                     self.val_to_cedar(value, type_defs, Some(&sub_namespace), &sub_ty_name)?;
@@ -370,12 +351,7 @@ impl RequestGenerator {
                 properties,
                 additional_properties,
             } => {
-                // PANIC SAFETY: By assumption, (description must pass schema generation) ty_name should be a valid Name
-                #[allow(
-                    clippy::unwrap_used,
-                    reason = "By assumption, (description must pass schema generation) ty_name should be a valid `Name`"
-                )]
-                let sub_namespace: Name = ty_name.parse().unwrap();
+                let sub_namespace: Name = ty_name.parse()?;
                 let sub_namespace = sub_namespace.qualify_with_name(namespace);
 
                 let mut entities = Entities::new();
@@ -407,15 +383,15 @@ impl RequestGenerator {
                 if tags.is_empty() && self.config.objects_as_records {
                     Ok((RestrictedExpr::record(pairs.into_iter())?, entities))
                 } else {
-                    // PANIC SAFETY: Schema generator pasing ensures `ty_name` is a valid Cedar `Name`.
-                    #[allow(
-                        clippy::unwrap_used,
-                        reason = "Type description passes schema generation, so `ty_name` should be a valid name"
-                    )]
-                    let entity_ty: EntityType = ty_name.parse().unwrap();
+                    let entity_ty: EntityType = ty_name.parse()?;
                     let entity_ty = entity_ty.qualify_with(namespace);
                     let eid = Eid::new("");
                     let euid = EntityUID::from_components(entity_ty, eid, None);
+                    let euid = if self.config.flatten_namespaces {
+                        flatten_name(euid)
+                    } else {
+                        euid
+                    };
                     let entity = Entity::new(
                         euid.clone(),
                         pairs,
@@ -433,15 +409,16 @@ impl RequestGenerator {
                     Ok((RestrictedExpr::val(euid), entities))
                 }
             }
-            TypedValue::Ref { name, val } => {
-                // PANIC SAFETY: tool description should be well formed, thus ref must exist in type-defs
-                #[allow(
-                    clippy::unwrap_used,
-                    reason = "tool description should be well formed, thus ref must exist in type-defs"
-                )]
-                let (ns, _ty) = type_defs.get(name).unwrap();
-                self.val_to_cedar(val, type_defs, ns.as_ref(), name.as_str())
-            }
+            TypedValue::Ref { name, val } => match type_defs.get(name) {
+                None => {
+                    let ns = match namespace {
+                        None => "".into(),
+                        Some(name) => format!("{}", name),
+                    };
+                    Err(RequestGeneratorError::undefined_ref(name.to_string(), ns))
+                }
+                Some((ns, _ty)) => self.val_to_cedar(val, type_defs, ns.as_ref(), name.as_str()),
+            },
         }
     }
 }
@@ -543,4 +520,22 @@ fn reformat_ipaddr(str: &str) -> String {
     // PANIC SAFETY: validation ensures that the input `str` will parse as an `IpAddr`
     #[allow(clippy::unwrap_used)]
     str.parse::<std::net::IpAddr>().unwrap().to_string()
+}
+
+// PANIC SAFETY: the input EntityUID is valid. Transforming to flatten the entity type name should be safe
+#[allow(clippy::unwrap_used)]
+fn flatten_name(euid: EntityUID) -> EntityUID {
+    let (entity_type, eid) = euid.components();
+    let entity_type = entity_type.name().qualify_with(None);
+    let mut parts = entity_type.namespace_components().cloned();
+    let flattened_namespace = parts
+        .next()
+        .map(InternalName::from)
+        .map(Name::try_from)
+        .transpose()
+        .unwrap();
+    let flattened_basename = parts.map(|id| id.to_string()).collect::<Vec<_>>().join("_");
+    let entity_type: EntityType = flattened_basename.parse().unwrap();
+    let entity_type = entity_type.qualify_with(flattened_namespace.as_ref());
+    EntityUID::from_components(entity_type, eid, None)
 }
