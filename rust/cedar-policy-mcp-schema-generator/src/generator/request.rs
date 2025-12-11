@@ -64,7 +64,7 @@ impl RequestGenerator {
     /// (2) any common context elements
     /// (3) any entity information for the principal, resource, and common context
     /// (4) the MCP tool input request, and (5) optionally the MCP tool output response
-    /// 
+    ///
     /// The function will then return a Cedar Request and entities necessary to determine if the principal is
     /// authorized to use (or receive the oputout of) the requested tool.
     pub fn generate_request(
@@ -465,6 +465,40 @@ fn reformat_datestr(str: &str) -> String {
         }
     }
 
+    // Try parsing with basic timezone format
+    if let Ok(dt) = DateTime::parse_from_str(str, "%Y-%m-%dT%H:%M:%S%z") {
+        let dt_utc = dt.with_timezone(&Utc);
+
+        if dt_utc.timestamp_subsec_millis() > 0 {
+            if dt.offset().local_minus_utc() == 0 {
+                return dt_utc.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+            } else {
+                return dt.format("%Y-%m-%dT%H:%M:%S%.3f%z").to_string();
+            }
+        } else if dt.offset().local_minus_utc() == 0 {
+            return dt_utc.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        } else {
+            return dt.format("%Y-%m-%dT%H:%M:%S%z").to_string();
+        }
+    }
+
+    // Try parsing with basic timezone format WITH fractional seconds
+    if let Ok(dt) = DateTime::parse_from_str(str, "%Y-%m-%dT%H:%M:%S%.f%z") {
+        let dt_utc = dt.with_timezone(&Utc);
+
+        if dt_utc.timestamp_subsec_millis() > 0 {
+            if dt.offset().local_minus_utc() == 0 {
+                return dt_utc.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+            } else {
+                return dt.format("%Y-%m-%dT%H:%M:%S%.3f%z").to_string();
+            }
+        } else if dt.offset().local_minus_utc() == 0 {
+            return dt_utc.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        } else {
+            return dt.format("%Y-%m-%dT%H:%M:%S%z").to_string();
+        }
+    }
+
     // Try parsing as naive datetime (no timezone)
     if let Ok(ndt) = NaiveDateTime::parse_from_str(str, "%Y-%m-%dT%H:%M:%S%.f") {
         // Convert to UTC (assuming input is UTC)
@@ -504,10 +538,23 @@ fn reformat_duration(str: &str) -> String {
         } => {
             // APPROXIMATE year & month into number of days
             let n_days = year * 365 + month * 30 + day;
-            format!(
-                "{}d{}h{}m{}s{}ms",
-                n_days, hour, minute, second, millisecond
-            )
+            let mut ret = "".to_string();
+            if n_days != 0 {
+                ret = format!("{}{}d", ret, n_days)
+            }
+            if hour != 0 {
+                ret = format!("{}{}h", ret, hour)
+            }
+            if minute != 0 {
+                ret = format!("{}{}m", ret, minute)
+            }
+            if second != 0 {
+                ret = format!("{}{}s", ret, second)
+            }
+            if millisecond != 0 || ret.is_empty() {
+                ret = format!("{}{}ms", ret, millisecond)
+            }
+            ret
         }
         iso8601::Duration::Weeks(weeks) => {
             let n_days = 7 * weeks;
@@ -521,9 +568,40 @@ fn reformat_duration(str: &str) -> String {
 /// This is accomplished by passing through Rust's IpAddr type which allows lax formatting during deserialization and stricter formatting
 /// during serialization to string.
 fn reformat_ipaddr(str: &str) -> String {
-    // PANIC SAFETY: validation ensures that the input `str` will parse as an `IpAddr`
+    // PANIC SAFETY: validation ensures that the input `str` will parse as an `IpAddr` or `IpNet`
     #[allow(clippy::unwrap_used)]
-    str.parse::<std::net::IpAddr>().unwrap().to_string()
+    str.parse::<std::net::IpAddr>()
+        .map(|ip| {
+            // Convert IPv4-mapped IPv6 to IPv4
+            match ip {
+                std::net::IpAddr::V6(v6) => {
+                    if let Some(ipv4) = v6.to_ipv4_mapped() {
+                        std::net::IpAddr::V4(ipv4).to_string()
+                    } else {
+                        ip.to_string()
+                    }
+                }
+                std::net::IpAddr::V4(_) => ip.to_string(),
+            }
+        })
+        .unwrap_or_else(|_| {
+            str.parse::<ipnet::IpNet>()
+                .map(|ipnet| {
+                    // Handle IpNet case - convert if it's IPv4-mapped
+                    match ipnet.addr() {
+                        std::net::IpAddr::V6(v6) => {
+                            if let Some(ipv4) = v6.to_ipv4_mapped() {
+                                // Reconstruct with IPv4 and original prefix length
+                                format!("{}/{}", ipv4, ipnet.prefix_len())
+                            } else {
+                                ipnet.to_string()
+                            }
+                        }
+                        std::net::IpAddr::V4(_) => ipnet.to_string(),
+                    }
+                })
+                .unwrap()
+        })
 }
 
 // PANIC SAFETY: the input EntityUID is valid. Transforming to flatten the entity type name should be safe
@@ -545,4 +623,376 @@ fn flatten_name(euid: EntityUID) -> EntityUID {
     let entity_type: EntityType = flattened_basename.parse().unwrap();
     let entity_type = entity_type.qualify_with(flattened_namespace.as_ref());
     EntityUID::from_components(entity_type, eid, None)
+}
+
+#[cfg(test)]
+mod test {
+    use std::str::FromStr;
+
+    use super::*;
+
+    fn test_reformat_datetime_passes_cedar(input: &str, expected: &str) {
+        assert_eq!(reformat_datestr(input), expected);
+        let expr: RestrictedExpr = format!("datetime(\"{}\")", expected)
+            .parse()
+            .expect(&format!(
+                "reformat_datestr({}) == {}, but datetime(\"{}\") does not parse in Cedar",
+                input, expected, expected
+            ));
+        let entities = Entities::new();
+        let evaluator = cedar_policy_core::evaluator::Evaluator::new(
+            cedar_policy_core::ast::Request::new(
+                (EntityUID::from_str("P::\"\"").unwrap(), None),
+                (EntityUID::from_str("Action::\"\"").unwrap(), None),
+                (EntityUID::from_str("R::\"\"").unwrap(), None),
+                Context::empty(),
+                None::<&ValidatorSchema>,
+                cedar_policy_core::extensions::Extensions::all_available(),
+            )
+            .unwrap(),
+            &entities,
+            cedar_policy_core::extensions::Extensions::all_available(),
+        );
+        evaluator.interpret(&expr, &HashMap::new()).expect(&format!(
+            "reformat_datestr({}) == {}, but datetime(\"{}\") evaluates to an error in Cedar",
+            input, expected, expected
+        ));
+    }
+
+    #[test]
+    fn test_reformat_datetime_str() {
+        // Date Only (YYYY-MM-DD)
+        test_reformat_datetime_passes_cedar("2025-12-11", "2025-12-11");
+        test_reformat_datetime_passes_cedar("2024-01-01", "2024-01-01");
+        test_reformat_datetime_passes_cedar("2024-12-31", "2024-12-31");
+        test_reformat_datetime_passes_cedar("2024-02-29", "2024-02-29");
+        test_reformat_datetime_passes_cedar("2023-02-28", "2023-02-28");
+        test_reformat_datetime_passes_cedar("1970-01-01", "1970-01-01");
+        test_reformat_datetime_passes_cedar("2099-12-31", "2099-12-31");
+
+        // DateTime UTC (RFC3339,
+        test_reformat_datetime_passes_cedar("2025-12-11T15:26:41Z", "2025-12-11T15:26:41Z");
+        test_reformat_datetime_passes_cedar("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z");
+        test_reformat_datetime_passes_cedar("2024-12-31T23:59:59Z", "2024-12-31T23:59:59Z");
+        test_reformat_datetime_passes_cedar("2024-06-15T12:30:45Z", "2024-06-15T12:30:45Z");
+        test_reformat_datetime_passes_cedar("1970-01-01T00:00:00Z", "1970-01-01T00:00:00Z");
+
+        // DateTime with Milliseconds UTC
+        test_reformat_datetime_passes_cedar("2025-12-11T15:26:41.123Z", "2025-12-11T15:26:41.123Z");
+        test_reformat_datetime_passes_cedar("2024-12-31T23:59:59.999Z", "2024-12-31T23:59:59.999Z");
+        test_reformat_datetime_passes_cedar("2024-06-15T12:30:45.500Z", "2024-06-15T12:30:45.500Z");
+        test_reformat_datetime_passes_cedar("2024-03-20T08:15:30.001Z", "2024-03-20T08:15:30.001Z");
+        test_reformat_datetime_passes_cedar("2024-01-01T00:00:00.000Z", "2024-01-01T00:00:00Z");
+
+        // DateTime with Microseconds UTC
+        test_reformat_datetime_passes_cedar(
+            "2025-12-11T15:26:41.123456Z",
+            "2025-12-11T15:26:41.123Z",
+        );
+        test_reformat_datetime_passes_cedar(
+            "2024-12-31T23:59:59.999999Z",
+            "2024-12-31T23:59:59.999Z",
+        );
+        test_reformat_datetime_passes_cedar("2024-01-01T00:00:00.000000Z", "2024-01-01T00:00:00Z");
+
+        // DateTime with Positive Timezone Offset
+        test_reformat_datetime_passes_cedar("2025-12-11T15:26:41+00:00", "2025-12-11T15:26:41Z");
+        test_reformat_datetime_passes_cedar(
+            "2024-06-15T12:30:45+01:00",
+            "2024-06-15T12:30:45+0100",
+        );
+        test_reformat_datetime_passes_cedar(
+            "2024-06-15T12:30:45+05:30",
+            "2024-06-15T12:30:45+0530",
+        );
+        test_reformat_datetime_passes_cedar(
+            "2024-06-15T12:30:45+09:00",
+            "2024-06-15T12:30:45+0900",
+        );
+        test_reformat_datetime_passes_cedar(
+            "2024-06-15T12:30:45+12:00",
+            "2024-06-15T12:30:45+1200",
+        );
+        test_reformat_datetime_passes_cedar(
+            "2024-06-15T12:30:45+13:00",
+            "2024-06-15T12:30:45+1300",
+        );
+
+        // DateTime with Negative Timezone Offset
+        test_reformat_datetime_passes_cedar(
+            "2024-06-15T12:30:45-05:00",
+            "2024-06-15T12:30:45-0500",
+        );
+        test_reformat_datetime_passes_cedar(
+            "2024-06-15T12:30:45-08:00",
+            "2024-06-15T12:30:45-0800",
+        );
+        test_reformat_datetime_passes_cedar(
+            "2024-06-15T12:30:45-03:30",
+            "2024-06-15T12:30:45-0330",
+        );
+        test_reformat_datetime_passes_cedar(
+            "2024-06-15T12:30:45-11:00",
+            "2024-06-15T12:30:45-1100",
+        );
+        test_reformat_datetime_passes_cedar(
+            "2024-06-15T12:30:45-23:59",
+            "2024-06-15T12:30:45-2359",
+        );
+
+        // Compact Timezone Format (without colon)
+        test_reformat_datetime_passes_cedar("2024-06-15T12:30:45+0100", "2024-06-15T12:30:45+0100");
+        test_reformat_datetime_passes_cedar("2024-06-15T12:30:45-0500", "2024-06-15T12:30:45-0500");
+        test_reformat_datetime_passes_cedar("2024-06-15T12:30:45+0530", "2024-06-15T12:30:45+0530");
+
+        // DateTime with Timezone Offset and Milliseconds
+        test_reformat_datetime_passes_cedar(
+            "2025-12-11T15:26:41.123+01:00",
+            "2025-12-11T15:26:41.123+0100",
+        );
+        test_reformat_datetime_passes_cedar(
+            "2024-06-15T12:30:45.500-05:00",
+            "2024-06-15T12:30:45.500-0500",
+        );
+        test_reformat_datetime_passes_cedar(
+            "2024-03-20T08:15:30.999+05:30",
+            "2024-03-20T08:15:30.999+0530",
+        );
+        test_reformat_datetime_passes_cedar(
+            "2024-12-31T23:59:59.000-08:00",
+            "2024-12-31T23:59:59-0800",
+        );
+
+        // Naive DateTime (No Timezone)
+        test_reformat_datetime_passes_cedar("2025-12-11T15:26:41", "2025-12-11T15:26:41Z");
+        test_reformat_datetime_passes_cedar("2024-01-01T00:00:00", "2024-01-01T00:00:00Z");
+        test_reformat_datetime_passes_cedar("2024-12-31T23:59:59", "2024-12-31T23:59:59Z");
+        test_reformat_datetime_passes_cedar("2024-06-15T12:30:45.123", "2024-06-15T12:30:45.123Z");
+        test_reformat_datetime_passes_cedar("2024-03-20T08:15:30.5", "2024-03-20T08:15:30.500Z");
+    }
+
+    fn test_reformat_duration_passes_cedar(input: &str, expected: &str) {
+        assert_eq!(reformat_duration(input), expected);
+        let expr: RestrictedExpr = format!("duration(\"{}\")", expected)
+            .parse()
+            .expect(&format!(
+                "reformat_duration({}) == {}, but duration(\"{}\") does not parse in Cedar",
+                input, expected, expected
+            ));
+        let entities = Entities::new();
+        let evaluator = cedar_policy_core::evaluator::Evaluator::new(
+            cedar_policy_core::ast::Request::new(
+                (EntityUID::from_str("P::\"\"").unwrap(), None),
+                (EntityUID::from_str("Action::\"\"").unwrap(), None),
+                (EntityUID::from_str("R::\"\"").unwrap(), None),
+                Context::empty(),
+                None::<&ValidatorSchema>,
+                cedar_policy_core::extensions::Extensions::all_available(),
+            )
+            .unwrap(),
+            &entities,
+            cedar_policy_core::extensions::Extensions::all_available(),
+        );
+        evaluator.interpret(&expr, &HashMap::new()).expect(&format!(
+            "reformat_duration({}) == {}, but duration(\"{}\") evaluates to an error in Cedar",
+            input, expected, expected
+        ));
+    }
+
+    #[test]
+    fn test_reformat_duration() {
+        // Simple Durations - Seconds
+        test_reformat_duration_passes_cedar("PT0S", "0ms");
+        test_reformat_duration_passes_cedar("PT1S", "1s");
+        test_reformat_duration_passes_cedar("PT30S", "30s");
+        test_reformat_duration_passes_cedar("PT59S", "59s");
+        test_reformat_duration_passes_cedar("PT0.5S", "500ms");
+        test_reformat_duration_passes_cedar("PT1.123S", "1s123ms");
+        test_reformat_duration_passes_cedar("PT30.999S", "30s999ms");
+
+        // Simple Durations - Minutes
+        test_reformat_duration_passes_cedar("PT1M", "1m");
+        test_reformat_duration_passes_cedar("PT30M", "30m");
+        test_reformat_duration_passes_cedar("PT59M", "59m");
+        test_reformat_duration_passes_cedar("PT1M30S", "1m30s");
+        test_reformat_duration_passes_cedar("PT45M30S", "45m30s");
+        test_reformat_duration_passes_cedar("PT59M59S", "59m59s");
+
+        // Simple Durations - Hours
+        test_reformat_duration_passes_cedar("PT1H", "1h");
+        test_reformat_duration_passes_cedar("PT12H", "12h");
+        test_reformat_duration_passes_cedar("PT23H", "23h");
+        test_reformat_duration_passes_cedar("PT1H30M", "1h30m");
+        test_reformat_duration_passes_cedar("PT2H45M30S", "2h45m30s");
+        test_reformat_duration_passes_cedar("PT23H59M59S", "23h59m59s");
+
+        // Simple Durations - Days
+        test_reformat_duration_passes_cedar("P1D", "1d");
+        test_reformat_duration_passes_cedar("P7D", "7d");
+        test_reformat_duration_passes_cedar("P30D", "30d");
+        test_reformat_duration_passes_cedar("P365D", "365d");
+        test_reformat_duration_passes_cedar("P1DT12H", "1d12h");
+        test_reformat_duration_passes_cedar("P1DT12H30M", "1d12h30m");
+        test_reformat_duration_passes_cedar("P7DT6H30M45S", "7d6h30m45s");
+
+        // Simple Durations - Weeks
+        test_reformat_duration_passes_cedar("P1W", "7d");
+        test_reformat_duration_passes_cedar("P2W", "14d");
+        test_reformat_duration_passes_cedar("P4W", "28d");
+        test_reformat_duration_passes_cedar("P52W", "364d");
+
+        // Simple Durations - Months
+        test_reformat_duration_passes_cedar("P1M", "30d");
+        test_reformat_duration_passes_cedar("P6M", "180d");
+        test_reformat_duration_passes_cedar("P11M", "330d");
+        test_reformat_duration_passes_cedar("P12M", "360d");
+        test_reformat_duration_passes_cedar("P1M15D", "45d");
+        test_reformat_duration_passes_cedar("P6M15DT12H30M", "195d12h30m");
+
+        // Simple Durations - Years
+        test_reformat_duration_passes_cedar("P1Y", "365d");
+        test_reformat_duration_passes_cedar("P2Y", "730d");
+        test_reformat_duration_passes_cedar("P10Y", "3650d");
+        test_reformat_duration_passes_cedar("P100Y", "36500d");
+        test_reformat_duration_passes_cedar("P1Y6M", "545d");
+        test_reformat_duration_passes_cedar("P1Y6M15D", "560d");
+        test_reformat_duration_passes_cedar("P2Y3M4DT5H6M7S", "824d5h6m7s");
+
+        // Complex Durations - All Components
+        test_reformat_duration_passes_cedar("P1Y2M3DT4H5M6S", "428d4h5m6s");
+        test_reformat_duration_passes_cedar("P3Y6M4DT12H30M5S", "1279d12h30m5s");
+        test_reformat_duration_passes_cedar("P0Y0M0DT0H0M0S", "0ms");
+        test_reformat_duration_passes_cedar("P1Y1M1DT1H1M1S", "396d1h1m1s");
+
+        // Fractional Seconds
+        test_reformat_duration_passes_cedar("PT0.1S", "100ms");
+        test_reformat_duration_passes_cedar("PT0.01S", "10ms");
+        test_reformat_duration_passes_cedar("PT0.001S", "1ms");
+        test_reformat_duration_passes_cedar("PT1.5S", "1s500ms");
+        test_reformat_duration_passes_cedar("PT30.123456S", "30s123ms");
+        test_reformat_duration_passes_cedar("PT1M30.5S", "1m30s500ms");
+        test_reformat_duration_passes_cedar("PT1H30M45.999S", "1h30m45s999ms");
+        test_reformat_duration_passes_cedar("P1DT12H30M15.123S", "1d12h30m15s123ms");
+
+        // Zero Values
+        test_reformat_duration_passes_cedar("P0D", "0ms");
+        test_reformat_duration_passes_cedar("PT0H", "0ms");
+        test_reformat_duration_passes_cedar("PT0M", "0ms");
+        test_reformat_duration_passes_cedar("PT0S", "0ms");
+        test_reformat_duration_passes_cedar("P0Y", "0ms");
+        test_reformat_duration_passes_cedar("P0M", "0ms");
+        test_reformat_duration_passes_cedar("P0W", "0d");
+
+        // Large Values
+        test_reformat_duration_passes_cedar("PT86400S", "86400s");
+        test_reformat_duration_passes_cedar("PT1440M", "1440m");
+        test_reformat_duration_passes_cedar("PT24H", "24h");
+        test_reformat_duration_passes_cedar("P999D", "999d");
+        test_reformat_duration_passes_cedar("P999Y", "364635d");
+        test_reformat_duration_passes_cedar("PT999999S", "999999s");
+
+        // Edge Cases
+        test_reformat_duration_passes_cedar("P0DT0H0M0S", "0ms");
+        test_reformat_duration_passes_cedar("PT0.000001S", "0ms");
+        test_reformat_duration_passes_cedar("P1Y0M0DT0H0M0S", "365d");
+        test_reformat_duration_passes_cedar("P0Y0M1DT0H0M0S", "1d");
+        test_reformat_duration_passes_cedar("PT0.999999999S", "999ms");
+    }
+
+    fn test_reformat_ipaddr_passes_cedar(input: &str, expected: &str) {
+        assert_eq!(reformat_ipaddr(input), expected);
+        let expr: RestrictedExpr = format!("ip(\"{}\")", expected).parse().expect(&format!(
+            "reformat_ipaddr({}) == {}, but ip(\"{}\") does not parse in Cedar",
+            input, expected, expected
+        ));
+        let entities = Entities::new();
+        let evaluator = cedar_policy_core::evaluator::Evaluator::new(
+            cedar_policy_core::ast::Request::new(
+                (EntityUID::from_str("P::\"\"").unwrap(), None),
+                (EntityUID::from_str("Action::\"\"").unwrap(), None),
+                (EntityUID::from_str("R::\"\"").unwrap(), None),
+                Context::empty(),
+                None::<&ValidatorSchema>,
+                cedar_policy_core::extensions::Extensions::all_available(),
+            )
+            .unwrap(),
+            &entities,
+            cedar_policy_core::extensions::Extensions::all_available(),
+        );
+        evaluator.interpret(&expr, &HashMap::new()).expect(&format!(
+            "reformat_ipaddr({}) == {}, but ip(\"{}\") evaluates to an error in Cedar",
+            input, expected, expected
+        ));
+    }
+
+    #[test]
+    fn test_reformat_ipaddr() {
+        // IPV4 Addresses
+        test_reformat_ipaddr_passes_cedar("192.168.1.1", "192.168.1.1");
+        test_reformat_ipaddr_passes_cedar("10.0.0.1", "10.0.0.1");
+        test_reformat_ipaddr_passes_cedar("172.16.0.5", "172.16.0.5");
+        test_reformat_ipaddr_passes_cedar("8.8.8.8", "8.8.8.8");
+        test_reformat_ipaddr_passes_cedar("1.1.1.1", "1.1.1.1");
+        test_reformat_ipaddr_passes_cedar("127.0.0.1", "127.0.0.1");
+        test_reformat_ipaddr_passes_cedar("0.0.0.0", "0.0.0.0");
+        test_reformat_ipaddr_passes_cedar("255.255.255.255", "255.255.255.255");
+
+        // IPV4 Addresses with CIDR
+        test_reformat_ipaddr_passes_cedar("192.168.1.0/24", "192.168.1.0/24");
+        test_reformat_ipaddr_passes_cedar("10.0.0.0/8", "10.0.0.0/8");
+        test_reformat_ipaddr_passes_cedar("172.16.0.0/12", "172.16.0.0/12");
+        test_reformat_ipaddr_passes_cedar("0.0.0.0/0", "0.0.0.0/0");
+        test_reformat_ipaddr_passes_cedar("192.0.2.0/24", "192.0.2.0/24");
+        test_reformat_ipaddr_passes_cedar("198.51.100.0/24", "198.51.100.0/24");
+        test_reformat_ipaddr_passes_cedar("203.0.113.0/24", "203.0.113.0/24");
+
+        // IPV6 Addresses
+        test_reformat_ipaddr_passes_cedar(
+            "2001:0db8:85a3:0000:0000:8a2e:0370:7334",
+            "2001:db8:85a3::8a2e:370:7334",
+        );
+        test_reformat_ipaddr_passes_cedar("2001:db8::1", "2001:db8::1");
+        test_reformat_ipaddr_passes_cedar("2001:db8:abcd:0012::10", "2001:db8:abcd:12::10");
+        test_reformat_ipaddr_passes_cedar("2001:db8::", "2001:db8::");
+        test_reformat_ipaddr_passes_cedar("2001:db8:0:0:0:0:2:1", "2001:db8::2:1");
+        test_reformat_ipaddr_passes_cedar("fe80::1", "fe80::1");
+        test_reformat_ipaddr_passes_cedar("fe80::1234:abcd", "fe80::1234:abcd");
+        test_reformat_ipaddr_passes_cedar("::1", "::1");
+        test_reformat_ipaddr_passes_cedar("::", "::");
+        test_reformat_ipaddr_passes_cedar("::ffff", "::ffff");
+        test_reformat_ipaddr_passes_cedar("ff02::1", "ff02::1");
+        test_reformat_ipaddr_passes_cedar("ff02::2", "ff02::2");
+        test_reformat_ipaddr_passes_cedar("ff05::1:3", "ff05::1:3");
+        test_reformat_ipaddr_passes_cedar("fd00::1", "fd00::1");
+        test_reformat_ipaddr_passes_cedar("fc00::abcd", "fc00::abcd");
+
+        // IPV6 Addresses with CIDR
+        test_reformat_ipaddr_passes_cedar("2001:db8::/32", "2001:db8::/32");
+        test_reformat_ipaddr_passes_cedar("2001:db8:abcd::/48", "2001:db8:abcd::/48");
+        test_reformat_ipaddr_passes_cedar("fe80::/10", "fe80::/10");
+        test_reformat_ipaddr_passes_cedar("ff00::/8", "ff00::/8");
+        test_reformat_ipaddr_passes_cedar("fd00::/8", "fd00::/8");
+        test_reformat_ipaddr_passes_cedar("::1/128", "::1/128");
+        test_reformat_ipaddr_passes_cedar("::/0", "::/0");
+        test_reformat_ipaddr_passes_cedar("2001:db8:85a3::/64", "2001:db8:85a3::/64");
+
+        // IPV6 addresses with embedded IPV4 address
+        test_reformat_ipaddr_passes_cedar("::ffff:192.168.1.1", "192.168.1.1");
+        test_reformat_ipaddr_passes_cedar("::ffff:10.0.0.1", "10.0.0.1");
+        test_reformat_ipaddr_passes_cedar("::ffff:172.16.0.5", "172.16.0.5");
+        test_reformat_ipaddr_passes_cedar("::ffff:8.8.8.8", "8.8.8.8");
+        test_reformat_ipaddr_passes_cedar("::192.168.1.1", "::c0a8:101");
+        test_reformat_ipaddr_passes_cedar("::10.0.0.1", "::a00:1");
+        test_reformat_ipaddr_passes_cedar("::172.16.0.5", "::ac10:5");
+        test_reformat_ipaddr_passes_cedar("::8.8.8.8", "::808:808");
+
+        // More IPV6 Addresses
+        test_reformat_ipaddr_passes_cedar("fe80::", "fe80::");
+        test_reformat_ipaddr_passes_cedar("fe80::20c:29ff:fe9d:1a2b", "fe80::20c:29ff:fe9d:1a2b");
+        test_reformat_ipaddr_passes_cedar("fe80::a1b2:c3d4:e5f6", "fe80::a1b2:c3d4:e5f6");
+        test_reformat_ipaddr_passes_cedar("fd12:3456:789a::1", "fd12:3456:789a::1");
+        test_reformat_ipaddr_passes_cedar("fd00:aaaa:bbbb:cccc::1", "fd00:aaaa:bbbb:cccc::1");
+        test_reformat_ipaddr_passes_cedar("fc00:1234::abcd", "fc00:1234::abcd");
+        test_reformat_ipaddr_passes_cedar("fdff:ffff:ffff:ffff::", "fdff:ffff:ffff:ffff::");
+    }
 }

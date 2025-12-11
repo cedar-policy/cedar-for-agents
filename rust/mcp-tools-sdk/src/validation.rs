@@ -286,6 +286,8 @@ fn is_decimal(str: &str) -> bool {
 fn is_datetime(str: &str) -> bool {
     chrono::NaiveDate::parse_from_str(str, "%Y-%m-%d").is_ok()
         || chrono::DateTime::parse_from_rfc3339(str).is_ok()
+        || chrono::DateTime::parse_from_str(str, "%Y-%m-%dT%H:%M:%S%z").is_ok()
+        || chrono::DateTime::parse_from_str(str, "%Y-%m-%dT%H:%M:%S%.f%z").is_ok()
         || chrono::NaiveDateTime::parse_from_str(str, "%Y-%m-%dT%H:%M:%S%.f").is_ok()
 }
 
@@ -294,7 +296,7 @@ fn is_duration(str: &str) -> bool {
 }
 
 fn is_ipaddr(str: &str) -> bool {
-    str.parse::<std::net::IpAddr>().is_ok()
+    str.parse::<std::net::IpAddr>().is_ok() || str.parse::<ipnet::IpNet>().is_ok()
 }
 
 #[cfg(test)]

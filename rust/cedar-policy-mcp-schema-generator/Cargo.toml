@@ -21,6 +21,7 @@ thiserror = "2.0"
 smol_str = "0.3"
 nonempty = "0.12"
 chrono = "0.4.42"
+ipnet = "2.11.0"
 iso8601 = "0.6.3"
 
 # CLI only dependencies
