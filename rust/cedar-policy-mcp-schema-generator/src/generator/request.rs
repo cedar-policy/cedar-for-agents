@@ -629,6 +629,8 @@ fn flatten_name(euid: EntityUID) -> EntityUID {
 mod test {
     use std::str::FromStr;
 
+    use crate::SchemaGenerator;
+
     use super::*;
 
     fn test_reformat_datetime_passes_cedar(input: &str, expected: &str) {
@@ -994,5 +996,68 @@ mod test {
         test_reformat_ipaddr_passes_cedar("fd00:aaaa:bbbb:cccc::1", "fd00:aaaa:bbbb:cccc::1");
         test_reformat_ipaddr_passes_cedar("fc00:1234::abcd", "fc00:1234::abcd");
         test_reformat_ipaddr_passes_cedar("fdff:ffff:ffff:ffff::", "fdff:ffff:ffff:ffff::");
+    }
+
+    fn get_request_generator(config: SchemaGeneratorConfig) -> RequestGenerator {
+        let schema_stub = r#"namespace Test {
+    @mcp_principal("User")
+    entity user;
+
+    @mcp_resource("McpServer")
+    entity resource;
+}"#;
+        let schema_stub =
+            cedar_policy_core::validator::json_schema::Fragment::from_cedarschema_str(
+                schema_stub,
+                cedar_policy_core::extensions::Extensions::all_available(),
+            )
+            .expect("Failed to parse schema")
+            .0;
+
+        let schema_generator = SchemaGenerator::new_with_config(schema_stub, config)
+            .expect("Failed to create schema generator");
+        schema_generator
+            .new_request_generator()
+            .expect("Failed to construct request generator")
+    }
+
+    fn test_value_to_cedar_is_expr(
+        val: &TypedValue,
+        expected_expr: &RestrictedExpr,
+        expected_entities: &Entities,
+    ) {
+        let request_generator = get_request_generator(SchemaGeneratorConfig::default());
+        let type_defs = HashMap::new();
+        let namespace = Some("Test".parse().unwrap());
+        let (expr, entities) = request_generator
+            .val_to_cedar(
+                &TypedValue::Null,
+                &type_defs,
+                namespace.as_ref(),
+                "test_type",
+            )
+            .expect(&format!(
+                "Failed to convert {:?} to Cedar expression and entities",
+                val
+            ));
+        assert_eq!(
+            &expr, expected_expr,
+            "{:?} produced expression {} but expected {}",
+            val, expr, expected_expr
+        );
+        assert_eq!(
+            &entities, expected_entities,
+            "{:?} produced entities {} but expected {}",
+            val, entities, expected_entities
+        );
+    }
+
+    #[test]
+    fn test_val_to_cedar() {
+        test_value_to_cedar_is_expr(
+            &TypedValue::Null,
+            &RestrictedExpr::from_str("Test::Null::\"null\"").unwrap(),
+            &Entities::new(),
+        );
     }
 }
