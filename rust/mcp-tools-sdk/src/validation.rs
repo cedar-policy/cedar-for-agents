@@ -252,6 +252,7 @@ fn is_decimal(str: &str) -> bool {
     {
         return false;
     }
+    let is_neg = integer_part.starts_with("-");
 
     // Construct the scaled integer value
     // Result = (integer_part * 10^4 + fractional_part * 10^(4 - fractional_part.len()))
@@ -271,7 +272,7 @@ fn is_decimal(str: &str) -> bool {
     // only ascii digits and has length 1-4 (thus parsing will not fail)
     #[allow(clippy::unwrap_used, reason = "integer or length 4 cannot overflow")]
     let frac_val: i64 = fractional_part.parse().unwrap();
-    let frac_val = frac_val * frac_scale * (if int_val < 0 { -1 } else { 1 });
+    let frac_val = frac_val * frac_scale * (if is_neg { -1 } else { 1 });
 
     // Check for overflow when scaling integer part
     let scaled_int = match int_val.checked_mul(scale) {
