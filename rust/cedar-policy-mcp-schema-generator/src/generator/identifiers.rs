@@ -45,7 +45,7 @@ pub(super) static ACTION: LazyLock<EntityType> = LazyLock::new(|| "Action".parse
 pub(super) static DECIMAL_CTOR: LazyLock<Name> = LazyLock::new(|| "decimal".parse().unwrap());
 pub(super) static DATETIME_CTOR: LazyLock<Name> = LazyLock::new(|| "datetime".parse().unwrap());
 pub(super) static DURATION_CTOR: LazyLock<Name> = LazyLock::new(|| "duration".parse().unwrap());
-pub(super) static IPADDR_CTOR: LazyLock<Name> = LazyLock::new(|| "ipaddr".parse().unwrap());
+pub(super) static IPADDR_CTOR: LazyLock<Name> = LazyLock::new(|| "ip".parse().unwrap());
 
 // Special entity type names
 pub(super) static FLOAT_TYPE: LazyLock<UnreservedId> = LazyLock::new(|| "Float".parse().unwrap());
