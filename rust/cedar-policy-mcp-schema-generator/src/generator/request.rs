@@ -465,17 +465,11 @@ fn reformat_datestr(str: &str) -> String {
         }
     }
 
-    // Try parsing with basic timezone format
+    // Try parsing with basic timezone format (no fractional seconds)
     if let Ok(dt) = DateTime::parse_from_str(str, "%Y-%m-%dT%H:%M:%S%z") {
         let dt_utc = dt.with_timezone(&Utc);
 
-        if dt_utc.timestamp_subsec_millis() > 0 {
-            if dt.offset().local_minus_utc() == 0 {
-                return dt_utc.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
-            } else {
-                return dt.format("%Y-%m-%dT%H:%M:%S%.3f%z").to_string();
-            }
-        } else if dt.offset().local_minus_utc() == 0 {
+        if dt.offset().local_minus_utc() == 0 {
             return dt_utc.format("%Y-%m-%dT%H:%M:%SZ").to_string();
         } else {
             return dt.format("%Y-%m-%dT%H:%M:%S%z").to_string();
@@ -699,6 +693,7 @@ mod test {
 
         // DateTime with Positive Timezone Offset
         test_reformat_datetime_passes_cedar("2025-12-11T15:26:41+00:00", "2025-12-11T15:26:41Z");
+        test_reformat_datetime_passes_cedar("2025-12-11T15:26:41-00:00", "2025-12-11T15:26:41Z");
         test_reformat_datetime_passes_cedar(
             "2024-06-15T12:30:45+01:00",
             "2024-06-15T12:30:45+0100",
@@ -743,6 +738,11 @@ mod test {
         );
 
         // Compact Timezone Format (without colon)
+        test_reformat_datetime_passes_cedar("2024-06-15T12:30:45+0000", "2024-06-15T12:30:45Z");
+        test_reformat_datetime_passes_cedar("2024-06-15T12:30:45.0+0000", "2024-06-15T12:30:45Z");
+        test_reformat_datetime_passes_cedar("2024-06-15T12:30:45.01+0000", "2024-06-15T12:30:45.010Z");
+        test_reformat_datetime_passes_cedar("2024-06-15T12:30:45.0+0100", "2024-06-15T12:30:45+0100");
+        test_reformat_datetime_passes_cedar("2024-06-15T12:30:45.01+0100", "2024-06-15T12:30:45.010+0100");
         test_reformat_datetime_passes_cedar("2024-06-15T12:30:45+0100", "2024-06-15T12:30:45+0100");
         test_reformat_datetime_passes_cedar("2024-06-15T12:30:45-0500", "2024-06-15T12:30:45-0500");
         test_reformat_datetime_passes_cedar("2024-06-15T12:30:45+0530", "2024-06-15T12:30:45+0530");
