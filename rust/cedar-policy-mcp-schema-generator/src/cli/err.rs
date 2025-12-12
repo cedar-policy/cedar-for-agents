@@ -95,6 +95,21 @@ pub enum CliError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     ContextReadError(#[from] cedar_policy_core::entities::json::ContextJsonDeserializationError),
+    #[error("Could not open cedar request file `{}`: {}", .0.file.display(), .0.error)]
+    #[diagnostic(code(cli_error::file_open_error), help("Make sure {} exists and you have permissions to read it.", .0.file.display()))]
+    RequestFileOpen(FileOpenError),
+    #[error("Error while trying to deserialize request from JSON: {}", .0)]
+    #[diagnostic(
+        code(cli_error::deserialize_request_from_json),
+        help("Ensure input request file contains all required fields (`principal`, `resource`, `context`) in valid JSON format")
+    )]
+    RequestReadError(serde_json::Error),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    MalformedPrincipal(cedar_policy_core::parser::err::ParseErrors),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    MalformedResource(cedar_policy_core::parser::err::ParseErrors),
     #[error(transparent)]
     #[diagnostic(transparent)]
     RequestGeneration(#[from] crate::RequestGeneratorError),
@@ -118,10 +133,14 @@ impl CliError {
     }
 
     pub(crate) fn entities_file_open(file: PathBuf, error: std::io::Error) -> Self {
-        Self::PoliciesFileOpen(FileOpenError { file, error })
+        Self::EntitiesFileOpen(FileOpenError { file, error })
     }
 
     pub(crate) fn context_file_open(file: PathBuf, error: std::io::Error) -> Self {
-        Self::PoliciesFileOpen(FileOpenError { file, error })
+        Self::ContextFileOpen(FileOpenError { file, error })
+    }
+
+    pub(crate) fn request_json_file_open(file: PathBuf, error: std::io::Error) -> Self {
+        Self::RequestFileOpen(FileOpenError { file, error })
     }
 }

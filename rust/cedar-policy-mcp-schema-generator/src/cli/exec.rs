@@ -180,10 +180,32 @@ fn read_entities(file: impl AsRef<Path>) -> Result<Entities, CliError> {
     Ok(eparser.from_json_str(&entities_str)?)
 }
 
+/// This struct is the serde structure expected for --request-json
+#[derive(Clone, Debug, serde::Deserialize)]
+struct RequestJSON {
+    /// Principal for the request
+    #[serde(default)]
+    principal: String,
+    /// Resource for the request
+    #[serde(default)]
+    resource: String,
+    /// Context for the request
+    context: String,
+}
+
 fn read_request(args: &RequestArgs) -> Result<(EntityUID, EntityUID, Context), CliError> {
     match &args.request_json_file {
-        Some(_file) => {
-            panic!()
+        Some(file) => {
+            match std::fs::read_to_string(file) {
+                Ok(s) => {
+                    let qjson: RequestJSON = serde_json::from_str(&s).map_err(CliError::RequestReadError)?;
+                    let principal = qjson.principal.parse().map_err(CliError::MalformedPrincipal)?;
+                    let resource = qjson.resource.parse().map_err(CliError::MalformedResource)?;
+                    let context = Context::from_json_str(&qjson.context)?;
+                    Ok((principal, resource, context))
+                }
+                Err(e) => Err(CliError::request_json_file_open(file.into(), e)),
+            }
         }
         None => {
             let principal = args
