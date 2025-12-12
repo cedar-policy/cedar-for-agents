@@ -1030,12 +1030,7 @@ mod test {
         let type_defs = HashMap::new();
         let namespace = Some("Test".parse().unwrap());
         let (expr, entities) = request_generator
-            .val_to_cedar(
-                val,
-                &type_defs,
-                namespace.as_ref(),
-                "test_type",
-            )
+            .val_to_cedar(val, &type_defs, namespace.as_ref(), "test_type")
             .expect(&format!(
                 "Failed to convert {:?} to Cedar expression and entities",
                 val
@@ -1053,14 +1048,18 @@ mod test {
     }
 
     fn str_to_number(s: &str) -> mcp_tools_sdk::data::Number {
-        let input = mcp_tools_sdk::data::Input::from_json_str(&format!(r#"{{
+        let input = mcp_tools_sdk::data::Input::from_json_str(&format!(
+            r#"{{
     "params": {{
         "tool": "test_tool",
         "args": {{
             "arg": {}
         }}
     }}
-}}"#, s)).unwrap();
+}}"#,
+            s
+        ))
+        .unwrap();
         input.get_arg("arg").unwrap().get_number().unwrap()
     }
 
@@ -1075,139 +1074,139 @@ mod test {
         test_value_to_cedar_is_expr(
             &TypedValue::Bool(true),
             &RestrictedExpr::val(true),
-            &Entities::new()
+            &Entities::new(),
         );
 
         test_value_to_cedar_is_expr(
             &TypedValue::Bool(false),
             &RestrictedExpr::val(false),
-            &Entities::new()
+            &Entities::new(),
         );
 
         test_value_to_cedar_is_expr(
             &TypedValue::Integer(123),
             &RestrictedExpr::val(123),
-            &Entities::new()
+            &Entities::new(),
         );
 
         test_value_to_cedar_is_expr(
             &TypedValue::Integer(-12),
             &RestrictedExpr::val(-12),
-            &Entities::new()
+            &Entities::new(),
         );
 
         test_value_to_cedar_is_expr(
             &TypedValue::Integer(0),
             &RestrictedExpr::val(0),
-            &Entities::new()
+            &Entities::new(),
         );
 
         test_value_to_cedar_is_expr(
             &TypedValue::Float(0.0),
             &RestrictedExpr::from_str("Test::Float::\"0\"").unwrap(),
-            &Entities::new()
+            &Entities::new(),
         );
 
         test_value_to_cedar_is_expr(
             &TypedValue::Float(1.01),
             &RestrictedExpr::from_str("Test::Float::\"1.01\"").unwrap(),
-            &Entities::new()
+            &Entities::new(),
         );
 
         test_value_to_cedar_is_expr(
             &TypedValue::Float(-1.05),
             &RestrictedExpr::from_str("Test::Float::\"-1.05\"").unwrap(),
-            &Entities::new()
+            &Entities::new(),
         );
 
         test_value_to_cedar_is_expr(
             &TypedValue::Number(str_to_number("0.0")),
             &RestrictedExpr::from_str("Test::Number::\"0.0\"").unwrap(),
-            &Entities::new()
+            &Entities::new(),
         );
 
         test_value_to_cedar_is_expr(
             &TypedValue::Number(str_to_number("1.01")),
             &RestrictedExpr::from_str("Test::Number::\"1.01\"").unwrap(),
-            &Entities::new()
+            &Entities::new(),
         );
 
         test_value_to_cedar_is_expr(
             &TypedValue::Number(str_to_number("-1.05")),
             &RestrictedExpr::from_str("Test::Number::\"-1.05\"").unwrap(),
-            &Entities::new()
+            &Entities::new(),
         );
 
         test_value_to_cedar_is_expr(
             &TypedValue::String("Some text".to_smolstr()),
             &RestrictedExpr::val("Some text"),
-            &Entities::new()
+            &Entities::new(),
         );
 
         test_value_to_cedar_is_expr(
             &TypedValue::Decimal("0.0".to_smolstr()),
             &RestrictedExpr::from_str("decimal(\"0.0\")").unwrap(),
-            &Entities::new()
+            &Entities::new(),
         );
 
         test_value_to_cedar_is_expr(
             &TypedValue::Decimal("-0.001".to_smolstr()),
             &RestrictedExpr::from_str("decimal(\"-0.001\")").unwrap(),
-            &Entities::new()
+            &Entities::new(),
         );
 
         test_value_to_cedar_is_expr(
             &TypedValue::Decimal("10.0001".to_smolstr()),
             &RestrictedExpr::from_str("decimal(\"10.0001\")").unwrap(),
-            &Entities::new()
+            &Entities::new(),
         );
 
         test_value_to_cedar_is_expr(
             &TypedValue::Datetime("2025-10-12".to_smolstr()),
             &RestrictedExpr::from_str("datetime(\"2025-10-12\")").unwrap(),
-            &Entities::new()
+            &Entities::new(),
         );
 
         test_value_to_cedar_is_expr(
             &TypedValue::Datetime("2025-10-12T12:00:00+10:11".to_smolstr()),
             &RestrictedExpr::from_str("datetime(\"2025-10-12T12:00:00+1011\")").unwrap(),
-            &Entities::new()
+            &Entities::new(),
         );
 
         test_value_to_cedar_is_expr(
             &TypedValue::Datetime("2025-10-12T12:00:00".to_smolstr()),
             &RestrictedExpr::from_str("datetime(\"2025-10-12T12:00:00Z\")").unwrap(),
-            &Entities::new()
+            &Entities::new(),
         );
 
         test_value_to_cedar_is_expr(
             &TypedValue::Duration("P5W".to_smolstr()),
             &RestrictedExpr::from_str("duration(\"35d\")").unwrap(),
-            &Entities::new()
+            &Entities::new(),
         );
 
         test_value_to_cedar_is_expr(
             &TypedValue::IpAddr("10.0.0.1".to_smolstr()),
             &RestrictedExpr::from_str("ip(\"10.0.0.1\")").unwrap(),
-            &Entities::new()
+            &Entities::new(),
         );
 
         test_value_to_cedar_is_expr(
             &TypedValue::IpAddr("::1/24".to_smolstr()),
             &RestrictedExpr::from_str("ip(\"::1/24\")").unwrap(),
-            &Entities::new()
+            &Entities::new(),
         );
 
         test_value_to_cedar_is_expr(
             &TypedValue::IpAddr("::ffff:10.0.0.1".to_smolstr()),
             &RestrictedExpr::from_str("ip(\"10.0.0.1\")").unwrap(),
-            &Entities::new()
+            &Entities::new(),
         );
 
         test_value_to_cedar_is_expr(
             &TypedValue::Enum("MyVariant".to_smolstr()),
             &RestrictedExpr::from_str("Test::test_type::\"MyVariant\"").unwrap(),
-            &Entities::new()
+            &Entities::new(),
         );
     }
 }
