@@ -740,9 +740,18 @@ mod test {
         // Compact Timezone Format (without colon)
         test_reformat_datetime_passes_cedar("2024-06-15T12:30:45+0000", "2024-06-15T12:30:45Z");
         test_reformat_datetime_passes_cedar("2024-06-15T12:30:45.0+0000", "2024-06-15T12:30:45Z");
-        test_reformat_datetime_passes_cedar("2024-06-15T12:30:45.01+0000", "2024-06-15T12:30:45.010Z");
-        test_reformat_datetime_passes_cedar("2024-06-15T12:30:45.0+0100", "2024-06-15T12:30:45+0100");
-        test_reformat_datetime_passes_cedar("2024-06-15T12:30:45.01+0100", "2024-06-15T12:30:45.010+0100");
+        test_reformat_datetime_passes_cedar(
+            "2024-06-15T12:30:45.01+0000",
+            "2024-06-15T12:30:45.010Z",
+        );
+        test_reformat_datetime_passes_cedar(
+            "2024-06-15T12:30:45.0+0100",
+            "2024-06-15T12:30:45+0100",
+        );
+        test_reformat_datetime_passes_cedar(
+            "2024-06-15T12:30:45.01+0100",
+            "2024-06-15T12:30:45.010+0100",
+        );
         test_reformat_datetime_passes_cedar("2024-06-15T12:30:45+0100", "2024-06-15T12:30:45+0100");
         test_reformat_datetime_passes_cedar("2024-06-15T12:30:45-0500", "2024-06-15T12:30:45-0500");
         test_reformat_datetime_passes_cedar("2024-06-15T12:30:45+0530", "2024-06-15T12:30:45+0530");
