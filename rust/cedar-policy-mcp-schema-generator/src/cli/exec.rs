@@ -195,18 +195,23 @@ struct RequestJSON {
 
 fn read_request(args: &RequestArgs) -> Result<(EntityUID, EntityUID, Context), CliError> {
     match &args.request_json_file {
-        Some(file) => {
-            match std::fs::read_to_string(file) {
-                Ok(s) => {
-                    let qjson: RequestJSON = serde_json::from_str(&s).map_err(CliError::RequestReadError)?;
-                    let principal = qjson.principal.parse().map_err(CliError::MalformedPrincipal)?;
-                    let resource = qjson.resource.parse().map_err(CliError::MalformedResource)?;
-                    let context = Context::from_json_str(&qjson.context)?;
-                    Ok((principal, resource, context))
-                }
-                Err(e) => Err(CliError::request_json_file_open(file.into(), e)),
+        Some(file) => match std::fs::read_to_string(file) {
+            Ok(s) => {
+                let qjson: RequestJSON =
+                    serde_json::from_str(&s).map_err(CliError::RequestReadError)?;
+                let principal = qjson
+                    .principal
+                    .parse()
+                    .map_err(CliError::MalformedPrincipal)?;
+                let resource = qjson
+                    .resource
+                    .parse()
+                    .map_err(CliError::MalformedResource)?;
+                let context = Context::from_json_str(&qjson.context)?;
+                Ok((principal, resource, context))
             }
-        }
+            Err(e) => Err(CliError::request_json_file_open(file.into(), e)),
+        },
         None => {
             let principal = args
                 .principal
