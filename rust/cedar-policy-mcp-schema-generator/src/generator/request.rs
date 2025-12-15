@@ -1300,6 +1300,4 @@ mod test {
             matches!(map.get("input").map(|v| v.value_kind()), Some(ValueKind::Record(ikvs)) if ikvs.len() == 0)
         });
     }
-
-
 }
