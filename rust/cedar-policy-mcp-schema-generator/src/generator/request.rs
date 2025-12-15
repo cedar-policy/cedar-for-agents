@@ -621,7 +621,11 @@ fn flatten_name(euid: EntityUID) -> EntityUID {
 
 #[cfg(test)]
 mod test {
+    use cedar_policy_core::ast::ValueKind;
+    use cool_asserts::assert_matches;
     use std::str::FromStr;
+
+    use mcp_tools_sdk::description::ToolDescription;
 
     use crate::SchemaGenerator;
 
@@ -1007,7 +1011,7 @@ mod test {
         test_reformat_ipaddr_passes_cedar("fdff:ffff:ffff:ffff::", "fdff:ffff:ffff:ffff::");
     }
 
-    fn get_request_generator(config: SchemaGeneratorConfig) -> RequestGenerator {
+    fn get_schema_generator(config: SchemaGeneratorConfig) -> SchemaGenerator {
         let schema_stub = r#"namespace Test {
     @mcp_principal("User")
     entity user;
@@ -1023,11 +1027,8 @@ mod test {
             .expect("Failed to parse schema")
             .0;
 
-        let schema_generator = SchemaGenerator::new_with_config(schema_stub, config)
-            .expect("Failed to create schema generator");
-        schema_generator
-            .new_request_generator()
-            .expect("Failed to construct request generator")
+        SchemaGenerator::new_with_config(schema_stub, config)
+            .expect("Failed to create schema generator")
     }
 
     fn test_value_to_cedar_is_expr(
@@ -1035,7 +1036,10 @@ mod test {
         expected_expr: &RestrictedExpr,
         expected_entities: &Entities,
     ) {
-        let request_generator = get_request_generator(SchemaGeneratorConfig::default());
+        let request_generator = get_schema_generator(SchemaGeneratorConfig::default())
+            .new_request_generator()
+            .expect("Failed to construct request generator");
+
         let type_defs = HashMap::new();
         let namespace = Some("Test".parse().unwrap());
         let (expr, entities) = request_generator
@@ -1218,4 +1222,84 @@ mod test {
             &Entities::new(),
         );
     }
+
+    // For these tests, just use single tool description
+    fn get_request_generator(
+        config: SchemaGeneratorConfig,
+        tool_description: &str,
+    ) -> RequestGenerator {
+        let mut schema_generator = get_schema_generator(config);
+        let tool_description = ToolDescription::from_json_str(tool_description)
+            .expect("Failed to parse tool description");
+        schema_generator
+            .add_action_from_tool_description(&tool_description)
+            .expect("Failed to add tool to schema generator");
+        schema_generator
+            .new_request_generator()
+            .expect("Failed to construct request generator")
+    }
+
+    #[test]
+    fn test_generate_request_default_config_empty_input() {
+        let request_generator = get_request_generator(
+            SchemaGeneratorConfig::default(),
+            r#"{
+    "name": "test_tool",
+    "description": "test_description",
+    "parameters": {
+        "properties": {
+        },
+        "required": []
+    }
+}"#,
+        );
+
+        let input = Input::from_json_str(
+            r#"{
+    "params": {
+        "tool": "test_tool",
+        "args": {}
+    }
+}"#,
+        )
+        .expect("Failed to parse input");
+
+        let output = Output::from_json_str(
+            r#"{
+    "result": {
+        "structuredContent": {}
+    }
+}"#,
+        )
+        .expect("Failed to parse output");
+        let principal = r#"Test::user::"""#.parse::<EntityUID>().unwrap();
+        let resource = r#"Test::resource::"""#.parse::<EntityUID>().unwrap();
+
+        let (request, entities) = request_generator
+            .generate_request(
+                principal.clone(),
+                resource.clone(),
+                Context::empty(),
+                Entities::new(),
+                &input,
+                Some(&output),
+            )
+            .expect("Failed to generate request");
+
+        assert_eq!(request.principal().uid().unwrap(), &principal);
+        assert_eq!(
+            request.action().uid().unwrap(),
+            &r#"Test::Action::"test_tool""#.parse::<EntityUID>().unwrap()
+        );
+        assert_eq!(request.resource().uid().unwrap(), &resource);
+        assert_eq!(entities, Entities::new());
+
+        assert_matches!(request.context(), Some(Context::Value(kvs)) if {
+            let map = &**kvs;
+            map.len() == 1 &&
+            matches!(map.get("input").map(|v| v.value_kind()), Some(ValueKind::Record(ikvs)) if ikvs.len() == 0)
+        });
+    }
+
+
 }
