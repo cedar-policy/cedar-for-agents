@@ -190,7 +190,7 @@ struct RequestJSON {
     #[serde(default)]
     resource: String,
     /// Context for the request
-    context: String,
+    context: serde_json::Value,
 }
 
 fn read_request(args: &RequestArgs) -> Result<(EntityUID, EntityUID, Context), CliError> {
@@ -207,7 +207,7 @@ fn read_request(args: &RequestArgs) -> Result<(EntityUID, EntityUID, Context), C
                     .resource
                     .parse()
                     .map_err(CliError::MalformedResource)?;
-                let context = Context::from_json_str(&qjson.context)?;
+                let context = Context::from_json_value(qjson.context)?;
                 Ok((principal, resource, context))
             }
             Err(e) => Err(CliError::request_json_file_open(file.into(), e)),
