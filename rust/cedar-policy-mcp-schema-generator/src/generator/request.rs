@@ -229,8 +229,8 @@ impl RequestGenerator {
             TypedValue::Number(n) => {
                 if self.config.numbers_as_decimal {
                     let val = match (n.to_f64(), n.to_i64()) {
-                        (Some(f), _) => format!("{:.4}", f),
                         (_, Some(i)) => format!("{}.0", i),
+                        (Some(f), _) => format!("{:.4}", f),
                         _ => {
                             return Err(RequestGeneratorError::MalformedDecimalNumber(
                                 n.as_str().into(),
@@ -615,7 +615,10 @@ fn reformat_ipaddr(str: &str) -> String {
 fn flatten_name(euid: EntityUID) -> EntityUID {
     let (entity_type, eid) = euid.components();
     let entity_type = entity_type.name().qualify_with(None);
-    let mut parts = entity_type.namespace_components().cloned();
+    let mut parts = entity_type
+        .namespace_components()
+        .chain(std::iter::once(entity_type.basename()))
+        .cloned();
     let flattened_namespace = parts
         .next()
         .map(InternalName::from)
@@ -1388,7 +1391,7 @@ mod test {
                     RestrictedExpr::from((**dval).clone()) == RestrictedExpr::from_str("decimal(\"-0.0100\")").unwrap()
                 ) &&
                 matches!(map.get("pseudo_int").map(Value::value_kind), Some(ValueKind::ExtensionValue(dval)) if
-                    RestrictedExpr::from((**dval).clone()) == RestrictedExpr::from_str("decimal(\"10.0000\")").unwrap()
+                    RestrictedExpr::from((**dval).clone()) == RestrictedExpr::from_str("decimal(\"10.0\")").unwrap()
                 )
             })
         });
@@ -1747,6 +1750,261 @@ mod test {
                         })
                     })
                 })
+            })
+        });
+    }
+
+    #[test]
+    fn test_generate_request_flatten_namespaces_ref_of_object_with_enum() {
+        let request_generator = get_request_generator(
+            SchemaGeneratorConfig::default().flatten_namespaces(true),
+            r##"{
+    "name": "test_tool",
+    "description": "test_description",
+    "parameters": {
+        "$defs": {
+            "MyObject": {
+                "type": "object",
+                "properties": {
+                    "enum": {
+                        "type": "string",
+                        "enum": ["hi", "med", "low"]
+                    }
+                }
+            }
+        },
+        "properties": {
+            "ref_attr": {
+                "$ref": "#/$defs/MyObject"
+            }
+        }
+    }
+}"##,
+        );
+
+        let input = Input::from_json_str(
+            r#"{
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "ref_attr": {
+                "enum": "hi"
+            }
+        }
+    }
+}"#,
+        )
+        .expect("Failed to parse input");
+
+        let principal = r#"Test::user::"""#.parse::<EntityUID>().unwrap();
+        let resource = r#"Test::resource::"""#.parse::<EntityUID>().unwrap();
+
+        let (request, entities) = request_generator
+            .generate_request(
+                principal.clone(),
+                resource.clone(),
+                Context::empty(),
+                Entities::new(),
+                &input,
+                None,
+            )
+            .expect("Failed to generate request");
+
+        assert_eq!(request.principal().uid().unwrap(), &principal);
+        assert_eq!(
+            request.action().uid().unwrap(),
+            &r#"Test::Action::"test_tool""#.parse::<EntityUID>().unwrap()
+        );
+        assert_eq!(request.resource().uid().unwrap(), &resource);
+        assert!(
+            entities.len() == 1,
+            "{:?}\n{:?}",
+            entities,
+            request.context()
+        );
+        assert_matches!(request.context(), Some(Context::Value(kvs)) if {
+            let map = &**kvs;
+            map.len() == 1 &&
+            matches!(map.get("input").map(Value::value_kind), Some(ValueKind::Record(ikvs)) if {
+                let map = &**ikvs;
+                map.len() == 1 &&
+                matches!(map.get("ref_attr").map(Value::value_kind), Some(ValueKind::Lit(Literal::EntityUID(eid))) if {
+                    matches!(entities.entity(eid), Dereference::Data(e) if {
+                        let attrs = e.attrs().collect::<HashMap<_,_>>();
+                        attrs.len() == 1 &&
+                        matches!(attrs.get(&"enum".to_smolstr()), Some(PartialValue::Value(v)) if {
+                            matches!(v.value_kind(), ValueKind::Lit(Literal::EntityUID(eid)) if {
+                                **eid == "Test::test_tool_Input_MyObject_enum::\"hi\"".parse().expect("Failed to parse EID")
+                            })
+                        })
+                    })
+                })
+            })
+        });
+    }
+
+    #[test]
+    fn test_generate_request_object_as_record_and_flatten_namespaces_ref_of_object_with_enum() {
+        let request_generator = get_request_generator(
+            SchemaGeneratorConfig::default()
+                .objects_as_records(true)
+                .flatten_namespaces(true),
+            r##"{
+    "name": "test_tool",
+    "description": "test_description",
+    "parameters": {
+        "$defs": {
+            "MyObject": {
+                "type": "object",
+                "properties": {
+                    "enum": {
+                        "type": "string",
+                        "enum": ["hi", "med", "low"]
+                    }
+                }
+            }
+        },
+        "properties": {
+            "ref_attr": {
+                "$ref": "#/$defs/MyObject"
+            }
+        }
+    }
+}"##,
+        );
+
+        let input = Input::from_json_str(
+            r#"{
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "ref_attr": {
+                "enum": "hi"
+            }
+        }
+    }
+}"#,
+        )
+        .expect("Failed to parse input");
+
+        let principal = r#"Test::user::"""#.parse::<EntityUID>().unwrap();
+        let resource = r#"Test::resource::"""#.parse::<EntityUID>().unwrap();
+
+        let (request, entities) = request_generator
+            .generate_request(
+                principal.clone(),
+                resource.clone(),
+                Context::empty(),
+                Entities::new(),
+                &input,
+                None,
+            )
+            .expect("Failed to generate request");
+
+        assert_eq!(request.principal().uid().unwrap(), &principal);
+        assert_eq!(
+            request.action().uid().unwrap(),
+            &r#"Test::Action::"test_tool""#.parse::<EntityUID>().unwrap()
+        );
+        assert_eq!(request.resource().uid().unwrap(), &resource);
+        assert_eq!(entities, Entities::new());
+        assert_matches!(request.context(), Some(Context::Value(kvs)) if {
+            let map = &**kvs;
+            map.len() == 1 &&
+            matches!(map.get("input").map(Value::value_kind), Some(ValueKind::Record(ikvs)) if {
+                let map = &**ikvs;
+                map.len() == 1 &&
+                matches!(map.get("ref_attr").map(Value::value_kind), Some(ValueKind::Record(iikvs)) if {
+                    let map = &**iikvs;
+                    map.len() == 1 &&
+                    matches!(map.get("enum").map(Value::value_kind), Some(ValueKind::Lit(Literal::EntityUID(eid))) if {
+                        **eid == "Test::test_tool_Input_MyObject_enum::\"hi\"".parse().expect("Failed to parse EID")
+                    })
+                })
+            })
+        });
+    }
+
+    #[test]
+    fn test_generate_request_include_outputs() {
+        let request_generator = get_request_generator(
+            SchemaGeneratorConfig::default().include_outputs(true),
+            r#"{
+    "name": "test_tool",
+    "description": "test_description",
+    "inputSchema": {
+        "properties": {
+            "in_attr": {
+                "type": "boolean"
+            }
+        }
+    },
+    "outputSchema": {
+        "properties": {
+            "out_attr": {
+                "type": "integer"
+            }
+        }
+    }
+}"#,
+        );
+
+        let input = Input::from_json_str(
+            r#"{
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "in_attr": true
+        }
+    }
+}"#,
+        )
+        .expect("Failed to parse input");
+
+        let output = Output::from_json_str(
+            r#"{
+    "result": {
+        "structuredContent": {
+            "out_attr": 1
+        }
+    }
+}"#,
+        )
+        .expect("Failed to parse output");
+
+        let principal = r#"Test::user::"""#.parse::<EntityUID>().unwrap();
+        let resource = r#"Test::resource::"""#.parse::<EntityUID>().unwrap();
+
+        let (request, entities) = request_generator
+            .generate_request(
+                principal.clone(),
+                resource.clone(),
+                Context::empty(),
+                Entities::new(),
+                &input,
+                Some(&output),
+            )
+            .expect("Failed to generate request");
+
+        assert_eq!(request.principal().uid().unwrap(), &principal);
+        assert_eq!(
+            request.action().uid().unwrap(),
+            &r#"Test::Action::"test_tool""#.parse::<EntityUID>().unwrap()
+        );
+        assert_eq!(request.resource().uid().unwrap(), &resource);
+        assert_eq!(entities, Entities::new());
+        assert_matches!(request.context(), Some(Context::Value(kvs)) if {
+            let map = &**kvs;
+            map.len() == 2 &&
+            matches!(map.get("input").map(Value::value_kind), Some(ValueKind::Record(ikvs)) if {
+                let map = &**ikvs;
+                map.len() == 1 &&
+                matches!(map.get("in_attr").map(Value::value_kind), Some(ValueKind::Lit(Literal::Bool(true))))
+            }) &&
+            matches!(map.get("output").map(Value::value_kind), Some(ValueKind::Record(ikvs)) if {
+                let map = &**ikvs;
+                map.len() == 1 &&
+                matches!(map.get("out_attr").map(Value::value_kind), Some(ValueKind::Lit(Literal::Long(1))))
             })
         });
     }
