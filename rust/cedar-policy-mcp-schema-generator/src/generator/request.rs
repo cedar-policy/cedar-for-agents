@@ -31,6 +31,7 @@ use crate::{RequestGeneratorError, SchemaGeneratorConfig};
 use mcp_tools_sdk::data::{Input, Output, TypedValue};
 use mcp_tools_sdk::description::ServerDescription;
 use smol_str::{SmolStr, ToSmolStr};
+use uuid::Uuid;
 
 #[derive(Clone, Debug)]
 /// A `RequestGenerator` is a structure produced by a `SchemaGenerator` which allows
@@ -290,7 +291,10 @@ impl RequestGenerator {
             TypedValue::Unknown(_) => {
                 let ty = EntityType::from(Name::from(identifiers::UNKNOWN_TYPE.clone()));
                 let ty = ty.qualify_with(self.root_namespace.as_ref());
-                let eid = Eid::new("unknown");
+                // Generate a unique EID for all Unknown values
+                // with the implication being that any unkonwn value is different from any other
+                // unknown value even if they were the same JSON value.
+                let eid = Eid::new(Uuid::new_v4().to_smolstr());
                 let euid = EntityUID::from_components(ty, eid, None);
                 Ok((RestrictedExpr::val(euid), Entities::new()))
             }
@@ -389,7 +393,12 @@ impl RequestGenerator {
                 } else {
                     let entity_ty: EntityType = ty_name.parse()?;
                     let entity_ty = entity_ty.qualify_with(namespace);
-                    let eid = Eid::new("");
+                    // Generate a unique EID for each object's entity representation
+                    // This means that all entities are different from all other entities
+                    // even if the entities are structurally equivalent.
+                    // Perhaps we could generate EIDs in a way that result in equal EIDs for
+                    // structurally equivalent entities.
+                    let eid = Eid::new(Uuid::new_v4().to_smolstr());
                     let euid = EntityUID::from_components(entity_ty, eid, None);
                     let euid = if self.config.flatten_namespaces {
                         flatten_name(euid)
@@ -621,7 +630,7 @@ fn flatten_name(euid: EntityUID) -> EntityUID {
 
 #[cfg(test)]
 mod test {
-    use cedar_policy_core::ast::ValueKind;
+    use cedar_policy_core::ast::{Literal, Value, ValueKind};
     use cool_asserts::assert_matches;
     use std::str::FromStr;
 
@@ -1272,6 +1281,7 @@ mod test {
 }"#,
         )
         .expect("Failed to parse output");
+
         let principal = r#"Test::user::"""#.parse::<EntityUID>().unwrap();
         let resource = r#"Test::resource::"""#.parse::<EntityUID>().unwrap();
 
@@ -1297,7 +1307,357 @@ mod test {
         assert_matches!(request.context(), Some(Context::Value(kvs)) if {
             let map = &**kvs;
             map.len() == 1 &&
-            matches!(map.get("input").map(|v| v.value_kind()), Some(ValueKind::Record(ikvs)) if ikvs.len() == 0)
+            matches!(map.get("input").map(Value::value_kind), Some(ValueKind::Record(ikvs)) if ikvs.len() == 0)
+        });
+    }
+
+    #[test]
+    fn test_generate_request_numbers_as_decimal() {
+        let request_generator = get_request_generator(
+            SchemaGeneratorConfig::default().encode_numbers_as_decimal(true),
+            r#"{
+    "name": "test_tool",
+    "description": "test_description",
+    "parameters": {
+        "properties": {
+            "num_attr": {
+                "type": "number"
+            },
+            "float_attr": {
+                "type": "float"
+            },
+            "pseudo_int": {
+                "type": "number"
+            },
+            "int_attr": {
+                "type": "integer"
+            }
+        },
+        "required": ["num_attr", "float_attr"]
+    }
+}"#,
+        );
+
+        let input = Input::from_json_str(
+            r#"{
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "num_attr": 0.01,
+            "float_attr": -0.01,
+            "pseudo_int": 10
+        }
+    }
+}"#,
+        )
+        .expect("Failed to parse input");
+
+        let principal = r#"Test::user::"""#.parse::<EntityUID>().unwrap();
+        let resource = r#"Test::resource::"""#.parse::<EntityUID>().unwrap();
+
+        let (request, entities) = request_generator
+            .generate_request(
+                principal.clone(),
+                resource.clone(),
+                Context::empty(),
+                Entities::new(),
+                &input,
+                None,
+            )
+            .expect("Failed to generate request");
+
+        assert_eq!(request.principal().uid().unwrap(), &principal);
+        assert_eq!(
+            request.action().uid().unwrap(),
+            &r#"Test::Action::"test_tool""#.parse::<EntityUID>().unwrap()
+        );
+        assert_eq!(request.resource().uid().unwrap(), &resource);
+        assert_eq!(entities, Entities::new());
+
+        assert_matches!(request.context(), Some(Context::Value(kvs)) if {
+            let map = &**kvs;
+            map.len() == 1 &&
+            matches!(map.get("input").map(Value::value_kind), Some(ValueKind::Record(ikvs)) if {
+                let map = &**ikvs;
+                map.len() == 3 &&
+                matches!(map.get("num_attr").map(Value::value_kind), Some(ValueKind::ExtensionValue(dval)) if
+                    RestrictedExpr::from((**dval).clone()) == RestrictedExpr::from_str("decimal(\"0.0100\")").unwrap()
+                ) &&
+                matches!(map.get("float_attr").map(Value::value_kind), Some(ValueKind::ExtensionValue(dval)) if
+                    RestrictedExpr::from((**dval).clone()) == RestrictedExpr::from_str("decimal(\"-0.0100\")").unwrap()
+                ) &&
+                matches!(map.get("pseudo_int").map(Value::value_kind), Some(ValueKind::ExtensionValue(dval)) if
+                    RestrictedExpr::from((**dval).clone()) == RestrictedExpr::from_str("decimal(\"10.0000\")").unwrap()
+                )
+            })
+        });
+    }
+
+    #[test]
+    fn test_generate_request_default_config_unknown_property_types() {
+        let request_generator = get_request_generator(
+            SchemaGeneratorConfig::default(),
+            r#"{
+    "name": "test_tool",
+    "description": "test_description",
+    "parameters": {
+        "properties": {
+            "unknown1": {},
+            "unknown2": {}
+        },
+        "required": []
+    }
+}"#,
+        );
+
+        let input = Input::from_json_str(
+            r#"{
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "unknown1": true,
+            "unknown2": [0.01, {}, []]
+        }
+    }
+}"#,
+        )
+        .expect("Failed to parse input");
+
+        let principal = r#"Test::user::"""#.parse::<EntityUID>().unwrap();
+        let resource = r#"Test::resource::"""#.parse::<EntityUID>().unwrap();
+
+        let (request, entities) = request_generator
+            .generate_request(
+                principal.clone(),
+                resource.clone(),
+                Context::empty(),
+                Entities::new(),
+                &input,
+                None,
+            )
+            .expect("Failed to generate request");
+
+        assert_eq!(request.principal().uid().unwrap(), &principal);
+        assert_eq!(
+            request.action().uid().unwrap(),
+            &r#"Test::Action::"test_tool""#.parse::<EntityUID>().unwrap()
+        );
+        assert_eq!(request.resource().uid().unwrap(), &resource);
+        assert_eq!(entities, Entities::new());
+        assert_matches!(request.context(), Some(Context::Value(kvs)) if {
+            let map = &**kvs;
+            map.len() == 1 &&
+            matches!(map.get("input").map(Value::value_kind), Some(ValueKind::Record(ikvs)) if {
+                let map = &**ikvs;
+                map.len() == 2 &&
+                matches!(map.get("unknown1").map(Value::value_kind), Some(ValueKind::Lit(Literal::EntityUID(..)))) &&
+                matches!(map.get("unknown2").map(Value::value_kind), Some(ValueKind::Lit(Literal::EntityUID(..)))) &&
+                map.get("unknown1") != map.get("unknown2")
+            })
+        });
+    }
+
+    #[test]
+    fn test_generate_request_default_config_array() {
+        let request_generator = get_request_generator(
+            SchemaGeneratorConfig::default(),
+            r#"{
+    "name": "test_tool",
+    "description": "test_description",
+    "parameters": {
+        "properties": {
+            "arr_attr": {
+                "type": "array",
+                "items": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "required": ["arr_attr"]
+    }
+}"#,
+        );
+
+        let input = Input::from_json_str(
+            r#"{
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "arr_attr": [true, false]
+        }
+    }
+}"#,
+        )
+        .expect("Failed to parse input");
+
+        let principal = r#"Test::user::"""#.parse::<EntityUID>().unwrap();
+        let resource = r#"Test::resource::"""#.parse::<EntityUID>().unwrap();
+
+        let (request, entities) = request_generator
+            .generate_request(
+                principal.clone(),
+                resource.clone(),
+                Context::empty(),
+                Entities::new(),
+                &input,
+                None,
+            )
+            .expect("Failed to generate request");
+
+        assert_eq!(request.principal().uid().unwrap(), &principal);
+        assert_eq!(
+            request.action().uid().unwrap(),
+            &r#"Test::Action::"test_tool""#.parse::<EntityUID>().unwrap()
+        );
+        assert_eq!(request.resource().uid().unwrap(), &resource);
+        assert_eq!(entities, Entities::new());
+        assert_matches!(request.context(), Some(Context::Value(kvs)) if {
+            let map = &**kvs;
+            map.len() == 1 &&
+            matches!(map.get("input").map(Value::value_kind), Some(ValueKind::Record(ikvs)) if {
+                let map = &**ikvs;
+                map.len() == 1 &&
+                matches!(map.get("arr_attr").map(Value::value_kind), Some(ValueKind::Set(s)) if {
+                    s.len() == 2 &&
+                    s.contains(&Value::new(true, None)) &&
+                    s.contains(&Value::new(false, None))
+
+                })
+            })
+        });
+    }
+
+    #[test]
+    fn test_generate_request_default_config_tuple() {
+        let request_generator = get_request_generator(
+            SchemaGeneratorConfig::default(),
+            r#"{
+    "name": "test_tool",
+    "description": "test_description",
+    "parameters": {
+        "properties": {
+            "tuple_attr": {
+                "type": ["boolean", "integer"]
+            }
+        }
+    }
+}"#,
+        );
+
+        let input = Input::from_json_str(
+            r#"{
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "tuple_attr": [true, 0]
+        }
+    }
+}"#,
+        )
+        .expect("Failed to parse input");
+
+        let principal = r#"Test::user::"""#.parse::<EntityUID>().unwrap();
+        let resource = r#"Test::resource::"""#.parse::<EntityUID>().unwrap();
+
+        let (request, entities) = request_generator
+            .generate_request(
+                principal.clone(),
+                resource.clone(),
+                Context::empty(),
+                Entities::new(),
+                &input,
+                None,
+            )
+            .expect("Failed to generate request");
+
+        assert_eq!(request.principal().uid().unwrap(), &principal);
+        assert_eq!(
+            request.action().uid().unwrap(),
+            &r#"Test::Action::"test_tool""#.parse::<EntityUID>().unwrap()
+        );
+        assert_eq!(request.resource().uid().unwrap(), &resource);
+        assert_eq!(entities, Entities::new());        
+        assert_matches!(request.context(), Some(Context::Value(kvs)) if {
+            let map = &**kvs;
+            map.len() == 1 &&
+            matches!(map.get("input").map(Value::value_kind), Some(ValueKind::Record(ikvs)) if {
+                let map = &**ikvs;
+                map.len() == 1 &&
+                matches!(map.get("tuple_attr").map(Value::value_kind), Some(ValueKind::Record(iikvs)) if {
+                    let map = &**iikvs;
+                    map.len() == 2 &&
+                    matches!(map.get("proj0").map(Value::value_kind), Some(ValueKind::Lit(Literal::Bool(true)))) &&
+                    matches!(map.get("proj1").map(Value::value_kind), Some(ValueKind::Lit(Literal::Long(0))))
+                })
+            })
+        });
+    }
+
+    #[test]
+    fn test_generate_request_default_config_union() {
+        let request_generator = get_request_generator(
+            SchemaGeneratorConfig::default(),
+            r#"{
+    "name": "test_tool",
+    "description": "test_description",
+    "parameters": {
+        "properties": {
+            "union_attr": {
+                "anyOf": [
+                    { "type": "boolean" },
+                    { "type": "integer" }
+                ]
+            }
+        }
+    }
+}"#,
+        );
+
+        let input = Input::from_json_str(
+            r#"{
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "union_attr": 0
+        }
+    }
+}"#,
+        )
+        .expect("Failed to parse input");
+
+        let principal = r#"Test::user::"""#.parse::<EntityUID>().unwrap();
+        let resource = r#"Test::resource::"""#.parse::<EntityUID>().unwrap();
+
+        let (request, entities) = request_generator
+            .generate_request(
+                principal.clone(),
+                resource.clone(),
+                Context::empty(),
+                Entities::new(),
+                &input,
+                None,
+            )
+            .expect("Failed to generate request");
+
+        assert_eq!(request.principal().uid().unwrap(), &principal);
+        assert_eq!(
+            request.action().uid().unwrap(),
+            &r#"Test::Action::"test_tool""#.parse::<EntityUID>().unwrap()
+        );
+        assert_eq!(request.resource().uid().unwrap(), &resource);
+        assert_eq!(entities, Entities::new());        
+        assert_matches!(request.context(), Some(Context::Value(kvs)) if {
+            let map = &**kvs;
+            map.len() == 1 &&
+            matches!(map.get("input").map(Value::value_kind), Some(ValueKind::Record(ikvs)) if {
+                let map = &**ikvs;
+                map.len() == 1 &&
+                matches!(map.get("union_attr").map(Value::value_kind), Some(ValueKind::Record(iikvs)) if {
+                    let map = &**iikvs;
+                    map.len() == 1 &&
+                    matches!(map.get("typeChoice1").map(Value::value_kind), Some(ValueKind::Lit(Literal::Long(0))))
+                })
+            })
         });
     }
 }
