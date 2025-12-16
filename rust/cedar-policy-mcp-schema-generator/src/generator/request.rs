@@ -1576,7 +1576,7 @@ mod test {
             &r#"Test::Action::"test_tool""#.parse::<EntityUID>().unwrap()
         );
         assert_eq!(request.resource().uid().unwrap(), &resource);
-        assert_eq!(entities, Entities::new());        
+        assert_eq!(entities, Entities::new());
         assert_matches!(request.context(), Some(Context::Value(kvs)) if {
             let map = &**kvs;
             map.len() == 1 &&
@@ -1645,7 +1645,7 @@ mod test {
             &r#"Test::Action::"test_tool""#.parse::<EntityUID>().unwrap()
         );
         assert_eq!(request.resource().uid().unwrap(), &resource);
-        assert_eq!(entities, Entities::new());        
+        assert_eq!(entities, Entities::new());
         assert_matches!(request.context(), Some(Context::Value(kvs)) if {
             let map = &**kvs;
             map.len() == 1 &&
