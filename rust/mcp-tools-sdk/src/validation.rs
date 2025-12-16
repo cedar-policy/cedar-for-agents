@@ -139,7 +139,7 @@ fn validate_property_type(
             if !variants.contains(&s) {
                 Err(ValidationError::invalid_enum_variant(&s))
             } else {
-                Ok(TypedValue::String(s))
+                Ok(TypedValue::Enum(s))
             }
         }
         (PropertyType::Array { element_ty }, Value::Array(vals)) => {

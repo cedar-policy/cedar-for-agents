@@ -630,7 +630,8 @@ fn flatten_name(euid: EntityUID) -> EntityUID {
 
 #[cfg(test)]
 mod test {
-    use cedar_policy_core::ast::{Literal, Value, ValueKind};
+    use cedar_policy_core::ast::{Literal, PartialValue, Value, ValueKind};
+    use cedar_policy_core::entities::Dereference;
     use cool_asserts::assert_matches;
     use std::str::FromStr;
 
@@ -1656,6 +1657,95 @@ mod test {
                     let map = &**iikvs;
                     map.len() == 1 &&
                     matches!(map.get("typeChoice1").map(Value::value_kind), Some(ValueKind::Lit(Literal::Long(0))))
+                })
+            })
+        });
+    }
+
+    #[test]
+    fn test_generate_request_default_config_ref_of_object() {
+        let request_generator = get_request_generator(
+            SchemaGeneratorConfig::default(),
+            r##"{
+    "name": "test_tool",
+    "description": "test_description",
+    "parameters": {
+        "$defs": {
+            "MyObject": {
+                "type": "object",
+                "properties": {
+                    "enum": {
+                        "type": "string",
+                        "enum": ["hi", "med", "low"]
+                    }
+                }
+            }
+        },
+        "properties": {
+            "ref_attr": {
+                "$ref": "#/$defs/MyObject"
+            }
+        }
+    }
+}"##,
+        );
+
+        let input = Input::from_json_str(
+            r#"{
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "ref_attr": {
+                "enum": "hi"
+            }
+        }
+    }
+}"#,
+        )
+        .expect("Failed to parse input");
+
+        let principal = r#"Test::user::"""#.parse::<EntityUID>().unwrap();
+        let resource = r#"Test::resource::"""#.parse::<EntityUID>().unwrap();
+
+        let (request, entities) = request_generator
+            .generate_request(
+                principal.clone(),
+                resource.clone(),
+                Context::empty(),
+                Entities::new(),
+                &input,
+                None,
+            )
+            .expect("Failed to generate request");
+
+        assert_eq!(request.principal().uid().unwrap(), &principal);
+        assert_eq!(
+            request.action().uid().unwrap(),
+            &r#"Test::Action::"test_tool""#.parse::<EntityUID>().unwrap()
+        );
+        assert_eq!(request.resource().uid().unwrap(), &resource);
+        assert!(
+            entities.len() == 1,
+            "{:?}\n{:?}",
+            entities,
+            request.context()
+        );
+        assert_matches!(request.context(), Some(Context::Value(kvs)) if {
+            let map = &**kvs;
+            map.len() == 1 &&
+            matches!(map.get("input").map(Value::value_kind), Some(ValueKind::Record(ikvs)) if {
+                let map = &**ikvs;
+                map.len() == 1 &&
+                matches!(map.get("ref_attr").map(Value::value_kind), Some(ValueKind::Lit(Literal::EntityUID(eid))) if {
+                    matches!(entities.entity(eid), Dereference::Data(e) if {
+                        let attrs = e.attrs().collect::<HashMap<_,_>>();
+                        attrs.len() == 1 &&
+                        matches!(attrs.get(&"enum".to_smolstr()), Some(PartialValue::Value(v)) if {
+                            matches!(v.value_kind(), ValueKind::Lit(Literal::EntityUID(eid)) if {
+                                **eid == "Test::test_tool::Input::MyObject::enum::\"hi\"".parse().expect("Failed to parse EID")
+                            })
+                        })
+                    })
                 })
             })
         });
