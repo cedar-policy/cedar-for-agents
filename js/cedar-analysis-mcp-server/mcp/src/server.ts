@@ -18,10 +18,6 @@ import { registerAllPrompts } from "./prompts.js";
 const server = new McpServer({
   name: "cedar-analysis",
   version: "1.0.0",
-  capabilities: {
-    resources: {},
-    tools: {},
-  },
 });
 
 // Register all tools
