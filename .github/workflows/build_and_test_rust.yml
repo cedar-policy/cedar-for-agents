@@ -1,4 +1,4 @@
-name: Build and Test
+name: Build and Test Rust
 on:
   workflow_call:
     inputs:
@@ -14,9 +14,14 @@ on:
         default: "0"
         type: string
 
+# Declare default permissions as read only.
+# Apparently, actions/upload-artifact does not need write permissions.
+# See: https://github.com/actions/upload-artifact/issues/197
+permissions: read-all
+
 jobs:
   build_and_test:
-    name: Build and Test
+    name: Build and Test Rust
     runs-on: ubuntu-latest
     strategy:
       matrix:
