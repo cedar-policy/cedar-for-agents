@@ -146,12 +146,6 @@ pub enum RequestGeneratorError {
         help("MCP Tool Description Schemas make use of reserved keyword.")
     )]
     ReservedName(#[from] cedar_policy_core::parser::err::ParseErrors),
-    #[error("Undefined Reference Type.")]
-    #[diagnostic(
-        code(schema_generator::undefined_reference),
-        help("`{}` not found in `{}` (or any containing namespace). Ensure that every `$ref` type in input MCP Tool Description references a defined type definition.", .0.name, .0.namespace)
-    )]
-    UndefinedReferenceType(UndefinedReferenceType),
     #[error(transparent)]
     #[diagnostic(transparent)]
     CedarExpressionConstructionError(#[from] ExpressionConstructionError),
@@ -179,12 +173,4 @@ pub enum RequestGeneratorError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     DuplicateEntities(#[from] cedar_policy_core::entities::err::EntitiesError),
-}
-
-impl RequestGeneratorError {
-    /// Construct a `SchemaGeneratorError` representing that the Schema Generator encountered an
-    /// MCP `$ref` type that has no definition
-    pub(crate) fn undefined_ref(name: String, namespace: String) -> Self {
-        Self::UndefinedReferenceType(UndefinedReferenceType { name, namespace })
-    }
 }

@@ -33,7 +33,7 @@ pub struct RequestArgs {
     #[arg(short, long = "context", value_name = "FILE")]
     pub context_json_file: Option<String>,
     /// File containing a JSON object representing the entire request. Must have
-    /// fields "principal", "action", "resource", and "context", where "context"
+    /// fields "principal", "resource", and "context", where "context"
     /// is a (possibly empty) map from keys to values. This option replaces
     /// --principal, --resource, etc.
     #[arg(long = "request-json", value_name = "FILE", conflicts_with_all = &["principal", "resource", "context_json_file"])]
@@ -136,7 +136,7 @@ pub(crate) enum Command {
     /// 3. MCP Input/Output data to validate against MCP tool description, and
     /// 4. Input Entities / Context / Principal / Resource and generated Request components to validate against generated Schema.
     Authorize {
-        /// A Cedar Schema stub file used as the basis of the ouptut schema.
+        /// A Cedar Schema stub file used as the basis of the output schema.
         #[clap(required = true)]
         schema_stub: PathBuf,
         /// A file containing the MCP Tool Descriptions to add as actions to schema stub file.

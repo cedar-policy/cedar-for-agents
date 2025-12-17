@@ -29,7 +29,7 @@ use super::identifiers;
 use crate::{RequestGeneratorError, SchemaGeneratorConfig};
 
 use mcp_tools_sdk::data::{Input, Output, TypedValue};
-use mcp_tools_sdk::description::ServerDescription;
+use mcp_tools_sdk::description::{PropertyTypeDef, ServerDescription};
 use smol_str::{SmolStr, ToSmolStr};
 use uuid::Uuid;
 
@@ -42,6 +42,36 @@ pub struct RequestGenerator {
     tools: ServerDescription,
     root_namespace: Option<Name>,
     schema: ValidatorSchema,
+}
+
+#[derive(Clone, Debug)]
+struct TypeDefsInfo {
+    info: HashMap<SmolStr, Option<Arc<Name>>>,
+}
+
+impl TypeDefsInfo {
+    fn new() -> Self {
+        Self {
+            info: HashMap::new(),
+        }
+    }
+
+    fn extend<'a>(
+        &mut self,
+        ty_defs: impl IntoIterator<Item = &'a PropertyTypeDef>,
+        namespace: Option<Name>,
+    ) {
+        let namespace = namespace.map(Arc::new);
+        self.info.extend(
+            ty_defs
+                .into_iter()
+                .map(|ty_def| (ty_def.name().to_smolstr(), namespace.clone())),
+        )
+    }
+
+    fn get(&self, type_name: &SmolStr) -> Option<&Name> {
+        self.info.get(type_name).and_then(|ns| ns.as_deref())
+    }
 }
 
 impl RequestGenerator {
@@ -93,69 +123,48 @@ impl RequestGenerator {
             .map(|output| self.tools.validate_output(tool.name(), output))
             .transpose()?;
 
-        let mut type_defs = self
-            .tools
-            .type_definitions()
-            .map(|ty_def| (ty_def.name().to_smolstr(), self.root_namespace.clone()))
-            .collect::<HashMap<_, _>>();
+        let mut type_defs = TypeDefsInfo::new();
+        type_defs.extend(self.tools.type_definitions(), self.root_namespace.clone());
 
         let tool_ns: Name = tool.name().parse()?;
         let tool_ns = tool_ns.qualify_with_name(self.root_namespace.as_ref());
 
-        // collect all of the tool specific type defs
-        type_defs.extend(
-            tool.type_definitions()
-                .map(|ty_def| (ty_def.name().to_smolstr(), Some(tool_ns.clone()))),
-        );
-
-        let input_ns = identifiers::INPUT_NAME.qualify_with_name(Some(&tool_ns));
+        // Extend with tool specific type definitions
+        type_defs.extend(tool.type_definitions(), Some(tool_ns.clone()));
 
         // Combine server / tool / input specific type defs
+        let input_ns = identifiers::INPUT_NAME.qualify_with_name(Some(&tool_ns));
         let mut inputs_type_defs = type_defs.clone();
-        inputs_type_defs.extend(
-            tool.inputs()
-                .type_definitions()
-                .map(|ty_def| (ty_def.name().to_smolstr(), Some(input_ns.clone()))),
-        );
+        inputs_type_defs.extend(tool.inputs().type_definitions(), Some(input_ns.clone()));
 
-        let mut inputs = HashMap::new();
-        for (name, arg) in input.get_args() {
-            let (expr, new_entities) =
-                self.val_to_cedar(arg, &inputs_type_defs, Some(&input_ns), name)?;
-            entities = entities.add_entities(
-                new_entities.into_iter().map(Arc::from),
-                None::<&cedar_policy_core::validator::CoreSchema<'_>>,
-                cedar_policy_core::entities::TCComputation::AssumeAlreadyComputed,
-                cedar_policy_core::extensions::Extensions::all_available(),
-            )?;
-            inputs.insert(name.to_smolstr(), expr);
-        }
-        let inputs = RestrictedExpr::record(inputs)?;
+        let (inputs, new_entities) =
+            self.values_to_cedar(input.get_args(), &inputs_type_defs, Some(&input_ns))?;
+        entities = entities.add_entities(
+            new_entities.into_iter().map(Arc::from),
+            None::<&cedar_policy_core::validator::CoreSchema<'_>>,
+            cedar_policy_core::entities::TCComputation::AssumeAlreadyComputed,
+            cedar_policy_core::extensions::Extensions::all_available(),
+        )?;
 
         let context = match &output {
             Some(output) if self.config.include_outputs => {
-                let output_ns = identifiers::OUTPUT_NAME.qualify_with_name(Some(&tool_ns));
-
                 // Combine server / tool / output specific type defs
-                let mut outputputs_type_defs = type_defs.clone();
-                outputputs_type_defs.extend(
-                    tool.outputs()
-                        .type_definitions()
-                        .map(|ty_def| (ty_def.name().to_smolstr(), Some(output_ns.clone()))),
-                );
-                let mut outputs = HashMap::new();
-                for (name, res) in output.get_results() {
-                    let (expr, new_entities) =
-                        self.val_to_cedar(res, &outputputs_type_defs, Some(&output_ns), name)?;
-                    entities = entities.add_entities(
-                        new_entities.into_iter().map(Arc::from),
-                        None::<&cedar_policy_core::validator::CoreSchema<'_>>,
-                        cedar_policy_core::entities::TCComputation::AssumeAlreadyComputed,
-                        cedar_policy_core::extensions::Extensions::all_available(),
-                    )?;
-                    outputs.insert(name.to_smolstr(), expr);
-                }
-                let outputs = RestrictedExpr::record(outputs)?;
+                let output_ns = identifiers::OUTPUT_NAME.qualify_with_name(Some(&tool_ns));
+                let mut outputs_type_defs = type_defs.clone();
+                outputs_type_defs
+                    .extend(tool.outputs().type_definitions(), Some(output_ns.clone()));
+
+                let (outputs, new_entities) = self.values_to_cedar(
+                    output.get_results(),
+                    &outputs_type_defs,
+                    Some(&output_ns),
+                )?;
+                entities = entities.add_entities(
+                    new_entities.into_iter().map(Arc::from),
+                    None::<&cedar_policy_core::validator::CoreSchema<'_>>,
+                    cedar_policy_core::entities::TCComputation::AssumeAlreadyComputed,
+                    cedar_policy_core::extensions::Extensions::all_available(),
+                )?;
                 context.into_iter().chain(vec![
                     ("input".to_smolstr(), inputs),
                     ("output".to_smolstr(), outputs),
@@ -191,10 +200,31 @@ impl RequestGenerator {
         Ok((request, entities))
     }
 
+    fn values_to_cedar<'a>(
+        &self,
+        vals: impl Iterator<Item = (&'a str, &'a TypedValue)>,
+        type_defs: &TypeDefsInfo,
+        namespace: Option<&Name>,
+    ) -> Result<(RestrictedExpr, Entities), RequestGeneratorError> {
+        let mut entities = Entities::new();
+        let mut exprs = HashMap::new();
+        for (name, arg) in vals {
+            let (expr, new_entities) = self.val_to_cedar(arg, type_defs, namespace, name)?;
+            entities = entities.add_entities(
+                new_entities.into_iter().map(Arc::from),
+                None::<&cedar_policy_core::validator::CoreSchema<'_>>,
+                cedar_policy_core::entities::TCComputation::AssumeAlreadyComputed,
+                cedar_policy_core::extensions::Extensions::all_available(),
+            )?;
+            exprs.insert(name.to_smolstr(), expr);
+        }
+        Ok((RestrictedExpr::record(exprs)?, entities))
+    }
+
     fn val_to_cedar(
         &self,
         val: &TypedValue,
-        type_defs: &HashMap<SmolStr, Option<Name>>,
+        type_defs: &TypeDefsInfo,
         namespace: Option<&Name>,
         ty_name: &str,
     ) -> Result<(RestrictedExpr, Entities), RequestGeneratorError> {
@@ -422,16 +452,9 @@ impl RequestGenerator {
                     Ok((RestrictedExpr::val(euid), entities))
                 }
             }
-            TypedValue::Ref { name, val } => match type_defs.get(name) {
-                None => {
-                    let ns = match namespace {
-                        None => "".into(),
-                        Some(name) => format!("{}", name),
-                    };
-                    Err(RequestGeneratorError::undefined_ref(name.to_string(), ns))
-                }
-                Some(ns) => self.val_to_cedar(val, type_defs, ns.as_ref(), name.as_str()),
-            },
+            TypedValue::Ref { name, val } => {
+                self.val_to_cedar(val, type_defs, type_defs.get(name), name.as_str())
+            }
         }
     }
 }
@@ -1053,7 +1076,7 @@ mod test {
             .new_request_generator()
             .expect("Failed to construct request generator");
 
-        let type_defs = HashMap::new();
+        let type_defs = TypeDefsInfo::new();
         let namespace = Some("Test".parse().unwrap());
         let (expr, entities) = request_generator
             .val_to_cedar(val, &type_defs, namespace.as_ref(), "test_type")

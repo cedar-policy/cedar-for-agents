@@ -137,8 +137,8 @@ impl CliArgs {
                     &input,
                     output.as_ref(),
                 )?;
-                let authorizor = cedar_policy_core::authorizer::Authorizer::new();
-                match authorizor
+                let authorizer = cedar_policy_core::authorizer::Authorizer::new();
+                match authorizer
                     .is_authorized(request, &policies, &entities)
                     .decision
                 {

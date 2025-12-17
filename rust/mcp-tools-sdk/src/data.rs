@@ -78,12 +78,15 @@ pub enum TypedValue {
     Array(Vec<TypedValue>),
     Tuple(Vec<TypedValue>),
     Union {
-        // index of which type within union type this validates against
+        /// index of which type within union type this validates against
         index: usize,
         value: Box<TypedValue>,
     },
     Object {
+        /// properties that were explicitly defined by object's type schmea
         properties: HashMap<SmolStr, TypedValue>,
+        /// properties that were not explicitly defined by object's type schmea
+        /// but matched the object's `additionalProperty` type
         additional_properties: HashMap<SmolStr, TypedValue>,
     },
     Ref {

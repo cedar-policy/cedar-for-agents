@@ -23,7 +23,7 @@ nonempty = "0.12"
 chrono = "0.4.42"
 ipnet = "2.11.0"
 iso8601 = "0.6.3"
-uuid = { version = "1.19.0", "features" = ["v4" ]}
+uuid = { version = "1.19.0", "features" = ["v4"] }
 
 # CLI only dependencies
 clap = { version = "4.5.36", features = ["derive"], optional = true }
