@@ -6,17 +6,22 @@ on:
 env:
   CARGO_TERM_COLOR: always
 jobs:
-  build_and_test:
-    uses: ./.github/workflows/build_and_test.yml
+  build_and_test_rust:
+    uses: ./.github/workflows/build_and_test_rust.yml
     with:
       collect_coverage: true
 
   check_coverage:
-    name: Check coverage criteria
-    needs: build_and_test
+    name: Check coverage criteria (RUST)
+    needs: build_and_test_rust
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/create_coverage_comment
         with:
           threshold: 0.8
+
+  build_and_test_js:
+    uses: ./.github/workflows/build_and_test_js.yml
+    with:
+      collect_coverage: true
