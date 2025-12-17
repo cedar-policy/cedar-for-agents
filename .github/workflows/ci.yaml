@@ -28,5 +28,3 @@ jobs:
 
   build_and_test_js:
     uses: ./.github/workflows/build_and_test_js.yml
-    with:
-      collect_coverage: true
