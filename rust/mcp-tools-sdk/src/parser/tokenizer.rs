@@ -136,6 +136,10 @@ impl Tokenizer {
             let msg = format!("Encountered end of input while trying to read {ident}");
             return Err(TokenizeError::unexpected_eof(loc, msg.as_str()));
         }
+        #[expect(
+            clippy::string_slice,
+            reason = "By construction the indexes are guaranteed to satisfy 0 <= self.cur_pos < self.input."
+        )]
         if self.input[self.cur_pos..].starts_with(ident) {
             self.cur_pos += ident.len();
             Ok(())

@@ -27,7 +27,7 @@ use smol_str::SmolStr;
 use std::collections::{HashMap, HashSet};
 
 /// Deserialize an MCP `tools/list` json response into a `ServerDescription`
-#[allow(clippy::needless_pass_by_value, reason = "Better interface")]
+#[expect(clippy::needless_pass_by_value, reason = "Better interface.")]
 pub(crate) fn server_description_from_json_value(
     json_value: LocatedValue,
 ) -> Result<ServerDescription, DeserializationError> {
@@ -74,7 +74,7 @@ pub(crate) fn server_description_from_json_value(
 }
 
 /// Deserialize an MCP Tool Description json into a `ToolDescription`
-#[allow(clippy::needless_pass_by_value, reason = "Better interface")]
+#[expect(clippy::needless_pass_by_value, reason = "Better interface.")]
 pub(crate) fn tool_description_from_json_value(
     json_value: LocatedValue,
 ) -> Result<ToolDescription, DeserializationError> {

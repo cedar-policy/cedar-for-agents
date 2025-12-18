@@ -66,14 +66,21 @@ impl LocatedString {
     pub(crate) fn as_str(&self) -> &str {
         let start = self.loc.start() + 1;
         let end = self.loc.end() - 1;
+        #[expect(
+            clippy::string_slice,
+            reason = r#"By construction `start` and `end` are both at valid character boundaries and `start` <= `end`.
+                        The JSON parser ensures that `self.loc.start()` immediately preceeds a quotation mark (`"`) and
+                        `self.loc.end()` immediately follows a quotation mark (`"`). In addition, the parser ensures that
+                        these are separate distinct quotation marks (`"`)."#
+        )]
         &self.loc.src[start..end]
     }
 
     /// Create a `String` matching the contents of the `LocatedString`
-    #[allow(dead_code, reason = "Added for completeness.")]
-    #[allow(
+    #[expect(dead_code, reason = "Added for completeness.")]
+    #[expect(
         clippy::inherent_to_string,
-        reason = "Not provided as a proxy for display"
+        reason = "Not provided as a proxy for display."
     )]
     pub(crate) fn to_string(&self) -> String {
         self.as_str().to_string()
@@ -158,13 +165,13 @@ impl LocatedValue {
     }
 
     /// Retrieve the kind of the `LocatedValue`
-    #[allow(dead_code, reason = "Added for completeness.")]
+    #[expect(dead_code, reason = "Added for completeness.")]
     pub(crate) fn as_kind(&self) -> &ValueKind {
         &self.kind
     }
 
     /// Unwrap the `LocatedValue` to get its underlying `ValueKind`
-    #[allow(dead_code, reason = "Added for completeness.")]
+    #[expect(dead_code, reason = "Added for completeness.")]
     pub(crate) fn into_kind(self) -> ValueKind {
         self.kind
     }
@@ -175,19 +182,17 @@ impl LocatedValue {
     }
 
     /// Unwrap the `LocatedValue` to get its underlying Location
-    #[allow(dead_code, reason = "Added for completeness.")]
+    #[expect(dead_code, reason = "Added for completeness.")]
     pub(crate) fn into_loc(self) -> Loc {
         self.loc
     }
 
     /// Returns if this `LocatedValue` is of kind Null
-    #[allow(dead_code, reason = "Added for completeness.")]
     pub(crate) fn is_null(&self) -> bool {
         matches!(self.kind, ValueKind::Null)
     }
 
     /// Returns if this `LocatedValue` is of kind Bool
-    #[allow(dead_code, reason = "Added for completeness.")]
     pub(crate) fn is_bool(&self) -> bool {
         matches!(self.kind, ValueKind::Bool(_))
     }
@@ -202,7 +207,6 @@ impl LocatedValue {
     }
 
     /// Returns if this `LocatedValue` is of kind Number
-    #[allow(dead_code, reason = "Added for completeness.")]
     pub(crate) fn is_number(&self) -> bool {
         matches!(self.kind, ValueKind::Number)
     }
@@ -210,12 +214,18 @@ impl LocatedValue {
     /// Returns Some(str) if this `LocatedValue` represents
     /// a Number, where str is a `&str` representing the numeric litral.
     /// Otherwise, returns None
-    #[allow(dead_code, reason = "Added for completeness.")]
     pub(crate) fn get_numeric_str(&self) -> Option<&str> {
         match self.kind {
             ValueKind::Number => {
                 let start = self.loc.start();
                 let end = self.loc.end();
+                #[expect(
+                    clippy::string_slice,
+                    reason = r#"By construction the indexes are at character boundaries:
+                                the JSON parser ensures that start is the position immediately
+                                preceeding an ascii digit [0-9] and end is a position that
+                                immediately follows an ascii digit [0-9]."#
+                )]
                 Some(&self.loc.src[start..end])
             }
             _ => None,
@@ -223,7 +233,6 @@ impl LocatedValue {
     }
 
     /// Returns if this `LocatedValue` is of kind String
-    #[allow(dead_code, reason = "Added for completeness.")]
     pub(crate) fn is_string(&self) -> bool {
         matches!(self.kind, ValueKind::String)
     }
@@ -236,6 +245,13 @@ impl LocatedValue {
             ValueKind::String => {
                 let start = self.loc.start() + 1;
                 let end = self.loc.end() - 1;
+                #[expect(
+                    clippy::string_slice,
+                    reason = r#"By construction `start` and `end` are both at valid character boundaries and `start` <= `end`.
+                        The JSON parser ensures that `self.loc.start()` immediately preceeds a quotation mark (`"`) and
+                        `self.loc.end()` immediately follows a quotation mark (`"`). In addition, the parser ensures that
+                        these are separate distinct quotation marks (`"`)."#
+                )]
                 Some(&self.loc.src[start..end])
             }
             _ => None,
@@ -257,7 +273,6 @@ impl LocatedValue {
     }
 
     /// Returns if this `LocatedValue` is of kind Array
-    #[allow(dead_code, reason = "Added for completeness.")]
     pub(crate) fn is_array(&self) -> bool {
         matches!(self.kind, ValueKind::Array(_))
     }

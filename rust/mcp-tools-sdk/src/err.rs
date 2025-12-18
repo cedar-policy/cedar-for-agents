@@ -227,7 +227,10 @@ pub struct ReadError {
     error: String,
 }
 
-#[allow(dead_code, reason = "cycle is used implicitly in error message")]
+#[expect(
+    dead_code,
+    reason = "The attribute `cycle` is used implicitly in error message."
+)]
 #[derive(Debug)]
 pub struct TypeDefinitionCycle {
     cycle: Vec<SmolStr>,

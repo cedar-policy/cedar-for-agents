@@ -98,10 +98,9 @@ pub enum TypedValue {
 
 #[doc(hidden)]
 impl From<&LocatedValue> for Value {
-    // PANIC SAFETY: A Located Value should be one-to-one with Value
-    #[allow(
+    #[expect(
         clippy::unreachable,
-        reason = "A Located Value should be one-to-one with Value"
+        reason = "A `LocatedValue` should be one-to-one with `Value`."
     )]
     fn from(val: &LocatedValue) -> Value {
         if val.is_null() {
