@@ -507,8 +507,7 @@ impl SchemaGenerator {
             loc: None,
         };
 
-        #[allow(clippy::unwrap_used, reason = "Namespace exists by construction")]
-        // PANIC SAFETY: Constructor ensures self.namespace does belong to the fragment
+        #[expect(clippy::unwrap_used, reason = "Namespace exists by construction.")]
         self.fragment
             .0
             .get_mut(&self.namespace)
@@ -527,20 +526,18 @@ impl SchemaGenerator {
         if self.config.flatten_namespaces {
             let name = name.to_string();
             let name = if self.namespace.is_some() {
-                // PANIC SAFETY: by assumption name should include at least one "::"
-                #[allow(
+                #[expect(
                     clippy::unwrap_used,
-                    reason = "by assumption name should include at least one \"::\""
+                    reason = "By assumption name should include at least one \"::\"."
                 )]
                 name.split_once("::").unwrap().1.to_string()
             } else {
                 name
             };
             let name = name.replace("::", "_");
-            // PANIC SAFETY: name should still parse after converting "::" to "_"
-            #[allow(
+            #[expect(
                 clippy::unwrap_used,
-                reason = "name should still parse after converting \"::\" to \"_\""
+                reason = "The `name` should still parse after converting \"::\" to \"_\"."
             )]
             let name: InternalName = name.parse().unwrap();
             name.qualify_with_name(self.namespace.as_ref())
@@ -559,7 +556,10 @@ impl SchemaGenerator {
         }
     }
 
-    #[allow(clippy::ref_option)]
+    #[expect(
+        clippy::ref_option,
+        reason = "This follows a decision made by cedar-policy-core which we are using."
+    )]
     // This function should only be called when namespace is prefixed by `{self.namespace}::`
     // If `namespace` is `{self.namespace}::Foo::Bar::Baz` then this function returns the id `Foo_Bar_Baz_id`.
     fn flatten_unreserved_id(&self, id: UnreservedId, namespace: &Option<Name>) -> UnreservedId {
@@ -567,10 +567,9 @@ impl SchemaGenerator {
             let name = Name::unqualified_name(id).qualify_with_name(namespace.as_ref());
             let name = name.qualify_with(None);
             let name = self.flatten_internalname(name);
-            // PANIC SAFETY: the basename should be unreserved because the original id used to construct it is unreserved
-            #[allow(
+            #[expect(
                 clippy::unwrap_used,
-                reason = "the basename should be unreserved because the original id used to construct it is unreserved"
+                reason = "The basename should be unreserved because the original id used to construct it is unreserved."
             )]
             UnreservedId::try_from(name.basename().clone()).unwrap()
         } else {
@@ -590,9 +589,9 @@ impl SchemaGenerator {
             });
     }
 
-    #[allow(
+    #[expect(
         clippy::ref_option,
-        reason = "More ergonomic for indexing into fragment"
+        reason = "More ergonomic for indexing into fragment."
     )]
     fn drop_namespace_if_empty(&mut self, namespace: &Option<Name>) {
         if let Some(nsdef) = self.fragment.0.get(namespace) {
@@ -605,9 +604,9 @@ impl SchemaGenerator {
         }
     }
 
-    #[allow(
+    #[expect(
         clippy::ref_option,
-        reason = "More ergnomic for indexing into fragment"
+        reason = "More ergnomic for indexing into fragment."
     )]
     fn add_commontype(
         &mut self,
@@ -644,11 +643,10 @@ impl SchemaGenerator {
         }
 
         let ty_name = CommonTypeId::new(ty_name)?;
-        #[allow(
+        #[expect(
             clippy::unwrap_used,
-            reason = "This function is only called on namespaces appearing in fragment"
+            reason = "This function is only called on namespaces appearing in fragment."
         )]
-        // PANIC SAFETY: this function should only be called if namespace belongs to self's fragment
         let nsdef = self.fragment.0.get_mut(namespace).unwrap();
 
         match nsdef.common_types.entry(ty_name) {
@@ -667,9 +665,9 @@ impl SchemaGenerator {
         }
     }
 
-    #[allow(
+    #[expect(
         clippy::ref_option,
-        reason = "More ergnomic for indexing into fragment"
+        reason = "More ergnomic for indexing into fragment."
     )]
     fn add_entitytype(
         &mut self,
@@ -687,11 +685,10 @@ impl SchemaGenerator {
             (namespace, ty_name)
         };
 
-        #[allow(
+        #[expect(
             clippy::unwrap_used,
-            reason = "This function is only called on namespaces appearing in fragment"
+            reason = "This function is only called on namespaces appearing in fragment."
         )]
-        // PANIC SAFETY: this function should only be called if namespace belongs to self's fragment
         let nsdef = self.fragment.0.get_mut(namespace).unwrap();
 
         match nsdef.entity_types.entry(ty_name) {
@@ -706,9 +703,9 @@ impl SchemaGenerator {
         }
     }
 
-    #[allow(
+    #[expect(
         clippy::ref_option,
-        reason = "More ergnomic for indexing into fragment"
+        reason = "More ergnomic for indexing into fragment."
     )]
     fn add_opaque_entity_type(
         &mut self,
@@ -727,9 +724,9 @@ impl SchemaGenerator {
         self.add_entitytype(namespace, ty, ty_name, false)
     }
 
-    #[allow(
+    #[expect(
         clippy::ref_option,
-        reason = "More ergnomic for indexing into fragment"
+        reason = "More ergnomic for indexing into fragment."
     )]
     fn record_from_parameters(
         &mut self,
@@ -787,9 +784,9 @@ impl SchemaGenerator {
         })
     }
 
-    #[allow(
+    #[expect(
         clippy::ref_option,
-        reason = "More ergnomic for indexing into fragment"
+        reason = "More ergnomic for indexing into fragment."
     )]
     fn cedar_type_from_property_type(
         &mut self,
@@ -906,8 +903,10 @@ impl SchemaGenerator {
                     .iter()
                     .enumerate()
                     .map(|(i, ptype)| {
-                        #[allow(clippy::unwrap_used, reason = "`Proj{i}` is a valid UnreservedId")]
-                        // PANIC SAFETY: Proj{i} should not fail to parse
+                        #[expect(
+                            clippy::unwrap_used,
+                            reason = "The string `Proj{i}` is a valid UnreservedId."
+                        )]
                         let proj_tyname: UnreservedId =
                             format!("Proj{i}").as_str().parse().unwrap();
                         let proj = format!("proj{i}").to_smolstr();
@@ -939,11 +938,10 @@ impl SchemaGenerator {
                     .iter()
                     .enumerate()
                     .map(|(i, ptype)| {
-                        #[allow(
+                        #[expect(
                             clippy::unwrap_used,
-                            reason = "`TypeChoice{i}` is a valid UnreservedId"
+                            reason = "The string `TypeChoice{i}` is a valid UnreservedId."
                         )]
-                        // PANIC SAFETY: TypeChoice{i} should not fail to parse
                         let proj_tyname: UnreservedId =
                             format!("TypeChoice{i}").as_str().parse().unwrap();
                         let proj = format!("typeChoice{i}").to_smolstr();
@@ -1078,7 +1076,10 @@ impl SchemaGenerator {
     }
 }
 
-#[allow(clippy::ref_option)]
+#[expect(
+    clippy::ref_option,
+    reason = "This follows a decision made by cedar-policy-core which we are using."
+)]
 fn get_refname(namespace: &Option<Name>, ty_name: &CommonTypeId) -> RawName {
     RawName::from_name(
         RawName::new_from_unreserved(ty_name.as_ref().clone(), None)
@@ -1086,7 +1087,10 @@ fn get_refname(namespace: &Option<Name>, ty_name: &CommonTypeId) -> RawName {
     )
 }
 
-#[allow(clippy::ref_option)]
+#[expect(
+    clippy::ref_option,
+    reason = "This follows a decision made by cedar-policy-core which we are using."
+)]
 // If Type is an entity or common type qualified by namespace, then unquality it;
 // otherwise return the original type
 fn unqualify_type(namespace: &Option<Name>, ty: Type<RawName>) -> Type<RawName> {
@@ -1158,7 +1162,10 @@ fn unqualify_type(namespace: &Option<Name>, ty: Type<RawName>) -> Type<RawName> 
     }
 }
 
-#[allow(clippy::ref_option)]
+#[expect(
+    clippy::ref_option,
+    reason = "This follows a decision made by cedar-policy-core which we are using."
+)]
 // If name is qualified with namespace then return unqualified name
 fn unqualify_name(namespace: &Option<Name>, name: RawName) -> RawName {
     match namespace {

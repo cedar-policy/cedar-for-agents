@@ -227,11 +227,6 @@ fn validate_property_type(
     }
 }
 
-// PANIC SAFETY: Indexing vec of length 2 by 0 and 1 should not panic
-#[allow(
-    clippy::indexing_slicing,
-    reason = "Indexing vec of length 2 by 0 and 1 should not panic"
-)]
 fn is_decimal(str: &str) -> bool {
     let Some((integer_part, fractional_part)) = str.split('.').collect_tuple() else {
         return false;
@@ -256,9 +251,9 @@ fn is_decimal(str: &str) -> bool {
 
     // Construct the scaled integer value
     // Result = (integer_part * 10^4 + fractional_part * 10^(4 - fractional_part.len()))
-    #[allow(
+    #[expect(
         clippy::cast_possible_truncation,
-        reason = "Casting length of 0-4 will not truncate"
+        reason = "Casting usize between 0 and 4 will not truncate."
     )]
     let frac_scale = 10_i64.pow(4 - (fractional_part.len() as u32));
     let scale = 10_i64.pow(4);
@@ -268,9 +263,11 @@ fn is_decimal(str: &str) -> bool {
         return false;
     };
 
-    // PANIC SAFETY: above checks ensures fractional_part is a string containing
     // only ascii digits and has length 1-4 (thus parsing will not fail)
-    #[allow(clippy::unwrap_used, reason = "integer or length 4 cannot overflow")]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "An `i64` whose string representation has length <= 4 cannot overflow."
+    )]
     let frac_val: i64 = fractional_part.parse().unwrap();
     let frac_val = frac_val * frac_scale * (if is_neg { -1 } else { 1 });
 

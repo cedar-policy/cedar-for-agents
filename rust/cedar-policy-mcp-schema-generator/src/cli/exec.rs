@@ -59,7 +59,10 @@ fn read_schema(file: impl AsRef<Path>) -> Result<Fragment<RawName>, CliError> {
     }
 }
 
-#[allow(clippy::ref_option)]
+#[expect(
+    clippy::ref_option,
+    reason = "This follows a decision made by cedar-policy-core which we are using."
+)]
 fn output_schema(
     schema: &Fragment<RawName>,
     output_location: &Option<PathBuf>,

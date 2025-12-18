@@ -114,8 +114,7 @@ impl RequestGenerator {
         output: Option<&Output>,
     ) -> Result<(Request, Entities), RequestGeneratorError> {
         let input = self.tools.validate_input(input)?;
-        // PANIC SAFETY: `self.tools` must contain a tool named `input.name()` and `input` validates against `tool`
-        #[allow(
+        #[expect(
             clippy::unwrap_used,
             reason = "Validation ensures there is a tool in with the same name that the input validates against"
         )]
@@ -460,8 +459,10 @@ impl RequestGenerator {
     }
 }
 
-// PANIC SAFETY: The input `str` should have been validated as a date-time str, and should parse
-#[allow(clippy::unreachable)]
+#[expect(
+    clippy::unreachable,
+    reason = "The input `str` should have been validated as a date-time str, and should parse"
+)]
 /// This function converts from JSON date or date-time formatted strings to Cedar datetime strings.
 /// This conversion uses chrono library to parse and reformat the strings appropriately.
 ///
@@ -549,8 +550,10 @@ fn reformat_datestr(str: &str) -> String {
 /// time durations. This means that the best we can do for converting iso8601 durations that contain
 /// months or year components is to approximate (e.g., 1 year = 365 days and 1 month = 30 days).
 fn reformat_duration(str: &str) -> String {
-    // PANIC SAFETY: validation ensures that the input `str` will parse as an `iso8601::Duration`
-    #[allow(clippy::unwrap_used)]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "Validation ensures that the input `str` will parse as an `iso8601::Duration`."
+    )]
     let duration = iso8601::duration(str).unwrap();
 
     match duration {
@@ -595,8 +598,10 @@ fn reformat_duration(str: &str) -> String {
 /// This is accomplished by passing through Rust's IpAddr type which allows lax formatting during deserialization and stricter formatting
 /// during serialization to string.
 fn reformat_ipaddr(str: &str) -> String {
-    // PANIC SAFETY: validation ensures that the input `str` will parse as an `IpAddr` or `IpNet`
-    #[allow(clippy::unwrap_used)]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "Validation ensures that the input `str` will parse as an `IpAddr` or `IpNet`."
+    )]
     str.parse::<std::net::IpAddr>()
         .map(|ip| {
             // Convert IPv4-mapped IPv6 to IPv4
@@ -631,8 +636,10 @@ fn reformat_ipaddr(str: &str) -> String {
         })
 }
 
-// PANIC SAFETY: the input EntityUID is valid. Transforming to flatten the entity type name should be safe
-#[allow(clippy::unwrap_used)]
+#[expect(
+    clippy::unwrap_used,
+    reason = "The input EntityUID is valid. Transforming to flatten the entity type name should be safe."
+)]
 /// Flatten an EntityUID's typename to be consistent with the transformation used in Schema generator when flatten_namespaces
 /// configuration option is set to true. That transformation transforms a name `TopLevelNamespace::Other::Name::Spaces::BaseName`
 /// into the name `TopLevelNameSpace::Other_Name_Spaces_BaseName`.

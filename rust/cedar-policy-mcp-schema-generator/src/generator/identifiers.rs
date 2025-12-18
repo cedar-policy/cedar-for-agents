@@ -14,8 +14,10 @@
  * limitations under the License.
  */
 
-// PANIC SAFETY: All parsed identifiers are constants which we know are valid
-#![allow(clippy::unwrap_used)]
+#![expect(
+    clippy::unwrap_used,
+    reason = "All parsed identifiers are constants which we know are valid."
+)]
 
 use cedar_policy_core::ast::{AnyId, EntityType, Name, UnreservedId};
 use cedar_policy_core::validator::RawName;
