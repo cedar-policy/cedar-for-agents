@@ -295,7 +295,7 @@ impl SchemaGenerator {
         description: &ToolDescription,
     ) -> Result<(), SchemaGeneratorError> {
         if self.tools.tool_descriptions().count() != 0 {
-            return Err(SchemaGeneratorError::UserError);
+            return Err(SchemaGeneratorError::ServerDescriptionMerge);
         }
         self.tools = ServerDescription::new(vec![description.clone()].into_iter(), HashMap::new());
         // Keep a copy of schema fragment in case we have an error
@@ -331,7 +331,7 @@ impl SchemaGenerator {
         description: &ServerDescription,
     ) -> Result<(), SchemaGeneratorError> {
         if self.tools.tool_descriptions().count() != 0 {
-            return Err(SchemaGeneratorError::UserError);
+            return Err(SchemaGeneratorError::ServerDescriptionMerge);
         }
         self.tools = description.clone();
 

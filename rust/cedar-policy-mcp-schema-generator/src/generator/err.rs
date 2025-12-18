@@ -109,12 +109,12 @@ pub enum SchemaGeneratorError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     SchemaResolutionError(#[from] cedar_policy_core::validator::SchemaError),
-    #[error("Bad user")]
+    #[error("Server Descriptions cannot be merged.")]
     #[diagnostic(
-        code(schema_generator::bad_user),
-        help("Actually bad library designer. Sorry.")
+        code(schema_generator::mcp_server_description_merge),
+        help("Server Descriptions cannot be merged. Consider pre-merging Server descriptions and using add_tools_from_serve_description API.")
     )]
-    UserError,
+    ServerDescriptionMerge,
 }
 
 impl SchemaGeneratorError {

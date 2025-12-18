@@ -83,9 +83,9 @@ pub enum TypedValue {
         value: Box<TypedValue>,
     },
     Object {
-        /// properties that were explicitly defined by object's type schmea
+        /// properties that were explicitly defined by object's type schema
         properties: HashMap<SmolStr, TypedValue>,
-        /// properties that were not explicitly defined by object's type schmea
+        /// properties that were not explicitly defined by object's type schema
         /// but matched the object's `additionalProperty` type
         additional_properties: HashMap<SmolStr, TypedValue>,
     },
