@@ -13,7 +13,7 @@ This repository contains a number of directories:
   - [mcp-tools-sdk](./rust/mcp-tools-sdk/) : A crate for parsing and manipulating MCP tool descriptions and data.
   - [cedar-policy-mcp-schema-generator](./rust/cedar-policy-mcp-schema-generator/) : A crate for auto-generating a Cedar Schema for an MCP Server's tool descriptions.
 * [js](./js/) which contains JavaScript packages that enable Agents to make use of Cedar and its Analysis Capabilities.
-  - [cedar-analysis-mcp-server] : A package that creates an MCP server that exposes an interface for Agents to use [Cedar's analysis capabilities](https://github.com/cedar-policy/cedar-spec/tree/main/cedar-lean-cli#analysis).
+  - [cedar-analysis-mcp-server](./js/cedar-analysis-mcp-server) : A package that creates an MCP server that exposes an interface for Agents to use [Cedar's analysis capabilities](https://github.com/cedar-policy/cedar-spec/tree/main/cedar-lean-cli#analysis).
 
 ## Security
 
