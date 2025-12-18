@@ -10,8 +10,11 @@ permissions: read-all
 env: 
   CARGO_TERM_COLOR: always
 jobs:
-  build_and_test:
-    uses: ./.github/workflows/build_and_test.yml
+  build_and_test_rust:
+    uses: ./.github/workflows/build_and_test_rust.yml
     with:
       collect_coverage: true
       retention-days: 2
+
+  build_and_test_js:
+    uses: ./.github/workflows/build_and_test_js.yml
