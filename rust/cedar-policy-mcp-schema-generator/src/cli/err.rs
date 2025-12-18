@@ -65,6 +65,54 @@ pub enum CliError {
     CedarSerializeSchema(
         #[from] cedar_policy_core::validator::cedar_schema::fmt::ToCedarSchemaSyntaxError,
     ),
+    #[error("Could not open cedar policies file `{}`: {}", .0.file.display(), .0.error)]
+    #[diagnostic(code(cli_error::file_open_error), help("Make sure {} exists and you have permissions to read it.", .0.file.display()))]
+    PoliciesFileOpen(FileOpenError),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    PolicySetReadErrors(#[from] cedar_policy_core::parser::err::ParseErrors),
+    #[error("Could not open cedar entities file `{}`: {}", .0.file.display(), .0.error)]
+    #[diagnostic(code(cli_error::file_open_error), help("Make sure {} exists and you have permissions to read it.", .0.file.display()))]
+    EntitiesFileOpen(FileOpenError),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    EntitiesSetReadErrors(#[from] cedar_policy_core::entities::err::EntitiesError),
+    #[error("Missing required principal argument")]
+    #[diagnostic(
+        code(cli_error::missing_principal),
+        help("Provide a principal, e.g., using `--principal PrincipalType::\"principal_id\".")
+    )]
+    MissingPrincipal,
+    #[error("Missing required resource argument")]
+    #[diagnostic(
+        code(cli_error::missing_principal),
+        help("Provide a principal, e.g., using `--resource ResourceType::\"resource_id\".")
+    )]
+    MissingResource,
+    #[error("Could not open cedar context file `{}`: {}", .0.file.display(), .0.error)]
+    #[diagnostic(code(cli_error::file_open_error), help("Make sure {} exists and you have permissions to read it.", .0.file.display()))]
+    ContextFileOpen(FileOpenError),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ContextReadError(#[from] cedar_policy_core::entities::json::ContextJsonDeserializationError),
+    #[error("Could not open cedar request file `{}`: {}", .0.file.display(), .0.error)]
+    #[diagnostic(code(cli_error::file_open_error), help("Make sure {} exists and you have permissions to read it.", .0.file.display()))]
+    RequestFileOpen(FileOpenError),
+    #[error("Error while trying to deserialize request from JSON: {}", .0)]
+    #[diagnostic(
+        code(cli_error::deserialize_request_from_json),
+        help("Ensure input request file contains all required fields (`principal`, `resource`, `context`) in valid JSON format")
+    )]
+    RequestReadError(serde_json::Error),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    MalformedPrincipal(cedar_policy_core::parser::err::ParseErrors),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    MalformedResource(cedar_policy_core::parser::err::ParseErrors),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    RequestGeneration(#[from] crate::RequestGeneratorError),
 }
 
 impl CliError {
@@ -78,5 +126,21 @@ impl CliError {
 
     pub(crate) fn write_schema_file(file: PathBuf, error: std::io::Error) -> Self {
         Self::WritingSchemaFile(FileOpenError { file, error })
+    }
+
+    pub(crate) fn policies_file_open(file: PathBuf, error: std::io::Error) -> Self {
+        Self::PoliciesFileOpen(FileOpenError { file, error })
+    }
+
+    pub(crate) fn entities_file_open(file: PathBuf, error: std::io::Error) -> Self {
+        Self::EntitiesFileOpen(FileOpenError { file, error })
+    }
+
+    pub(crate) fn context_file_open(file: PathBuf, error: std::io::Error) -> Self {
+        Self::ContextFileOpen(FileOpenError { file, error })
+    }
+
+    pub(crate) fn request_json_file_open(file: PathBuf, error: std::io::Error) -> Self {
+        Self::RequestFileOpen(FileOpenError { file, error })
     }
 }

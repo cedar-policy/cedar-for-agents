@@ -19,7 +19,7 @@ use crate::description::{self, PropertyType, ToolDescription};
 use crate::err::ValidationError;
 use itertools::Itertools;
 use smol_str::{SmolStr, ToSmolStr};
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::HashMap;
 
 pub(crate) fn validate_input(
     tool: &ToolDescription,
@@ -139,7 +139,7 @@ fn validate_property_type(
             if !variants.contains(&s) {
                 Err(ValidationError::invalid_enum_variant(&s))
             } else {
-                Ok(TypedValue::String(s))
+                Ok(TypedValue::Enum(s))
             }
         }
         (PropertyType::Array { element_ty }, Value::Array(vals)) => {
@@ -176,11 +176,11 @@ fn validate_property_type(
                 properties,
                 additional_properties,
             },
-            Value::Map(vals),
+            Value::Map(mut vals),
         ) => {
             let mut props = HashMap::new();
             for property in properties {
-                match vals.get(property.name()) {
+                match vals.remove(property.name()) {
                     Some(v) => {
                         let ty_val =
                             validate_property_type(property.property_type(), v.clone(), type_defs)?;
@@ -194,18 +194,23 @@ fn validate_property_type(
                     None => (),
                 }
             }
+
+            let mut additional_props = HashMap::new();
             for (name, v) in vals.into_iter() {
-                if let Entry::Vacant(e) = props.entry(name) {
+                if !props.contains_key(&name) {
                     match additional_properties {
                         Some(ty) => {
                             let ty_val = validate_property_type(ty, v, type_defs)?;
-                            e.insert(ty_val);
+                            additional_props.insert(name, ty_val);
                         }
-                        None => return Err(ValidationError::unexpected_property(e.key())),
+                        None => return Err(ValidationError::unexpected_property(&name)),
                     }
                 }
             }
-            Ok(TypedValue::Object(props))
+            Ok(TypedValue::Object {
+                properties: props,
+                additional_properties: additional_props,
+            })
         }
         (PropertyType::Ref { name }, val) => match type_defs.get(name) {
             Some(ty) => {
@@ -247,6 +252,7 @@ fn is_decimal(str: &str) -> bool {
     {
         return false;
     }
+    let is_neg = integer_part.starts_with("-");
 
     // Construct the scaled integer value
     // Result = (integer_part * 10^4 + fractional_part * 10^(4 - fractional_part.len()))
@@ -266,7 +272,7 @@ fn is_decimal(str: &str) -> bool {
     // only ascii digits and has length 1-4 (thus parsing will not fail)
     #[allow(clippy::unwrap_used, reason = "integer or length 4 cannot overflow")]
     let frac_val: i64 = fractional_part.parse().unwrap();
-    let frac_val = frac_val * frac_scale * (if int_val < 0 { -1 } else { 1 });
+    let frac_val = frac_val * frac_scale * (if is_neg { -1 } else { 1 });
 
     // Check for overflow when scaling integer part
     let scaled_int = match int_val.checked_mul(scale) {
@@ -281,6 +287,8 @@ fn is_decimal(str: &str) -> bool {
 fn is_datetime(str: &str) -> bool {
     chrono::NaiveDate::parse_from_str(str, "%Y-%m-%d").is_ok()
         || chrono::DateTime::parse_from_rfc3339(str).is_ok()
+        || chrono::DateTime::parse_from_str(str, "%Y-%m-%dT%H:%M:%S%z").is_ok()
+        || chrono::DateTime::parse_from_str(str, "%Y-%m-%dT%H:%M:%S%.f%z").is_ok()
         || chrono::NaiveDateTime::parse_from_str(str, "%Y-%m-%dT%H:%M:%S%.f").is_ok()
 }
 
@@ -289,7 +297,7 @@ fn is_duration(str: &str) -> bool {
 }
 
 fn is_ipaddr(str: &str) -> bool {
-    str.parse::<std::net::IpAddr>().is_ok()
+    str.parse::<std::net::IpAddr>().is_ok() || str.parse::<ipnet::IpNet>().is_ok()
 }
 
 #[cfg(test)]

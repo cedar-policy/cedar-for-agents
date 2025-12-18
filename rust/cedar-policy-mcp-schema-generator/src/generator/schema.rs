@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-use crate::SchemaGeneratorError;
+use super::identifiers;
+use crate::{RequestGenerator, SchemaGeneratorError};
 
 use cedar_policy_core::ast::{InternalName, Name, UnreservedId};
 use cedar_policy_core::est::Annotations;
@@ -32,87 +33,16 @@ use nonempty::NonEmpty;
 
 use smol_str::{SmolStr, ToSmolStr};
 
-use std::collections::{btree_map::Entry, BTreeMap};
-
-// PANIC SAFETY: All parsed identifiers are constants which we know are valid
-#[allow(clippy::unwrap_used)]
-mod identifiers {
-    use cedar_policy_core::ast::{AnyId, Name, UnreservedId};
-    use cedar_policy_core::validator::RawName;
-    use std::sync::LazyLock;
-
-    // MCP annotation identifiers
-    pub(super) static MCP_PRINCIPAL: LazyLock<AnyId> =
-        LazyLock::new(|| "mcp_principal".parse().unwrap());
-    pub(super) static MCP_RESOURCE: LazyLock<AnyId> =
-        LazyLock::new(|| "mcp_resource".parse().unwrap());
-    pub(super) static MCP_CONTEXT: LazyLock<AnyId> =
-        LazyLock::new(|| "mcp_context".parse().unwrap());
-    pub(super) static MCP_ACTION: LazyLock<AnyId> = LazyLock::new(|| "mcp_action".parse().unwrap());
-
-    // Namespace names
-    pub(super) static INPUT_NAME: LazyLock<Name> = LazyLock::new(|| "Input".parse().unwrap());
-    pub(super) static OUTPUT_NAME: LazyLock<Name> = LazyLock::new(|| "Output".parse().unwrap());
-
-    // Cedar built-in and extension types
-    pub(super) static BOOL_TYPE: LazyLock<RawName> = LazyLock::new(|| "Bool".parse().unwrap());
-    pub(super) static LONG_TYPE: LazyLock<RawName> = LazyLock::new(|| "Long".parse().unwrap());
-    pub(super) static STRING_TYPE: LazyLock<RawName> = LazyLock::new(|| "String".parse().unwrap());
-    pub(super) static DECIMAL_TYPE: LazyLock<RawName> =
-        LazyLock::new(|| "decimal".parse().unwrap());
-    pub(super) static DATETIME_TYPE: LazyLock<RawName> =
-        LazyLock::new(|| "datetime".parse().unwrap());
-    pub(super) static DURATION_TYPE: LazyLock<RawName> =
-        LazyLock::new(|| "duration".parse().unwrap());
-    pub(super) static IPADDR_TYPE: LazyLock<RawName> = LazyLock::new(|| "ipaddr".parse().unwrap());
-
-    // Special entity type names
-    pub(super) static FLOAT_TYPE: LazyLock<UnreservedId> =
-        LazyLock::new(|| "Float".parse().unwrap());
-    pub(super) static NUMBER_TYPE: LazyLock<UnreservedId> =
-        LazyLock::new(|| "Number".parse().unwrap());
-    pub(super) static NULL_TYPE: LazyLock<UnreservedId> = LazyLock::new(|| "Null".parse().unwrap());
-    pub(super) static UNKNOWN_TYPE: LazyLock<UnreservedId> =
-        LazyLock::new(|| "Unknown".parse().unwrap());
-
-    #[cfg(test)]
-    mod test {
-        use super::*;
-
-        // Forces evaluation of lazy locks, so that we'll see any parse errors
-        // regardless of whether the code that uses the identifier is covered by
-        // other tests.
-        #[test]
-        fn identifiers_are_valid() {
-            let _ = *MCP_PRINCIPAL;
-            let _ = *MCP_RESOURCE;
-            let _ = *MCP_CONTEXT;
-            let _ = *MCP_ACTION;
-            let _ = *INPUT_NAME;
-            let _ = *OUTPUT_NAME;
-            let _ = *BOOL_TYPE;
-            let _ = *LONG_TYPE;
-            let _ = *STRING_TYPE;
-            let _ = *DECIMAL_TYPE;
-            let _ = *DATETIME_TYPE;
-            let _ = *DURATION_TYPE;
-            let _ = *IPADDR_TYPE;
-            let _ = *FLOAT_TYPE;
-            let _ = *NUMBER_TYPE;
-            let _ = *NULL_TYPE;
-            let _ = *UNKNOWN_TYPE;
-        }
-    }
-}
+use std::collections::{btree_map::Entry, BTreeMap, HashMap};
 
 /// A type reserved to configure how the schema generator functions
 #[derive(Debug, Clone)]
 pub struct SchemaGeneratorConfig {
-    include_outputs: bool,
-    objects_as_records: bool,
-    erase_annotations: bool,
-    flatten_namespaces: bool,
-    numbers_as_decimal: bool,
+    pub(crate) include_outputs: bool,
+    pub(crate) objects_as_records: bool,
+    pub(crate) erase_annotations: bool,
+    pub(crate) flatten_namespaces: bool,
+    pub(crate) numbers_as_decimal: bool,
 }
 
 impl SchemaGeneratorConfig {
@@ -220,6 +150,7 @@ pub struct SchemaGenerator {
     contexts: BTreeMap<SmolStr, RawName>,
     actions: Option<Vec<ActionEntityUID<RawName>>>,
     config: SchemaGeneratorConfig,
+    tools: ServerDescription,
 }
 
 impl SchemaGenerator {
@@ -334,6 +265,7 @@ impl SchemaGenerator {
             contexts,
             actions,
             config,
+            tools: ServerDescription::new(Vec::new().into_iter(), HashMap::new()),
         })
     }
 
@@ -342,12 +274,30 @@ impl SchemaGenerator {
         &self.fragment
     }
 
+    /// Get a `RequestGenerator` that will convert MCP tool Input/Ouptut
+    /// requests that validate against a tool added to this `SchemaGenerator`
+    /// to Cedar Authorization Requests that validate against the current Schema.
+    pub fn new_request_generator(&self) -> Result<RequestGenerator, SchemaGeneratorError> {
+        let schema =
+            cedar_policy_core::validator::ValidatorSchema::try_from(self.fragment.clone())?;
+        Ok(RequestGenerator::new(
+            self.config.clone(),
+            self.tools.clone(),
+            self.namespace.clone(),
+            schema,
+        ))
+    }
+
     /// Add a new action to the generated Cedar Schema
     /// that corresponds to the input `ToolDescription`
     pub fn add_action_from_tool_description(
         &mut self,
         description: &ToolDescription,
     ) -> Result<(), SchemaGeneratorError> {
+        if self.tools.tool_descriptions().count() != 0 {
+            return Err(SchemaGeneratorError::ServerDescriptionMerge);
+        }
+        self.tools = ServerDescription::new(vec![description.clone()].into_iter(), HashMap::new());
         // Keep a copy of schema fragment in case we have an error
         let fragment = self.fragment.clone();
         match self.add_action_from_tool_description_inner(description, BTreeMap::new()) {
@@ -380,6 +330,11 @@ impl SchemaGenerator {
         &mut self,
         description: &ServerDescription,
     ) -> Result<(), SchemaGeneratorError> {
+        if self.tools.tool_descriptions().count() != 0 {
+            return Err(SchemaGeneratorError::ServerDescriptionMerge);
+        }
+        self.tools = description.clone();
+
         // Clone once and reuse to avoid borrow issues
         let namespace = self.namespace.clone();
 

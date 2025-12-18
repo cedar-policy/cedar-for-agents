@@ -18,9 +18,7 @@ use smol_str::{SmolStr, ToSmolStr};
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::data;
-
-use super::data::{Input, Output};
+use super::data::{self, Input, Output};
 use super::deserializer;
 use super::err::{DeserializationError, ValidationError};
 use super::parser;

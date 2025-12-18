@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use cedar_policy_core::ast::{ContextCreationError, ExpressionConstructionError};
 use miette::Diagnostic;
 use smol_str::SmolStr;
 use thiserror::Error;
@@ -105,6 +106,15 @@ pub enum SchemaGeneratorError {
         help("Ensure MCP Description does not contain any enum types with empty array of variant names.")
     )]
     EmptyEnumChoice(EmptyEnum),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    SchemaResolutionError(#[from] cedar_policy_core::validator::SchemaError),
+    #[error("Server Descriptions cannot be merged.")]
+    #[diagnostic(
+        code(schema_generator::mcp_server_description_merge),
+        help("Server Descriptions cannot be merged. Consider pre-merging Server descriptions and using add_actions_from_server_description API.")
+    )]
+    ServerDescriptionMerge,
 }
 
 impl SchemaGeneratorError {
@@ -125,4 +135,42 @@ impl SchemaGeneratorError {
     pub(crate) fn empty_enum_choice(name: String) -> Self {
         Self::EmptyEnumChoice(EmptyEnum { name })
     }
+}
+
+/// RequestGenerator encountered an error during generation
+#[derive(Debug, Error, Diagnostic)]
+pub enum RequestGeneratorError {
+    #[error(transparent)]
+    #[diagnostic(
+        code(schema_generator::use_of_reserved_name),
+        help("MCP Tool Description Schemas make use of reserved keyword.")
+    )]
+    ReservedName(#[from] cedar_policy_core::parser::err::ParseErrors),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    CedarExpressionConstructionError(#[from] ExpressionConstructionError),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    CedarContextConstructionError(#[from] ContextCreationError),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    MCPValidationError(#[from] mcp_tools_sdk::err::ValidationError),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    MalformedExpression(#[from] cedar_policy_core::ast::RestrictedExpressionError),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    MalformedRequest(#[from] cedar_policy_core::validator::RequestValidationError),
+    #[error("Cannot convert number {0} to decimal literal")]
+    #[diagnostic(
+        code = "request_generator::malformed_decimal_number",
+        help = "Ensure the number can be parsed as either a 64 bit floating point or integer number"
+    )]
+    MalformedDecimalNumber(String),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    MalformedEntityData(#[from] cedar_policy_core::ast::EntityAttrEvaluationError),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DuplicateEntities(#[from] cedar_policy_core::entities::err::EntitiesError),
 }

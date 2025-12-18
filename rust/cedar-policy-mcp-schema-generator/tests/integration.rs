@@ -333,4 +333,143 @@ mod cli {
         let actual = std::fs::read_to_string(output_file).unwrap();
         assert_eq!(expected, actual);
     }
+
+    #[test]
+    fn test_authorize_simple_default_allow() {
+        let temp_dir = TempDir::new().unwrap();
+        let entities_fname = temp_dir.path().join("entities.json");
+        std::fs::write(&entities_fname, "[]").unwrap();
+
+        let request_json = r#"{
+    "principal": "MyMcpServer::User::\"test_user\"",
+    "resource": "MyMcpServer::McpServer::\"test_server\"",
+    "context": {
+        "session": {
+            "currentTimestamp": {
+                "__extn": {
+                    "fn": "datetime",
+                    "arg": "2025-12-16"
+                }
+            },
+            "ipaddr": {
+                "__extn": {
+                    "fn": "ip",
+                    "arg": "10.0.0.1"
+                }
+            }
+        }
+    }
+}"#;
+        let request_fname = temp_dir.path().join("request.json");
+        std::fs::write(&request_fname, request_json).unwrap();
+
+        let policy_fname = temp_dir.path().join("policies.cedar");
+        std::fs::write(&policy_fname, "permit(principal, action, resource);").unwrap();
+
+        let input = r#"{
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "bool_attr": false,
+            "int_attr": 0,
+            "float_attr": 1.0,
+            "str_attr": "howdy",
+            "enum_attr": "variant2",
+            "dt_attr": "2025-12-16",
+            "null_attr": null
+        }
+    }
+}"#;
+        let input_fname = temp_dir.path().join("input.json");
+        std::fs::write(&input_fname, input).unwrap();
+
+        let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
+        let cmd = cmd
+            .arg("authorize")
+            .arg("examples/stub.cedarschema")
+            .arg("examples/simple/tool.json")
+            .arg("--request-json")
+            .arg(&request_fname)
+            .arg("--policies")
+            .arg(&policy_fname)
+            .arg("--entities")
+            .arg(&entities_fname)
+            .arg("--mcp-tool-input")
+            .arg(&input_fname);
+        cmd.unwrap().assert().success().stdout("ALLOW\n").stderr("");
+    }
+
+    #[test]
+    fn test_authorize_simple_default_deny() {
+        let temp_dir = TempDir::new().unwrap();
+        let entities_fname = temp_dir.path().join("entities.json");
+        std::fs::write(&entities_fname, "[]").unwrap();
+
+        let principal = "MyMcpServer::User::\"test_user\"";
+        let resource = "MyMcpServer::McpServer::\"test_server\"";
+        let context_json = r#"{
+    "session": {
+        "currentTimestamp": {
+            "__extn": {
+                "fn": "datetime",
+                "arg": "2025-12-16"
+            }
+        },
+        "ipaddr": {
+            "__extn": {
+                "fn": "ip",
+                "arg": "10.0.0.1"
+            }
+        }
+    }
+}"#;
+        let context_fname = temp_dir.path().join("context.json");
+        std::fs::write(&context_fname, context_json).unwrap();
+
+        let policy_fname = temp_dir.path().join("policies.cedar");
+        std::fs::write(
+            &policy_fname,
+            r#"permit(principal, action, resource) when {
+    (context.input has bool_attr && context.input.bool_attr) ||
+    (context.input has int_attr && context.input.int_attr < 0)
+};"#,
+        )
+        .unwrap();
+
+        let input = r#"{
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "bool_attr": false,
+            "int_attr": 0,
+            "float_attr": 1.0,
+            "str_attr": "howdy",
+            "enum_attr": "variant2",
+            "dt_attr": "2025-12-16",
+            "null_attr": null
+        }
+    }
+}"#;
+        let input_fname = temp_dir.path().join("input.json");
+        std::fs::write(&input_fname, input).unwrap();
+
+        let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
+        let cmd = cmd
+            .arg("authorize")
+            .arg("examples/stub.cedarschema")
+            .arg("examples/simple/tool.json")
+            .arg("-l")
+            .arg(principal)
+            .arg("-r")
+            .arg(resource)
+            .arg("--context")
+            .arg(&context_fname)
+            .arg("--policies")
+            .arg(&policy_fname)
+            .arg("--entities")
+            .arg(&entities_fname)
+            .arg("--mcp-tool-input")
+            .arg(&input_fname);
+        cmd.unwrap().assert().success().stdout("DENY\n").stderr("");
+    }
 }
