@@ -69,10 +69,7 @@ impl TypeDefsInfo {
         )
     }
 
-    fn remove<'a>(
-        &mut self,
-        ty_defs: impl IntoIterator<Item = &'a PropertyTypeDef>,
-    ) {
+    fn remove<'a>(&mut self, ty_defs: impl IntoIterator<Item = &'a PropertyTypeDef>) {
         for ty_def in ty_defs.into_iter() {
             self.info.remove(ty_def.name());
         }
@@ -161,11 +158,8 @@ impl RequestGenerator {
                 type_defs.remove(tool.inputs().type_definitions());
                 type_defs.extend(tool.outputs().type_definitions(), Some(output_ns.clone()));
 
-                let (outputs, new_entities) = self.values_to_cedar(
-                    output.get_results(),
-                    &type_defs,
-                    Some(&output_ns),
-                )?;
+                let (outputs, new_entities) =
+                    self.values_to_cedar(output.get_results(), &type_defs, Some(&output_ns))?;
                 entities = entities.add_entities(
                     new_entities.into_iter().map(Arc::from),
                     None::<&cedar_policy_core::validator::CoreSchema<'_>>,
