@@ -112,7 +112,7 @@ pub enum SchemaGeneratorError {
     #[error("Server Descriptions cannot be merged.")]
     #[diagnostic(
         code(schema_generator::mcp_server_description_merge),
-        help("Server Descriptions cannot be merged. Consider pre-merging Server descriptions and using add_tools_from_serve_description API.")
+        help("Server Descriptions cannot be merged. Consider pre-merging Server descriptions and using add_actions_from_server_description API.")
     )]
     ServerDescriptionMerge,
 }
