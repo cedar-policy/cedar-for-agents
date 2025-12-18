@@ -68,7 +68,10 @@ impl LocatedString {
         let end = self.loc.end() - 1;
         #[expect(
             clippy::string_slice,
-            reason = "By construction the indexes are guaranteed to satisfy 0 <= start <= end < self.loc.src.len()."
+            reason = r#"By construction `start` and `end` are both at valid character boundaries and `start` <= `end`.
+                        The JSON parser ensures that `self.loc.start()` immediately preceeds a quotation mark (`"`) and
+                        `self.loc.end()` immediately follows a quotation mark (`"`). In addition, the parser ensures that
+                        these are separate distinct quotation marks (`"`)."#
         )]
         &self.loc.src[start..end]
     }
@@ -218,7 +221,10 @@ impl LocatedValue {
                 let end = self.loc.end();
                 #[expect(
                     clippy::string_slice,
-                    reason = "By construction the indexes are guaranteed to satisfy 0 <= start <= end < self.loc.src.len()."
+                    reason = r#"By construction the indexes are at character boundaries:
+                                the JSON parser ensures that start is the position immediately
+                                preceeding an ascii digit [0-9] and end is a position that
+                                immediately follows an ascii digit [0-9]."#
                 )]
                 Some(&self.loc.src[start..end])
             }
@@ -241,7 +247,10 @@ impl LocatedValue {
                 let end = self.loc.end() - 1;
                 #[expect(
                     clippy::string_slice,
-                    reason = "By construction the indexes are guaranteed to satisfy 0 <= start <= end < self.loc.src.len()."
+                    reason = r#"By construction `start` and `end` are both at valid character boundaries and `start` <= `end`.
+                        The JSON parser ensures that `self.loc.start()` immediately preceeds a quotation mark (`"`) and
+                        `self.loc.end()` immediately follows a quotation mark (`"`). In addition, the parser ensures that
+                        these are separate distinct quotation marks (`"`)."#
                 )]
                 Some(&self.loc.src[start..end])
             }
