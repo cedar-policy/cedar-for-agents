@@ -76,6 +76,11 @@ impl Token {
 #[derive(Debug, Clone)]
 pub(crate) struct Tokenizer {
     input: Arc<str>,
+    /// Current byte index into `input`.  This is _not_ always aligned with a
+    /// utf8 character boundary because `next_char` increments the position by
+    /// 1, possibly placing it inside a multi-byte character. It _is_ however
+    /// guaranteed that `cur_pos` and `cur_pos - 1` are both on a character
+    /// boundary after `next_char` returns a character in 7-bit ASCII (i.e., [0x00, 0x7F]).
     cur_pos: usize,
 }
 
@@ -95,20 +100,24 @@ impl Tokenizer {
         Token { kind, loc }
     }
 
-    // Consume 1 byte from input string
-    // Should only be called if `self.cur_pos < self.input.len()`
+    // Consume 1 byte from input string.
+    // Should only be called if `self.cur_pos < self.input.len()`.
+    // This does not always leave `cur_pos` on a character boundary.
     fn eat_char(&mut self) {
         self.cur_pos += 1
     }
 
-    // Consume the next byte (ignoring any whitespace)
-    // Returns EOF error if no such character is available
+    // Consume the next byte (ignoring any whitespace).
+    // Returns EOF error if no such character is available.
+    // This does not always leave `cur_pos` on a character boundary.
     fn next_char(&mut self) -> Result<u8, TokenizeError> {
         loop {
             match self.input.as_bytes().get(self.cur_pos) {
                 Some(b' ') | Some(b'\t') | Some(b'\n') | Some(b'\r') => self.eat_char(),
                 Some(c) => {
                     let ret = *c;
+                    // This is where we can end up off a character boundary if
+                    // `c` is outside 7-bit ASCII.
                     self.eat_char();
                     return Ok(ret);
                 }
@@ -128,9 +137,9 @@ impl Tokenizer {
 
     // Consumes the the identifier `ident` from input str
     // Returns error if the next `ident.len()` characters
-    // is not equal to `ident`
+    // is not equal to `ident`.
+    // Assumes that `self.cur_pos` is on a character boundary.
     fn consume_ident(&mut self, ident: &str) -> Result<(), TokenizeError> {
-        self.cur_pos -= 1;
         if self.cur_pos + ident.len() > self.input.len() {
             let loc = Loc::new((self.input.len() - 1, 0), self.input.clone());
             let msg = format!("Encountered end of input while trying to read {ident}");
@@ -138,7 +147,10 @@ impl Tokenizer {
         }
         #[expect(
             clippy::string_slice,
-            reason = "By construction the indexes are guaranteed to satisfy 0 <= self.cur_pos < self.input."
+            reason = "
+                By construction the indexes are guaranteed to satisfy 0 <= self.cur_pos < self.input.
+                This function assumes that `self.cur_pos` is aligned to character boundary.
+            "
         )]
         if self.input[self.cur_pos..].starts_with(ident) {
             self.cur_pos += ident.len();
@@ -220,6 +232,10 @@ impl Tokenizer {
                     let msg = "String literals cannot include control characters";
                     return Err(TokenizeError::unexpected_token(loc, msg));
                 }
+                // This `eat_char` can move `cur_pos` off a character boundary,
+                // but we don't exit this loop until we see the ASCII character
+                // `"`, which guarantees we are on a boundary when returning
+                // from this function.
                 Some(_) => self.eat_char(),
                 None => {
                     let loc = Loc::new((self.cur_pos - 1, 0), self.input.clone());
@@ -313,16 +329,19 @@ impl Tokenizer {
         match next {
             b't' => {
                 // true
+                self.cur_pos -= 1; // unconsume 't'
                 self.consume_ident("true")?;
                 Ok(self.new_token(start, 4, TokenKind::Bool(true)))
             }
             b'f' => {
                 // false
+                self.cur_pos -= 1; // unconsume 'f'
                 self.consume_ident("false")?;
                 Ok(self.new_token(start, 5, TokenKind::Bool(false)))
             }
             b'n' => {
                 // null
+                self.cur_pos -= 1; // unconsume 'n'
                 self.consume_ident("null")?;
                 Ok(self.new_token(start, 4, TokenKind::Null))
             }
