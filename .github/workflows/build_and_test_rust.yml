@@ -53,7 +53,7 @@ jobs:
           echo "RUSTFLAGS=${RUSTFLAGS} -C instrument-coverage" >> $GITHUB_ENV
           echo "LLVM_PROFILE_FILE=cedar_%m_%p.profraw" >> $GITHUB_ENV
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: cargo install cargo-audit --locked
       - run: cargo doc --all-features --no-deps
@@ -90,7 +90,7 @@ jobs:
           - stable
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: rustup component add clippy
       # Clippy is configured by `.cargo/config.toml` to deny on lints like
@@ -109,7 +109,7 @@ jobs:
           - stable
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: rustup component add rustfmt
       - run: cargo fmt --all --check
@@ -119,7 +119,7 @@ jobs:
     name: cargo deny
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           manifest-path: rust/Cargo.toml
@@ -128,7 +128,7 @@ jobs:
   msrv:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - uses: taiki-e/install-action@cargo-hack
     - run: cargo hack check --rust-version --workspace --all-targets --ignore-private --all-features
       working-directory: rust/
