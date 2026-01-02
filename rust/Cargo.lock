@@ -222,9 +222,9 @@ dependencies = [
 
 [[package]]
 name = "cedar-policy-core"
-version = "4.8.1"
+version = "4.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "890556d1962b99fc37fdff92279c20c3f1aedce8ec0f0f3c47835f0a00a7d125"
+checksum = "8011d10d2ffa8ee4497d4d7234d0d4e97f52a6e6e66a1150c5c3409ba7fe1b5c"
 dependencies = [
  "chrono",
  "educe",
@@ -1849,6 +1849,6 @@ checksum = "f17a85883d4e6d00e8a97c586de764dabcc06133f7f1d55dce5cdc070ad7fe59"
 
 [[package]]
 name = "zmij"
-version = "1.0.5"
+version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3280a1b827474fcd5dbef4b35a674deb52ba5c312363aef9135317df179d81b"
+checksum = "aac060176f7020d62c3bcc1cdbcec619d54f48b07ad1963a3f80ce7a0c17755f"
