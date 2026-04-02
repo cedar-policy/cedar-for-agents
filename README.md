@@ -14,6 +14,7 @@ This repository contains a number of directories:
   - [cedar-policy-mcp-schema-generator](./rust/cedar-policy-mcp-schema-generator/) : A crate for auto-generating a Cedar Schema for an MCP Server's tool descriptions.
 * [js](./js/) which contains JavaScript packages that enable Agents to make use of Cedar and its Analysis Capabilities.
   - [cedar-analysis-mcp-server](./js/cedar-analysis-mcp-server) : A package that creates an MCP server that exposes an interface for Agents to use [Cedar's analysis capabilities](https://github.com/cedar-policy/cedar-spec/tree/main/cedar-lean-cli#analysis).
+  - [protect-mcp-cedar-integration](./js/protect-mcp-cedar-integration) : Example showing auto-generation of Cedar schemas from MCP tool descriptions for runtime policy enforcement via [protect-mcp](https://www.npmjs.com/package/protect-mcp).
 
 ## Security
 

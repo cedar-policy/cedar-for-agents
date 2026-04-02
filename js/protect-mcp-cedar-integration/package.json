@@ -1,0 +1,14 @@
+{
+  "name": "protect-mcp-cedar-integration",
+  "version": "0.1.0",
+  "description": "Example: auto-generating Cedar schemas from MCP tool descriptions for runtime policy enforcement",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "generate-schema": "node example.mjs",
+    "test": "node test.mjs"
+  },
+  "dependencies": {
+    "protect-mcp": "^0.5.2"
+  }
+}
