@@ -14,26 +14,26 @@ repository.workspace = true
 
 [dependencies]
 mcp-tools-sdk = { path = "../mcp-tools-sdk", version="*" }
-cedar-policy-core = "=4.8.2"
+cedar-policy-core = "=4.9.1"
 miette = "7.6.0"
 linked-hash-map = "0.5.6"
 thiserror = "2.0"
 smol_str = "0.3"
 nonempty = "0.12"
 chrono = "0.4.42"
-ipnet = "2.11.0"
+ipnet = "2.12.0"
 iso8601 = "0.6.3"
-uuid = { version = "1.19.0", "features" = ["v4"] }
+uuid = { version = "1.23.0", "features" = ["v4"] }
 
 # CLI only dependencies
-clap = { version = "4.5.54", features = ["derive"], optional = true }
+clap = { version = "4.6.0", features = ["derive"], optional = true }
 serde = { version = "1.0", optional = true }
 serde_json = { version = "1.0", optional = true }
 
 [dev-dependencies]
 cool_asserts = "2.0"
-assert_cmd = "2.1.1"
-tempfile = "3.23.0"
+assert_cmd = "2.2.0"
+tempfile = "3.27.0"
 
 [lints]
 workspace = true
