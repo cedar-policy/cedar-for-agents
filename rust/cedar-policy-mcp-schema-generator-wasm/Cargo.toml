@@ -1,0 +1,29 @@
+[package]
+name = "cedar-policy-mcp-schema-generator-wasm"
+description = "WASM bindings for cedar-policy-mcp-schema-generator, exposing SchemaGenerator to JavaScript/TypeScript."
+version = "0.1.0"
+
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+categories.workspace = true
+keywords.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+cedar-policy-mcp-schema-generator = { path = "../cedar-policy-mcp-schema-generator" }
+mcp-tools-sdk = { path = "../mcp-tools-sdk" }
+wasm-bindgen = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
+serde_json = "1.0"
+
+[lints]
+workspace = true

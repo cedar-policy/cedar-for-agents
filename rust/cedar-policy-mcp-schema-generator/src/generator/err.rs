@@ -115,6 +115,13 @@ pub enum SchemaGeneratorError {
         help("Server Descriptions cannot be merged. Consider pre-merging Server descriptions and using add_actions_from_server_description API.")
     )]
     ServerDescriptionMerge,
+    /// SchemaGenerator failed to parse a Cedar schema string
+    #[error("Failed to parse Cedar schema: {0}")]
+    #[diagnostic(
+        code(schema_generator::schema_parse_error),
+        help("Ensure the input is a valid .cedarschema string.")
+    )]
+    SchemaParseError(String),
 }
 
 impl SchemaGeneratorError {
