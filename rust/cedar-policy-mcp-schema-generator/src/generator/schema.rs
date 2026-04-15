@@ -159,6 +159,30 @@ impl SchemaGenerator {
         Self::new_with_config(schema_stub, SchemaGeneratorConfig::default())
     }
 
+    /// Create a `SchemaGenerator` from a `.cedarschema` string using default configuration.
+    ///
+    /// This is a convenience method that parses the schema stub from a string,
+    /// avoiding the need for callers to depend on `cedar-policy-core` directly.
+    pub fn from_cedarschema_str(schema_stub: &str) -> Result<Self, SchemaGeneratorError> {
+        Self::from_cedarschema_str_with_config(schema_stub, SchemaGeneratorConfig::default())
+    }
+
+    /// Create a `SchemaGenerator` from a `.cedarschema` string using specified configuration.
+    ///
+    /// This is a convenience method that parses the schema stub from a string,
+    /// avoiding the need for callers to depend on `cedar-policy-core` directly.
+    pub fn from_cedarschema_str_with_config(
+        schema_stub: &str,
+        config: SchemaGeneratorConfig,
+    ) -> Result<Self, SchemaGeneratorError> {
+        use cedar_policy_core::extensions::Extensions;
+        let extensions = Extensions::all_available();
+        let (fragment, _warnings) =
+            Fragment::<RawName>::from_cedarschema_str(schema_stub, extensions)
+                .map_err(|e| SchemaGeneratorError::SchemaParseError(e.to_string()))?;
+        Self::new_with_config(fragment, config)
+    }
+
     /// Create a `SchemaGenerator` from a Cedar Schema Fragment using specified configuration
     pub fn new_with_config(
         schema_stub: Fragment<RawName>,
@@ -272,6 +296,11 @@ impl SchemaGenerator {
     /// Get the current Cedar Schema
     pub fn get_schema(&self) -> &Fragment<RawName> {
         &self.fragment
+    }
+
+    /// Get the current Cedar Schema as a human-readable `.cedarschema` string.
+    pub fn get_schema_as_str(&self) -> String {
+        format!("{}", self.fragment)
     }
 
     /// Get a `RequestGenerator` that will convert MCP tool Input/Ouptut
@@ -1861,5 +1890,194 @@ namespace Test2 {
             Err(SchemaGeneratorError::EmptyEnumChoice(..))
         );
         assert_eq!(&schema_stub, schema_generator.get_schema());
+    }
+
+    // ── Tests for from_cedarschema_str and get_schema_as_str ──
+
+    #[test]
+    fn test_from_cedarschema_str_basic() {
+        let stub = r#"
+            namespace TestServer {
+                @mcp_principal
+                entity User;
+                @mcp_resource
+                entity McpServer;
+                action "call_tool" appliesTo {
+                    principal: [User],
+                    resource: [McpServer]
+                };
+            }
+        "#;
+        let generator = SchemaGenerator::from_cedarschema_str(stub);
+        assert!(generator.is_ok(), "Should parse valid cedarschema string");
+    }
+
+    #[test]
+    fn test_from_cedarschema_str_with_config() {
+        let stub = r#"
+            namespace TestServer {
+                @mcp_principal
+                entity User;
+                @mcp_resource
+                entity McpServer;
+                action "call_tool" appliesTo {
+                    principal: [User],
+                    resource: [McpServer]
+                };
+            }
+        "#;
+        let config = SchemaGeneratorConfig::default().include_outputs(true);
+        let generator = SchemaGenerator::from_cedarschema_str_with_config(stub, config);
+        assert!(
+            generator.is_ok(),
+            "Should parse valid cedarschema string with config"
+        );
+    }
+
+    #[test]
+    fn test_from_cedarschema_str_invalid_input() {
+        let result = SchemaGenerator::from_cedarschema_str("not valid cedar schema");
+        assert!(result.is_err(), "Should fail on invalid cedarschema");
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, SchemaGeneratorError::SchemaParseError(_)),
+            "Error should be SchemaParseError, got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_from_cedarschema_str_matches_fragment_constructor() {
+        // Verify that from_cedarschema_str produces the same generator
+        // as manually parsing the fragment and calling new().
+        let stub = r#"
+            namespace TestServer {
+                @mcp_principal
+                entity User;
+                @mcp_resource
+                entity McpServer;
+                action "call_tool" appliesTo {
+                    principal: [User],
+                    resource: [McpServer]
+                };
+            }
+        "#;
+
+        let gen_str = SchemaGenerator::from_cedarschema_str(stub).expect("from_cedarschema_str");
+
+        let extensions = Extensions::all_available();
+        let (fragment, _) =
+            Fragment::<RawName>::from_cedarschema_str(stub, extensions).expect("parse fragment");
+        let gen_frag = SchemaGenerator::new(fragment).expect("new from fragment");
+
+        // Both should produce identical schema output
+        assert_eq!(gen_str.get_schema_as_str(), gen_frag.get_schema_as_str());
+    }
+
+    #[test]
+    fn test_get_schema_as_str_contains_namespace() {
+        let stub = r#"
+            namespace MyNamespace {
+                @mcp_principal
+                entity User;
+                @mcp_resource
+                entity McpServer;
+                action "call_tool" appliesTo {
+                    principal: [User],
+                    resource: [McpServer]
+                };
+            }
+        "#;
+        let generator = SchemaGenerator::from_cedarschema_str(stub).expect("parse");
+        let output = generator.get_schema_as_str();
+        assert!(
+            output.contains("MyNamespace"),
+            "get_schema_as_str should contain the namespace name"
+        );
+    }
+
+    #[test]
+    fn test_get_schema_as_str_matches_display() {
+        // get_schema_as_str should produce the same output as Display
+        let stub = r#"
+            namespace TestServer {
+                @mcp_principal
+                entity User;
+                @mcp_resource
+                entity McpServer;
+                action "call_tool" appliesTo {
+                    principal: [User],
+                    resource: [McpServer]
+                };
+            }
+        "#;
+        let generator = SchemaGenerator::from_cedarschema_str(stub).expect("parse");
+        let str_output = generator.get_schema_as_str();
+        let display_output = format!("{}", generator.get_schema());
+        assert_eq!(
+            str_output, display_output,
+            "get_schema_as_str and Display should produce identical output"
+        );
+    }
+}
+
+#[cfg(test)]
+mod coverage_tests {
+    use super::*;
+
+    #[test]
+    fn test_schema_parse_error_display_format() {
+        // Exercises the SchemaParseError Display impl from err.rs
+        let result = SchemaGenerator::from_cedarschema_str("this is not valid cedar");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        let err_msg = format!("{err}");
+        assert!(
+            err_msg.contains("Failed to parse Cedar schema"),
+            "Error message should contain expected prefix, got: {err_msg}"
+        );
+    }
+
+    #[test]
+    fn test_from_cedarschema_str_with_config_error_path() {
+        // Exercises the error path of from_cedarschema_str_with_config
+        let config = SchemaGeneratorConfig::default().encode_numbers_as_decimal(true);
+        let result = SchemaGenerator::from_cedarschema_str_with_config("invalid schema", config);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            SchemaGeneratorError::SchemaParseError(_)
+        ));
+    }
+
+    #[test]
+    fn test_get_schema_as_str_content_validation() {
+        // Validates the content of get_schema_as_str more thoroughly
+        let stub = r#"
+            namespace TestServer {
+                @mcp_principal
+                entity User;
+                @mcp_resource
+                entity McpServer;
+                action "call_tool" appliesTo {
+                    principal: [User],
+                    resource: [McpServer]
+                };
+            }
+        "#;
+
+        let gen = SchemaGenerator::from_cedarschema_str(stub).expect("parse");
+        let output = gen.get_schema_as_str();
+        assert!(output.contains("TestServer"), "Should contain namespace");
+        assert!(output.contains("User"), "Should contain User entity");
+        assert!(
+            output.contains("McpServer"),
+            "Should contain McpServer entity"
+        );
+        assert!(
+            output.contains("call_tool"),
+            "Should contain call_tool action"
+        );
+        // Verify it matches Display for the same fragment
+        assert_eq!(output, format!("{}", gen.get_schema()));
     }
 }
