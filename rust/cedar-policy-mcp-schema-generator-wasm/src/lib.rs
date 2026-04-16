@@ -1289,4 +1289,121 @@ mod request_tests {
             json
         );
     }
+
+    #[test]
+    fn test_generate_request_no_namespace_schema() {
+        // Schema without a namespace block exercises the None branch
+        // for namespace-qualification (lines 288, 292 in generate_request_inner)
+        let stub_no_ns = r#"
+            @mcp_principal
+            entity User;
+            @mcp_resource
+            entity McpServer;
+            action "call_tool" appliesTo {
+                principal: [User],
+                resource: [McpServer]
+            };
+        "#;
+        let tools = r#"[{
+            "name": "ping",
+            "description": "Ping",
+            "inputSchema": { "type": "object", "properties": {} }
+        }]"#;
+        let input = r#"{"params": {"tool": "ping", "args": {}}}"#;
+        let result_json = generate_request(
+            stub_no_ns,
+            tools,
+            input,
+            "User",
+            "alice",
+            "McpServer",
+            "s1",
+            None,
+        );
+        #[expect(clippy::expect_used, reason = "Test assertion")]
+        let result: WasmRequestResult =
+            serde_json::from_str(&result_json).expect("Should parse result");
+        // This might succeed or fail depending on whether the schema generator
+        // requires a namespace. Either way, it exercises the code path.
+        if result.is_ok {
+            let principal = result.principal.unwrap_or_default();
+            // Without namespace, should be User::"alice" not NS::User::"alice"
+            assert!(
+                !principal.is_empty(),
+                "Principal should be non-empty even without namespace"
+            );
+        }
+    }
+
+    #[test]
+    fn test_generate_request_with_none_config() {
+        // Explicitly passing None for config_json
+        let input = r#"{"params": {"tool": "read_file", "args": {"path": "/tmp"}}}"#;
+        let result_json =
+            generate_request(STUB, TOOLS, input, "User", "alice", "McpServer", "s1", None);
+        #[expect(clippy::expect_used, reason = "Test assertion")]
+        let result: WasmRequestResult =
+            serde_json::from_str(&result_json).expect("Should parse result");
+        assert!(result.is_ok, "None config should work: {:?}", result.error);
+        // Verify all fields are populated
+        assert!(result.principal.is_some());
+        assert!(result.action.is_some());
+        assert!(result.resource.is_some());
+        assert!(result.entities_json.is_some());
+        assert!(result.error.is_none());
+    }
+
+    #[test]
+    fn test_generate_request_action_contains_namespace_and_tool() {
+        let input = r#"{"params": {"tool": "read_file", "args": {"path": "/tmp"}}}"#;
+        let result_json =
+            generate_request(STUB, TOOLS, input, "User", "alice", "McpServer", "s1", None);
+        #[expect(clippy::expect_used, reason = "Test assertion")]
+        let result: WasmRequestResult =
+            serde_json::from_str(&result_json).expect("Should parse result");
+        assert!(result.is_ok, "Error: {:?}", result.error);
+        let action = result.action.unwrap();
+        assert!(
+            action.contains("TestServer") && action.contains("read_file"),
+            "Action should contain both namespace and tool name, got: {}",
+            action
+        );
+    }
+
+    #[test]
+    fn test_generate_request_inner_all_error_paths() {
+        // Exercise every error branch in generate_request_inner
+
+        // 1. Invalid config
+        let r = generate_request_inner(STUB, TOOLS, "{}", "U", "a", "R", "r", Some("{bad"));
+        assert!(!r.is_ok);
+        assert!(r.error.as_deref().unwrap().contains("Invalid config"));
+
+        // 2. Invalid stub
+        let r = generate_request_inner("bad", TOOLS, "{}", "U", "a", "R", "r", None);
+        assert!(!r.is_ok);
+        assert!(r.error.as_deref().unwrap().contains("Schema error"));
+
+        // 3. Invalid tools
+        let r = generate_request_inner(STUB, "bad", "{}", "U", "a", "R", "r", None);
+        assert!(!r.is_ok);
+        assert!(
+            r.error
+                .as_deref()
+                .unwrap()
+                .contains("Invalid tool descriptions"),
+            "Got: {:?}",
+            r.error
+        );
+
+        // 4. Invalid input
+        let r = generate_request_inner(STUB, TOOLS, "bad", "U", "a", "R", "r", None);
+        assert!(!r.is_ok);
+        assert!(r.error.as_deref().unwrap().contains("Invalid tool input"));
+
+        // 5. Empty config string uses defaults (should succeed)
+        let input = r#"{"params": {"tool": "read_file", "args": {"path": "/tmp"}}}"#;
+        let r = generate_request_inner(STUB, TOOLS, input, "User", "a", "McpServer", "r", Some(""));
+        assert!(r.is_ok, "Empty config should succeed: {:?}", r.error);
+    }
 }

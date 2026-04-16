@@ -2222,4 +2222,137 @@ mod test {
         let debug_str = format!("{:?}", comp);
         assert!(debug_str.contains("AuthorizationComponents"));
     }
+
+    #[test]
+    fn test_generate_request_components_basic() {
+        let request_generator = get_request_generator(
+            SchemaGeneratorConfig::default(),
+            r#"{
+                "name": "test_tool",
+                "description": "test",
+                "parameters": {
+                    "properties": { "arg1": { "type": "string" } },
+                    "required": ["arg1"]
+                }
+            }"#,
+        );
+
+        let input = Input::from_json_str(
+            r#"{"params": {"tool": "test_tool", "args": {"arg1": "value1"}}}"#,
+        )
+        .expect("Failed to parse input");
+
+        let principal = r#"Test::user::"""#.parse::<EntityUID>().unwrap();
+        let resource = r#"Test::resource::"""#.parse::<EntityUID>().unwrap();
+
+        let components = request_generator
+            .generate_request_components(
+                &input,
+                principal,
+                resource,
+                Context::empty(),
+                Entities::new(),
+                None,
+            )
+            .expect("Failed to generate components");
+
+        assert!(
+            !components.principal.is_empty(),
+            "Principal should be non-empty"
+        );
+        assert!(
+            components.action.contains("test_tool"),
+            "Action should contain tool name, got: {}",
+            components.action
+        );
+        assert!(
+            !components.resource.is_empty(),
+            "Resource should be non-empty"
+        );
+        assert!(
+            !components.entities_json.is_empty(),
+            "Entities JSON should be non-empty"
+        );
+    }
+
+    #[test]
+    fn test_generate_request_components_with_output() {
+        let request_generator = get_request_generator(
+            SchemaGeneratorConfig::default(),
+            r#"{
+                "name": "read_file",
+                "description": "read",
+                "parameters": {
+                    "properties": { "path": { "type": "string" } },
+                    "required": ["path"]
+                }
+            }"#,
+        );
+
+        let input =
+            Input::from_json_str(r#"{"params": {"tool": "read_file", "args": {"path": "/tmp"}}}"#)
+                .expect("Failed to parse input");
+
+        let output = Output::from_json_str(r#"{"result": {"structuredContent": {}}}"#)
+            .expect("Failed to parse output");
+
+        let principal = r#"Test::user::"alice""#.parse::<EntityUID>().unwrap();
+        let resource = r#"Test::resource::"s1""#.parse::<EntityUID>().unwrap();
+
+        let components = request_generator
+            .generate_request_components(
+                &input,
+                principal.clone(),
+                resource.clone(),
+                Context::empty(),
+                Entities::new(),
+                Some(&output),
+            )
+            .expect("Failed to generate components");
+
+        assert!(components.principal.contains("alice"));
+        assert!(components.action.contains("read_file"));
+        assert!(components.resource.contains("s1"));
+    }
+
+    #[test]
+    fn test_generate_request_components_entities_serialized() {
+        let request_generator = get_request_generator(
+            SchemaGeneratorConfig::default(),
+            r#"{
+                "name": "tool1",
+                "description": "test",
+                "parameters": {
+                    "properties": {},
+                    "required": []
+                }
+            }"#,
+        );
+
+        let input = Input::from_json_str(r#"{"params": {"tool": "tool1", "args": {}}}"#)
+            .expect("Failed to parse input");
+
+        let principal = r#"Test::user::"""#.parse::<EntityUID>().unwrap();
+        let resource = r#"Test::resource::"""#.parse::<EntityUID>().unwrap();
+
+        let components = request_generator
+            .generate_request_components(
+                &input,
+                principal,
+                resource,
+                Context::empty(),
+                Entities::new(),
+                None,
+            )
+            .expect("Failed to generate components");
+
+        // entities_json should be non-empty and look like a JSON array
+        let ej = &components.entities_json;
+        assert!(!ej.is_empty(), "Entities JSON should be non-empty");
+        assert!(
+            ej.trim().starts_with('[') && ej.trim().ends_with(']'),
+            "Entities JSON should be a JSON array, got: {}",
+            &ej[..ej.len().min(100)]
+        );
+    }
 }
