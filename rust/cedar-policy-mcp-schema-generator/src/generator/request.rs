@@ -2125,4 +2125,101 @@ mod test {
             })
         });
     }
+
+    // Tests for new public API methods added for WASM bindings (#73)
+
+    #[test]
+    fn test_get_action_uid_string_basic() {
+        let stub = r#"
+            namespace TestServer {
+                @mcp_principal entity User;
+                @mcp_resource entity McpServer;
+                action "call_tool" appliesTo {
+                    principal: [User],
+                    resource: [McpServer]
+                };
+            }
+        "#;
+        let tools_json = r#"[{
+            "name": "read_file",
+            "description": "Read a file",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "path": { "type": "string" } },
+                "required": ["path"]
+            }
+        }]"#;
+        let mut gen = SchemaGenerator::from_cedarschema_str(stub).unwrap();
+        let server_desc = ServerDescription::from_json_str(tools_json).unwrap();
+        gen.add_actions_from_server_description(&server_desc)
+            .unwrap();
+        let req_gen = gen.new_request_generator().unwrap();
+        let action_str = req_gen.get_action_uid_string("read_file");
+        assert!(
+            action_str.contains("read_file"),
+            "Action string should contain tool name, got: {}",
+            action_str
+        );
+        assert!(
+            action_str.contains("TestServer"),
+            "Action string should be namespace-qualified, got: {}",
+            action_str
+        );
+    }
+
+    #[test]
+    fn test_get_action_uid_string_multi_tool() {
+        let stub = r#"
+            namespace MyServer {
+                @mcp_principal entity User;
+                @mcp_resource entity McpServer;
+                action "call_tool" appliesTo {
+                    principal: [User],
+                    resource: [McpServer]
+                };
+            }
+        "#;
+        let tools_json = r#"[
+            {
+                "name": "search",
+                "description": "Search",
+                "inputSchema": { "type": "object", "properties": {} }
+            },
+            {
+                "name": "delete",
+                "description": "Delete",
+                "inputSchema": { "type": "object", "properties": {} }
+            }
+        ]"#;
+        let mut gen = SchemaGenerator::from_cedarschema_str(stub).unwrap();
+        let server_desc = ServerDescription::from_json_str(tools_json).unwrap();
+        gen.add_actions_from_server_description(&server_desc)
+            .unwrap();
+        let req_gen = gen.new_request_generator().unwrap();
+
+        let search_action = req_gen.get_action_uid_string("search");
+        let delete_action = req_gen.get_action_uid_string("delete");
+        assert!(search_action.contains("search"));
+        assert!(delete_action.contains("delete"));
+        assert_ne!(search_action, delete_action);
+    }
+
+    #[test]
+    fn test_authorization_components_fields() {
+        // Verify AuthorizationComponents struct has the expected fields and is Clone + Debug
+        let comp = AuthorizationComponents {
+            principal: "NS::User::\"alice\"".to_string(),
+            action: "NS::Action::\"read\"".to_string(),
+            resource: "NS::McpServer::\"s1\"".to_string(),
+            entities_json: "[]".to_string(),
+        };
+        let cloned = comp.clone();
+        assert_eq!(cloned.principal, "NS::User::\"alice\"");
+        assert_eq!(cloned.action, "NS::Action::\"read\"");
+        assert_eq!(cloned.resource, "NS::McpServer::\"s1\"");
+        assert_eq!(cloned.entities_json, "[]");
+        // Debug should be derivable
+        let debug_str = format!("{:?}", comp);
+        assert!(debug_str.contains("AuthorizationComponents"));
+    }
 }

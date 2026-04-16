@@ -1087,4 +1087,206 @@ mod request_tests {
         assert!(result.entities_json.is_none());
         assert!(result.error.is_some());
     }
+
+    #[test]
+    fn test_generate_request_invalid_config() {
+        let input = r#"{"params": {"tool": "read_file", "args": {"path": "/tmp"}}}"#;
+        let result_json = generate_request(
+            STUB,
+            TOOLS,
+            input,
+            "User",
+            "alice",
+            "McpServer",
+            "s1",
+            Some("not valid json".to_string()),
+        );
+        #[expect(clippy::expect_used, reason = "Test assertion")]
+        let result: WasmRequestResult =
+            serde_json::from_str(&result_json).expect("Should parse result");
+        assert!(!result.is_ok);
+        assert!(result
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("Invalid config"));
+    }
+
+    #[test]
+    fn test_generate_request_invalid_tools_json() {
+        let input = r#"{"params": {"tool": "read_file", "args": {"path": "/tmp"}}}"#;
+        let result_json = generate_request(
+            STUB,
+            "not valid tools json",
+            input,
+            "User",
+            "alice",
+            "McpServer",
+            "s1",
+            None,
+        );
+        #[expect(clippy::expect_used, reason = "Test assertion")]
+        let result: WasmRequestResult =
+            serde_json::from_str(&result_json).expect("Should parse result");
+        assert!(!result.is_ok);
+        assert!(result
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("Invalid tool descriptions"));
+    }
+
+    #[test]
+    fn test_generate_request_empty_config_uses_defaults() {
+        let input = r#"{"params": {"tool": "read_file", "args": {"path": "/tmp"}}}"#;
+        let result_json = generate_request(
+            STUB,
+            TOOLS,
+            input,
+            "User",
+            "alice",
+            "McpServer",
+            "s1",
+            Some(String::new()),
+        );
+        #[expect(clippy::expect_used, reason = "Test assertion")]
+        let result: WasmRequestResult =
+            serde_json::from_str(&result_json).expect("Should parse result");
+        assert!(
+            result.is_ok,
+            "Empty config should use defaults: {:?}",
+            result.error
+        );
+    }
+
+    #[test]
+    fn test_generate_request_with_explicit_config() {
+        let input = r#"{"params": {"tool": "read_file", "args": {"path": "/tmp"}}}"#;
+        let config = r#"{"numbersAsDecimal": true}"#;
+        let result_json = generate_request(
+            STUB,
+            TOOLS,
+            input,
+            "User",
+            "alice",
+            "McpServer",
+            "s1",
+            Some(config.to_string()),
+        );
+        #[expect(clippy::expect_used, reason = "Test assertion")]
+        let result: WasmRequestResult =
+            serde_json::from_str(&result_json).expect("Should parse result");
+        assert!(
+            result.is_ok,
+            "Explicit config should work: {:?}",
+            result.error
+        );
+    }
+
+    #[test]
+    fn test_generate_request_multi_tool() {
+        let multi_tools = r#"[
+            {
+                "name": "read_file",
+                "description": "Read a file",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": { "path": { "type": "string" } },
+                    "required": ["path"]
+                }
+            },
+            {
+                "name": "write_file",
+                "description": "Write a file",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string" },
+                        "content": { "type": "string" }
+                    },
+                    "required": ["path", "content"]
+                }
+            }
+        ]"#;
+        let input = r#"{"params": {"tool": "write_file", "args": {"path": "/tmp/out", "content": "hello"}}}"#;
+        let result_json = generate_request(
+            STUB,
+            multi_tools,
+            input,
+            "User",
+            "alice",
+            "McpServer",
+            "s1",
+            None,
+        );
+        #[expect(clippy::expect_used, reason = "Test assertion")]
+        let result: WasmRequestResult =
+            serde_json::from_str(&result_json).expect("Should parse result");
+        assert!(result.is_ok, "Multi-tool should work: {:?}", result.error);
+        assert!(
+            result
+                .action
+                .as_deref()
+                .unwrap_or("")
+                .contains("write_file"),
+            "Action should reference write_file, got: {:?}",
+            result.action
+        );
+    }
+
+    #[test]
+    fn test_generate_request_resource_format() {
+        let input = r#"{"params": {"tool": "read_file", "args": {"path": "/tmp"}}}"#;
+        let result_json = generate_request(
+            STUB,
+            TOOLS,
+            input,
+            "User",
+            "alice",
+            "McpServer",
+            "production-server",
+            None,
+        );
+        #[expect(clippy::expect_used, reason = "Test assertion")]
+        let result: WasmRequestResult =
+            serde_json::from_str(&result_json).expect("Should parse result");
+        assert!(result.is_ok, "Error: {:?}", result.error);
+        let resource = result.resource.unwrap();
+        assert!(
+            resource.contains("production-server"),
+            "Resource should contain the resource id, got: {}",
+            resource
+        );
+    }
+
+    #[test]
+    fn test_req_err_helper() {
+        let result = req_err("test error message".to_string());
+        assert!(!result.is_ok);
+        assert_eq!(result.error.as_deref(), Some("test error message"));
+        assert!(result.principal.is_none());
+        assert!(result.action.is_none());
+        assert!(result.resource.is_none());
+        assert!(result.entities_json.is_none());
+    }
+
+    #[test]
+    fn test_wasm_request_result_serialization() {
+        let result = WasmRequestResult {
+            principal: Some("NS::User::\"alice\"".to_string()),
+            action: Some("NS::Action::\"read\"".to_string()),
+            resource: Some("NS::McpServer::\"s1\"".to_string()),
+            entities_json: Some("[]".to_string()),
+            error: None,
+            is_ok: true,
+        };
+        #[expect(clippy::expect_used, reason = "Test assertion")]
+        let json = serde_json::to_string(&result).expect("Should serialize");
+        assert!(json.contains("\"isOk\":true"), "camelCase: {}", json);
+        assert!(
+            json.contains("\"entitiesJson\""),
+            "camelCase entities: {}",
+            json
+        );
+    }
 }
