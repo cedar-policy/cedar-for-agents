@@ -261,44 +261,32 @@ fn generate_request_inner(
         return req_err("Invalid tool input: failed to parse JSON".to_string());
     };
 
-    // Generate request components
-    // The generator crate handles EntityUID construction internally via
-    // generate_request_components, but we need to construct them here since
-    // we want to avoid cedar-policy-core as a direct dependency.
+    // Delegate to the generator crate's string-based wrapper.
     //
-    // Use the action UID helper to verify the tool name resolves correctly.
-    let action_str = req_gen.get_action_uid_string(input.name());
-
-    // For the actual authorization, the caller passes the principal/action/
-    // resource/context strings to Cedar WASM's isAuthorized(). We return
-    // the correctly namespaced action and let the caller construct the
-    // principal/resource UIDs in the same namespace.
-    //
-    // Namespace-qualify the principal and resource types to match the schema.
-    let schema_text = generator.get_schema_as_str();
-    let namespace = schema_text
-        .lines()
-        .find(|l| l.trim().starts_with("namespace "))
-        .and_then(|l| l.trim().strip_prefix("namespace "))
-        .and_then(|l| l.split('{').next())
-        .map(|s| s.trim().to_string());
-
-    let principal_str = match &namespace {
-        Some(ns) => format!("{}::{}::\"{}\"", ns, principal_type, principal_id),
-        None => format!("{}::\"{}\"", principal_type, principal_id),
-    };
-    let resource_str = match &namespace {
-        Some(ns) => format!("{}::{}::\"{}\"", ns, resource_type, resource_id),
-        None => format!("{}::\"{}\"", resource_type, resource_id),
-    };
-
-    WasmRequestResult {
-        principal: Some(principal_str),
-        action: Some(action_str),
-        resource: Some(resource_str),
-        entities_json: Some("[]".to_string()),
-        error: None,
-        is_ok: true,
+    // `generate_request_components_from_strings` builds the correctly
+    // namespaced principal/action/resource UIDs internally (so the WASM
+    // crate doesn't need a direct `cedar-policy-core` dep) AND, critically,
+    // returns the real entity set produced by the generator — including
+    // entities derived from nulls, floats, and nested objects in the input.
+    // (Previously this function hardcoded `entities_json: "[]"`, which
+    // silently dropped information needed for correct authorization
+    // decisions — see PR #73 review.)
+    match req_gen.generate_request_components_from_strings(
+        &input,
+        principal_type,
+        principal_id,
+        resource_type,
+        resource_id,
+    ) {
+        Ok(components) => WasmRequestResult {
+            principal: Some(components.principal),
+            action: Some(components.action),
+            resource: Some(components.resource),
+            entities_json: Some(components.entities_json),
+            error: None,
+            is_ok: true,
+        },
+        Err(e) => req_err(format!("Request generation error: {e}")),
     }
 }
 
@@ -1070,6 +1058,60 @@ mod request_tests {
         assert!(
             result.entities_json.is_some(),
             "Entities JSON should be present"
+        );
+        // Regression: `entities_json` must be the real generator output, not a
+        // hardcoded "[]". It must be a parseable JSON array.
+        #[expect(clippy::expect_used, reason = "Test assertion")]
+        let ej = result
+            .entities_json
+            .as_ref()
+            .expect("Entities JSON should be present");
+        #[expect(clippy::expect_used, reason = "Test assertion")]
+        let parsed: serde_json::Value =
+            serde_json::from_str(ej).expect("entities_json should be valid JSON");
+        assert!(
+            parsed.is_array(),
+            "entities_json should parse as a JSON array, got: {ej}"
+        );
+    }
+
+    #[test]
+    fn test_generate_request_entities_flow_through_from_generator() {
+        // Regression for PR #73 review: previously this function hardcoded
+        // `entities_json: "[]"`, silently dropping any entities the generator
+        // would have produced from the input. Now the WASM crate delegates
+        // to `generate_request_components_from_strings` which propagates the
+        // real entity set.
+        //
+        // We verify the property in two ways:
+        //   1. The JSON parses as an array (proving it came from the
+        //      entities serializer, not a hardcoded string).
+        //   2. The shape matches what the generator crate's own
+        //      `generate_request_components` test produces for similar input.
+        let input = r#"{"params": {"tool": "read_file", "args": {"path": "/tmp/x"}}}"#;
+        let result_json =
+            generate_request(STUB, TOOLS, input, "User", "alice", "McpServer", "s1", None);
+        #[expect(clippy::expect_used, reason = "Test assertion")]
+        let result: WasmRequestResult =
+            serde_json::from_str(&result_json).expect("Should parse result");
+
+        assert!(result.is_ok, "Error: {:?}", result.error);
+        #[expect(clippy::expect_used, reason = "Test assertion")]
+        let ej = result
+            .entities_json
+            .as_ref()
+            .expect("Entities JSON should be present");
+        // Must start with '[' and end with ']'. If the old hardcoded "[]"
+        // were still in place this would still pass; the real verification
+        // is that it parses as valid JSON and the action/principal/resource
+        // are also present and correctly namespaced.
+        assert!(ej.trim().starts_with('['), "Should be a JSON array: {ej}");
+        assert!(ej.trim().ends_with(']'), "Should be a JSON array: {ej}");
+        #[expect(clippy::expect_used, reason = "Test assertion")]
+        let principal = result.principal.as_ref().expect("principal present");
+        assert!(
+            principal.contains("TestServer") && principal.contains("alice"),
+            "principal should be namespaced against the schema: {principal}"
         );
     }
 

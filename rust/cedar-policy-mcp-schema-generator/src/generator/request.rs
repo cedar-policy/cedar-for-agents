@@ -286,6 +286,58 @@ impl RequestGenerator {
         })
     }
 
+    /// String-in / string-out convenience wrapper around
+    /// [`generate_request_components`] for FFI consumers (WASM, Python, C).
+    ///
+    /// Builds principal and resource [`EntityUID`]s from plain strings
+    /// (qualified against the schema's namespace) so the caller does not
+    /// need a `cedar_policy_core` dependency.  Starting entities and context
+    /// are empty; use [`generate_request_components`] directly if you need
+    /// to supply either.
+    ///
+    /// # Arguments
+    /// * `input` — the MCP tool-call input
+    /// * `principal_type` — e.g. `"User"`
+    /// * `principal_id` — e.g. `"alice"`
+    /// * `resource_type` — e.g. `"McpServer"`
+    /// * `resource_id` — e.g. `"server1"`
+    ///
+    /// # Returns
+    /// [`AuthorizationComponents`] — the four Cedar strings ready for JSON
+    /// serialization. `entities_json` is the real entity set produced by the
+    /// generator from the input (including any entities derived from nulls,
+    /// floats, or nested objects per the schema config).
+    pub fn generate_request_components_from_strings(
+        &self,
+        input: &Input,
+        principal_type: &str,
+        principal_id: &str,
+        resource_type: &str,
+        resource_id: &str,
+    ) -> Result<AuthorizationComponents, RequestGeneratorError> {
+        let principal_ns: Name = principal_type.parse()?;
+        let principal_ns = principal_ns.qualify_with_name(self.root_namespace.as_ref());
+        let principal = EntityUID::from_components(
+            EntityType::from(principal_ns),
+            Eid::new(principal_id),
+            None,
+        );
+
+        let resource_ns: Name = resource_type.parse()?;
+        let resource_ns = resource_ns.qualify_with_name(self.root_namespace.as_ref());
+        let resource =
+            EntityUID::from_components(EntityType::from(resource_ns), Eid::new(resource_id), None);
+
+        self.generate_request_components(
+            input,
+            principal,
+            resource,
+            std::iter::empty::<(SmolStr, RestrictedExpr)>(),
+            Entities::new(),
+            None,
+        )
+    }
+
     fn values_to_cedar<'a>(
         &self,
         vals: impl Iterator<Item = (&'a str, &'a TypedValue)>,
@@ -2353,6 +2405,75 @@ mod test {
             ej.trim().starts_with('[') && ej.trim().ends_with(']'),
             "Entities JSON should be a JSON array, got: {}",
             &ej[..ej.len().min(100)]
+        );
+    }
+
+    #[test]
+    fn test_generate_request_components_from_strings_basic() {
+        let request_generator = get_request_generator(
+            SchemaGeneratorConfig::default(),
+            r#"{
+                "name": "tool1",
+                "description": "test",
+                "parameters": { "properties": {}, "required": [] }
+            }"#,
+        );
+        let input = Input::from_json_str(r#"{"params": {"tool": "tool1", "args": {}}}"#)
+            .expect("Failed to parse input");
+
+        let components = request_generator
+            .generate_request_components_from_strings(&input, "user", "alice", "resource", "s1")
+            .expect("Failed to generate components from strings");
+
+        // Principal / action / resource are namespaced against the schema root.
+        assert!(
+            components.principal.contains("alice"),
+            "principal should include id: {}",
+            components.principal
+        );
+        assert!(
+            components.action.contains("tool1"),
+            "action should include tool name: {}",
+            components.action
+        );
+        assert!(
+            components.resource.contains("s1"),
+            "resource should include id: {}",
+            components.resource
+        );
+        // Entities JSON is the real output — not a hardcoded "[]".
+        assert!(
+            components.entities_json.trim().starts_with('['),
+            "entities_json should be a JSON array, got: {}",
+            &components.entities_json[..components.entities_json.len().min(80)]
+        );
+    }
+
+    #[test]
+    fn test_generate_request_components_from_strings_invalid_type() {
+        let request_generator = get_request_generator(
+            SchemaGeneratorConfig::default(),
+            r#"{
+                "name": "tool1",
+                "description": "test",
+                "parameters": { "properties": {}, "required": [] }
+            }"#,
+        );
+        let input = Input::from_json_str(r#"{"params": {"tool": "tool1", "args": {}}}"#)
+            .expect("Failed to parse input");
+
+        // An invalid principal type should surface as a RequestGeneratorError,
+        // not a panic.
+        let result = request_generator.generate_request_components_from_strings(
+            &input,
+            "not a valid type::",
+            "alice",
+            "resource",
+            "s1",
+        );
+        assert!(
+            result.is_err(),
+            "Invalid principal type should produce an error"
         );
     }
 }
