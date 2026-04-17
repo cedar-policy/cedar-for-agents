@@ -164,18 +164,6 @@ struct WasmRequestResult {
 ///
 /// A JSON object with `principal`, `action`, `resource` (Cedar EntityUID
 /// strings), `entitiesJson` (JSON array string), `error`, and `isOk` fields.
-/// Generate a Cedar authorization request from an MCP tool call.
-///
-/// Takes all parameters as a single JSON string to keep the WASM boundary
-/// clean. The JSON object should contain:
-/// - `schemaStub`: Cedar schema stub string
-/// - `toolsJson`: MCP tool descriptions JSON string
-/// - `inputJson`: MCP tool input JSON string
-/// - `principalType`: entity type (e.g., "User")
-/// - `principalId`: entity id (e.g., "alice")
-/// - `resourceType`: entity type (e.g., "McpServer")
-/// - `resourceId`: entity id (e.g., "server1")
-/// - `config`: optional configuration object
 #[wasm_bindgen(js_name = "generateRequest")]
 #[expect(
     clippy::too_many_arguments,
@@ -225,11 +213,19 @@ fn generate_request_inner(
     resource_id: &str,
     config_json: Option<&str>,
 ) -> WasmRequestResult {
-    // Parse config (same as schema generation)
+    // Parse config. Mirrors the detailed error path in schema generation:
+    // surface the underlying serde_json message when one is available, and
+    // fall back to "unrecognized fields" only when the JSON is structurally
+    // valid but does not match the expected shape.
     let config: SchemaGeneratorConfig = match config_json {
         Some(json) if !json.is_empty() => {
             let Ok(c) = serde_json::from_str::<WasmConfig>(json) else {
-                return req_err("Invalid config: failed to parse JSON".to_string());
+                return req_err(format!(
+                    "Invalid config: {}",
+                    serde_json::from_str::<serde_json::Value>(json)
+                        .err()
+                        .map_or_else(|| "unrecognized fields".to_string(), |e| e.to_string())
+                ));
             };
             c.into()
         }
@@ -261,16 +257,9 @@ fn generate_request_inner(
         return req_err("Invalid tool input: failed to parse JSON".to_string());
     };
 
-    // Delegate to the generator crate's string-based wrapper.
-    //
-    // `generate_request_components_from_strings` builds the correctly
-    // namespaced principal/action/resource UIDs internally (so the WASM
-    // crate doesn't need a direct `cedar-policy-core` dep) AND, critically,
-    // returns the real entity set produced by the generator — including
-    // entities derived from nulls, floats, and nested objects in the input.
-    // (Previously this function hardcoded `entities_json: "[]"`, which
-    // silently dropped information needed for correct authorization
-    // decisions — see PR #73 review.)
+    // Delegate to the generator crate's string-based wrapper, which builds
+    // namespaced principal / action / resource UIDs internally and propagates
+    // the real entity set the generator produces from the input.
     match req_gen.generate_request_components_from_strings(
         &input,
         principal_type,
@@ -371,6 +360,7 @@ fn generate_schema_inner(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
     use super::*;
 
     #[test]
@@ -403,7 +393,6 @@ mod tests {
         ]"#;
 
         let result_json = generate_schema(stub, tools, None);
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
 
@@ -422,7 +411,6 @@ mod tests {
     #[test]
     fn test_invalid_stub() {
         let result_json = generate_schema("not a valid schema", "[]", None);
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(!result.is_ok);
@@ -445,7 +433,6 @@ mod tests {
         "#;
 
         let result_json = generate_schema(stub, "[]", None);
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         // Empty tools should still produce a valid (minimal) schema
@@ -468,7 +455,6 @@ mod tests {
         "#;
 
         let result_json = generate_schema(stub, "[]", Some("not valid json".to_string()));
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(!result.is_ok);
@@ -495,7 +481,6 @@ mod tests {
         "#;
 
         let result_json = generate_schema(stub, "not valid json", None);
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(!result.is_ok);
@@ -537,7 +522,6 @@ mod tests {
         let config = r#"{"numbersAsDecimal": true, "includeOutputs": false}"#;
 
         let result_json = generate_schema(stub, tools, Some(config.to_string()));
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(
@@ -567,7 +551,6 @@ mod tests {
 
         // Empty string config should use defaults (same as None)
         let result_json = generate_schema(stub, "[]", Some(String::new()));
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(result.is_ok);
@@ -630,7 +613,6 @@ mod tests {
         ]"#;
 
         let result_json = generate_schema(stub, tools, None);
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(result.is_ok);
@@ -649,6 +631,7 @@ mod tests {
 
 #[cfg(test)]
 mod coverage_tests {
+    #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
     use super::*;
 
     /// Stub shared across coverage tests.
@@ -699,7 +682,6 @@ mod coverage_tests {
         ]"#;
 
         let result_json = generate_schema(STUB, tools, None);
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(
@@ -745,7 +727,6 @@ mod coverage_tests {
         }"#;
 
         let result_json = generate_schema(STUB, tools, Some(config.to_string()));
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(
@@ -763,7 +744,6 @@ mod coverage_tests {
         // schema and schema_json should be None, error should explain
         // the failure, is_ok should be false.
         let result_json = generate_schema("invalid", "[]", None);
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(!result.is_ok);
@@ -808,7 +788,6 @@ mod coverage_tests {
         ]"#;
 
         let result_json = generate_schema(STUB, tools, None);
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(
@@ -841,7 +820,6 @@ mod coverage_tests {
         ]"#;
 
         let result_json = generate_schema(STUB, tools, None);
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(
@@ -874,7 +852,6 @@ mod coverage_tests {
 
         let config = r#"{"objectsAsRecords": true}"#;
         let result_json = generate_schema(STUB, tools, Some(config.to_string()));
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(
@@ -901,6 +878,7 @@ mod coverage_tests {
 
 #[cfg(test)]
 mod request_tests {
+    #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
     use super::*;
 
     const STUB: &str = r#"
@@ -930,47 +908,10 @@ mod request_tests {
         }
     ]"#;
 
-    #[test]
-    fn test_generate_request_basic() {
-        let input = r#"{"params": {"tool": "read_file", "args": {"path": "/etc/hosts"}}}"#;
-
-        let result_json = generate_request(
-            STUB,
-            TOOLS,
-            input,
-            "User",
-            "alice",
-            "McpServer",
-            "server1",
-            None,
-        );
-        #[expect(clippy::expect_used, reason = "Test assertion")]
-        let result: WasmRequestResult =
-            serde_json::from_str(&result_json).expect("Should parse result");
-
-        assert!(
-            result.is_ok,
-            "Expected success, got error: {:?}",
-            result.error
-        );
-        assert!(result.principal.is_some());
-        assert!(result.action.is_some());
-        assert!(result.resource.is_some());
-
-        let action = result.action.unwrap();
-        assert!(
-            action.contains("read_file"),
-            "Action should contain tool name, got: {}",
-            action
-        );
-
-        let principal = result.principal.unwrap();
-        assert!(
-            principal.contains("User") && principal.contains("alice"),
-            "Principal should contain type and id, got: {}",
-            principal
-        );
-    }
+    // NOTE: the happy-path coverage for request generation lives in
+    // `test_generate_request_entities_propagate_real_generator_output` below,
+    // which asserts exact principal / action / resource UIDs and non-empty
+    // entity output in one deeper test rather than several shallow ones.
 
     #[test]
     fn test_generate_request_invalid_input() {
@@ -984,7 +925,6 @@ mod request_tests {
             "server1",
             None,
         );
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmRequestResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(!result.is_ok);
@@ -1008,7 +948,6 @@ mod request_tests {
             "server1",
             None,
         );
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmRequestResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(!result.is_ok);
@@ -1020,98 +959,91 @@ mod request_tests {
     }
 
     #[test]
-    fn test_generate_request_namespace_qualification() {
-        let input = r#"{"params": {"tool": "read_file", "args": {"path": "/tmp"}}}"#;
+    fn test_generate_request_entities_propagate_real_generator_output() {
+        // Regression for PR #73 review: the WASM crate previously hardcoded
+        // `entities_json: "[]"` instead of forwarding the generator's real
+        // output. A hardcoded "[]" would pass "is an array" and
+        // "starts_with('[')" checks, so the assertion has to require
+        // entities that only the real generator can produce.
+        //
+        // Per the generator's context-building rules, inputs with nested
+        // objects, nulls, and floats become entity attributes. Using an
+        // input that must produce a non-empty entity set makes the test
+        // fail under a regression to the old hardcoded behavior.
+        let tools = r#"[{
+            "name": "ingest",
+            "description": "Ingest a record",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "source": { "type": "string" },
+                            "region": { "type": "string" }
+                        },
+                        "required": ["source"]
+                    },
+                    "score": { "type": "number" },
+                    "note":  { "type": "string" }
+                },
+                "required": ["metadata", "score"]
+            }
+        }]"#;
+        let input = r#"{
+            "params": {
+                "tool": "ingest",
+                "args": {
+                    "metadata": { "source": "sensor-42", "region": "us-east" },
+                    "score": 0.87,
+                    "note": "ok"
+                }
+            }
+        }"#;
+
         let result_json =
-            generate_request(STUB, TOOLS, input, "User", "bob", "McpServer", "prod", None);
-        #[expect(clippy::expect_used, reason = "Test assertion")]
+            generate_request(STUB, tools, input, "User", "alice", "McpServer", "s1", None);
         let result: WasmRequestResult =
             serde_json::from_str(&result_json).expect("Should parse result");
 
         assert!(result.is_ok, "Error: {:?}", result.error);
 
-        // Principal and resource should be namespace-qualified
-        let principal = result.principal.unwrap();
-        assert!(
-            principal.contains("TestServer"),
-            "Principal should be namespace-qualified, got: {}",
-            principal
+        // Principal / action / resource must be correctly namespaced.
+        assert_eq!(
+            result.principal.as_deref(),
+            Some(r#"TestServer::User::"alice""#),
+            "principal was not namespaced correctly",
         );
-        let resource = result.resource.unwrap();
         assert!(
-            resource.contains("TestServer"),
-            "Resource should be namespace-qualified, got: {}",
-            resource
+            result
+                .action
+                .as_deref()
+                .unwrap_or_default()
+                .contains("TestServer::Action::\"ingest\""),
+            "action should be namespaced to the schema: {:?}",
+            result.action,
         );
-    }
+        assert_eq!(
+            result.resource.as_deref(),
+            Some(r#"TestServer::McpServer::"s1""#),
+            "resource was not namespaced correctly",
+        );
 
-    #[test]
-    fn test_generate_request_entities_json() {
-        let input = r#"{"params": {"tool": "read_file", "args": {"path": "/tmp"}}}"#;
-        let result_json =
-            generate_request(STUB, TOOLS, input, "User", "alice", "McpServer", "s1", None);
-        #[expect(clippy::expect_used, reason = "Test assertion")]
-        let result: WasmRequestResult =
-            serde_json::from_str(&result_json).expect("Should parse result");
-
-        assert!(result.is_ok, "Error: {:?}", result.error);
-        assert!(
-            result.entities_json.is_some(),
-            "Entities JSON should be present"
-        );
-        // Regression: `entities_json` must be the real generator output, not a
-        // hardcoded "[]". It must be a parseable JSON array.
-        #[expect(clippy::expect_used, reason = "Test assertion")]
+        // Entities must be the generator's real output, not a hardcoded "[]".
         let ej = result
             .entities_json
             .as_ref()
-            .expect("Entities JSON should be present");
-        #[expect(clippy::expect_used, reason = "Test assertion")]
+            .expect("entities_json present");
         let parsed: serde_json::Value =
             serde_json::from_str(ej).expect("entities_json should be valid JSON");
+        let arr = parsed
+            .as_array()
+            .expect("entities_json should be a JSON array");
         assert!(
-            parsed.is_array(),
-            "entities_json should parse as a JSON array, got: {ej}"
-        );
-    }
-
-    #[test]
-    fn test_generate_request_entities_flow_through_from_generator() {
-        // Regression for PR #73 review: previously this function hardcoded
-        // `entities_json: "[]"`, silently dropping any entities the generator
-        // would have produced from the input. Now the WASM crate delegates
-        // to `generate_request_components_from_strings` which propagates the
-        // real entity set.
-        //
-        // We verify the property in two ways:
-        //   1. The JSON parses as an array (proving it came from the
-        //      entities serializer, not a hardcoded string).
-        //   2. The shape matches what the generator crate's own
-        //      `generate_request_components` test produces for similar input.
-        let input = r#"{"params": {"tool": "read_file", "args": {"path": "/tmp/x"}}}"#;
-        let result_json =
-            generate_request(STUB, TOOLS, input, "User", "alice", "McpServer", "s1", None);
-        #[expect(clippy::expect_used, reason = "Test assertion")]
-        let result: WasmRequestResult =
-            serde_json::from_str(&result_json).expect("Should parse result");
-
-        assert!(result.is_ok, "Error: {:?}", result.error);
-        #[expect(clippy::expect_used, reason = "Test assertion")]
-        let ej = result
-            .entities_json
-            .as_ref()
-            .expect("Entities JSON should be present");
-        // Must start with '[' and end with ']'. If the old hardcoded "[]"
-        // were still in place this would still pass; the real verification
-        // is that it parses as valid JSON and the action/principal/resource
-        // are also present and correctly namespaced.
-        assert!(ej.trim().starts_with('['), "Should be a JSON array: {ej}");
-        assert!(ej.trim().ends_with(']'), "Should be a JSON array: {ej}");
-        #[expect(clippy::expect_used, reason = "Test assertion")]
-        let principal = result.principal.as_ref().expect("principal present");
-        assert!(
-            principal.contains("TestServer") && principal.contains("alice"),
-            "principal should be namespaced against the schema: {principal}"
+            !arr.is_empty(),
+            "entities_json must contain entities the generator produced from the \
+             nested-object / float / null input. A hardcoded \"[]\" would fail here. \
+             Got: {ej}"
         );
     }
 
@@ -1119,7 +1051,6 @@ mod request_tests {
     fn test_generate_request_error_fields_complete() {
         let result_json =
             generate_request(STUB, TOOLS, "bad", "User", "alice", "McpServer", "s1", None);
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmRequestResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(!result.is_ok);
@@ -1143,7 +1074,6 @@ mod request_tests {
             "s1",
             Some("not valid json".to_string()),
         );
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmRequestResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(!result.is_ok);
@@ -1167,7 +1097,6 @@ mod request_tests {
             "s1",
             None,
         );
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmRequestResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(!result.is_ok);
@@ -1191,7 +1120,6 @@ mod request_tests {
             "s1",
             Some(String::new()),
         );
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmRequestResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(
@@ -1215,7 +1143,6 @@ mod request_tests {
             "s1",
             Some(config.to_string()),
         );
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmRequestResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(
@@ -1261,7 +1188,6 @@ mod request_tests {
             "s1",
             None,
         );
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmRequestResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(result.is_ok, "Multi-tool should work: {:?}", result.error);
@@ -1289,7 +1215,6 @@ mod request_tests {
             "production-server",
             None,
         );
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmRequestResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(result.is_ok, "Error: {:?}", result.error);
@@ -1322,7 +1247,6 @@ mod request_tests {
             error: None,
             is_ok: true,
         };
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let json = serde_json::to_string(&result).expect("Should serialize");
         assert!(json.contains("\"isOk\":true"), "camelCase: {}", json);
         assert!(
@@ -1332,85 +1256,11 @@ mod request_tests {
         );
     }
 
-    #[test]
-    fn test_generate_request_no_namespace_schema() {
-        // Schema without a namespace block exercises the None branch
-        // for namespace-qualification (lines 288, 292 in generate_request_inner)
-        let stub_no_ns = r#"
-            @mcp_principal
-            entity User;
-            @mcp_resource
-            entity McpServer;
-            action "call_tool" appliesTo {
-                principal: [User],
-                resource: [McpServer]
-            };
-        "#;
-        let tools = r#"[{
-            "name": "ping",
-            "description": "Ping",
-            "inputSchema": { "type": "object", "properties": {} }
-        }]"#;
-        let input = r#"{"params": {"tool": "ping", "args": {}}}"#;
-        let result_json = generate_request(
-            stub_no_ns,
-            tools,
-            input,
-            "User",
-            "alice",
-            "McpServer",
-            "s1",
-            None,
-        );
-        #[expect(clippy::expect_used, reason = "Test assertion")]
-        let result: WasmRequestResult =
-            serde_json::from_str(&result_json).expect("Should parse result");
-        // This might succeed or fail depending on whether the schema generator
-        // requires a namespace. Either way, it exercises the code path.
-        if result.is_ok {
-            let principal = result.principal.unwrap_or_default();
-            // Without namespace, should be User::"alice" not NS::User::"alice"
-            assert!(
-                !principal.is_empty(),
-                "Principal should be non-empty even without namespace"
-            );
-        }
-    }
-
-    #[test]
-    fn test_generate_request_with_none_config() {
-        // Explicitly passing None for config_json
-        let input = r#"{"params": {"tool": "read_file", "args": {"path": "/tmp"}}}"#;
-        let result_json =
-            generate_request(STUB, TOOLS, input, "User", "alice", "McpServer", "s1", None);
-        #[expect(clippy::expect_used, reason = "Test assertion")]
-        let result: WasmRequestResult =
-            serde_json::from_str(&result_json).expect("Should parse result");
-        assert!(result.is_ok, "None config should work: {:?}", result.error);
-        // Verify all fields are populated
-        assert!(result.principal.is_some());
-        assert!(result.action.is_some());
-        assert!(result.resource.is_some());
-        assert!(result.entities_json.is_some());
-        assert!(result.error.is_none());
-    }
-
-    #[test]
-    fn test_generate_request_action_contains_namespace_and_tool() {
-        let input = r#"{"params": {"tool": "read_file", "args": {"path": "/tmp"}}}"#;
-        let result_json =
-            generate_request(STUB, TOOLS, input, "User", "alice", "McpServer", "s1", None);
-        #[expect(clippy::expect_used, reason = "Test assertion")]
-        let result: WasmRequestResult =
-            serde_json::from_str(&result_json).expect("Should parse result");
-        assert!(result.is_ok, "Error: {:?}", result.error);
-        let action = result.action.unwrap();
-        assert!(
-            action.contains("TestServer") && action.contains("read_file"),
-            "Action should contain both namespace and tool name, got: {}",
-            action
-        );
-    }
+    // NOTE: a dedicated no-namespace-schema test used to live here, but the
+    // Cedar schema parser rejects unqualified `entity` declarations without
+    // a surrounding `namespace { ... }` block at this version. The
+    // namespace-absent code path is exercised indirectly by the generator
+    // crate's own tests against schemas that produce unqualified UIDs.
 
     #[test]
     fn test_generate_request_inner_all_error_paths() {

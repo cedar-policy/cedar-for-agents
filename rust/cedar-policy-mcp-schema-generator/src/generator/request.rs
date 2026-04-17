@@ -218,20 +218,6 @@ impl RequestGenerator {
         Ok((request, entities))
     }
 
-    /// Returns the fully-qualified Cedar EntityUID string for a tool action.
-    ///
-    /// For example, if the schema namespace is `MyServer` and the tool name is
-    /// `read_file`, this returns `MyServer::Action::"read_file"`.
-    pub fn get_action_uid_string(&self, tool_name: &str) -> String {
-        let action_eid = Eid::new(tool_name);
-        let action_uid = EntityUID::from_components(
-            identifiers::ACTION.qualify_with(self.root_namespace.as_ref()),
-            action_eid,
-            None,
-        );
-        action_uid.to_string()
-    }
-
     /// Generate authorization request components as JSON-serializable values.
     ///
     /// This is a convenience method for environments that need string/JSON
@@ -270,13 +256,14 @@ impl RequestGenerator {
             .map(|u| u.to_string())
             .unwrap_or_default();
 
-        // Serialize entities to JSON string
+        // Serialize entities to JSON string. Propagate serialization errors
+        // rather than silently producing an empty array, so the caller can
+        // surface real problems instead of discovering a stale entity set.
+        // `write_to_json` always produces valid UTF-8, so `from_utf8_lossy`
+        // is both correct and allocation-friendly for the happy path.
         let mut entities_buf = Vec::new();
-        result_entities
-            .write_to_json(&mut entities_buf)
-            .unwrap_or(());
-        let entities_json_str =
-            String::from_utf8(entities_buf).unwrap_or_else(|_| "[]".to_string());
+        result_entities.write_to_json(&mut entities_buf)?;
+        let entities_json_str = String::from_utf8_lossy(&entities_buf).into_owned();
 
         Ok(AuthorizationComponents {
             principal: principal_str,
@@ -2178,83 +2165,10 @@ mod test {
         });
     }
 
-    // Tests for new public API methods added for WASM bindings (#73)
-
-    #[test]
-    fn test_get_action_uid_string_basic() {
-        let stub = r#"
-            namespace TestServer {
-                @mcp_principal entity User;
-                @mcp_resource entity McpServer;
-                action "call_tool" appliesTo {
-                    principal: [User],
-                    resource: [McpServer]
-                };
-            }
-        "#;
-        let tools_json = r#"[{
-            "name": "read_file",
-            "description": "Read a file",
-            "inputSchema": {
-                "type": "object",
-                "properties": { "path": { "type": "string" } },
-                "required": ["path"]
-            }
-        }]"#;
-        let mut gen = SchemaGenerator::from_cedarschema_str(stub).unwrap();
-        let server_desc = ServerDescription::from_json_str(tools_json).unwrap();
-        gen.add_actions_from_server_description(&server_desc)
-            .unwrap();
-        let req_gen = gen.new_request_generator().unwrap();
-        let action_str = req_gen.get_action_uid_string("read_file");
-        assert!(
-            action_str.contains("read_file"),
-            "Action string should contain tool name, got: {}",
-            action_str
-        );
-        assert!(
-            action_str.contains("TestServer"),
-            "Action string should be namespace-qualified, got: {}",
-            action_str
-        );
-    }
-
-    #[test]
-    fn test_get_action_uid_string_multi_tool() {
-        let stub = r#"
-            namespace MyServer {
-                @mcp_principal entity User;
-                @mcp_resource entity McpServer;
-                action "call_tool" appliesTo {
-                    principal: [User],
-                    resource: [McpServer]
-                };
-            }
-        "#;
-        let tools_json = r#"[
-            {
-                "name": "search",
-                "description": "Search",
-                "inputSchema": { "type": "object", "properties": {} }
-            },
-            {
-                "name": "delete",
-                "description": "Delete",
-                "inputSchema": { "type": "object", "properties": {} }
-            }
-        ]"#;
-        let mut gen = SchemaGenerator::from_cedarschema_str(stub).unwrap();
-        let server_desc = ServerDescription::from_json_str(tools_json).unwrap();
-        gen.add_actions_from_server_description(&server_desc)
-            .unwrap();
-        let req_gen = gen.new_request_generator().unwrap();
-
-        let search_action = req_gen.get_action_uid_string("search");
-        let delete_action = req_gen.get_action_uid_string("delete");
-        assert!(search_action.contains("search"));
-        assert!(delete_action.contains("delete"));
-        assert_ne!(search_action, delete_action);
-    }
+    // Tests for new public API methods added for WASM bindings (#73).
+    // Namespace qualification of action UIDs is exercised through the
+    // full `generate_request_components` pipeline below rather than
+    // through a standalone helper method.
 
     #[test]
     fn test_authorization_components_fields() {
