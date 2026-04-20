@@ -25,6 +25,7 @@
 //! avoids a direct dependency on `cedar-policy-core` in the bindings crate.
 
 use cedar_policy_mcp_schema_generator::{SchemaGenerator, SchemaGeneratorConfig};
+use mcp_tools_sdk::data::Input;
 use mcp_tools_sdk::description::ServerDescription;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -122,6 +123,173 @@ pub fn generate_schema(
     })
 }
 
+/// Result returned to JavaScript from request generation.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WasmRequestResult {
+    /// The principal EntityUID string (e.g., `MyServer::User::"alice"`).
+    principal: Option<String>,
+    /// The action EntityUID string (e.g., `MyServer::Action::"read_file"`).
+    action: Option<String>,
+    /// The resource EntityUID string (e.g., `MyServer::McpServer::"server1"`).
+    resource: Option<String>,
+    /// The entities as a JSON array string.
+    entities_json: Option<String>,
+    /// Error message, `null` if successful.
+    error: Option<String>,
+    /// Whether generation succeeded.
+    is_ok: bool,
+}
+
+/// Generate a Cedar authorization request from an MCP tool call.
+///
+/// Takes the same schema stub and tool descriptions used for schema generation,
+/// plus the MCP tool input, principal, and resource identifiers. Returns the
+/// Cedar authorization request components formatted for Cedar WASM
+/// `isAuthorized()` evaluation.
+///
+/// # Arguments
+///
+/// * `schema_stub` - A Cedar schema stub as a `.cedarschema` string.
+/// * `tools_json` - MCP tool descriptions as a JSON string.
+/// * `input_json` - MCP tool call input as a JSON string. Format:
+///   `{"params": {"tool": "tool_name", "args": {"key": "value"}}}`.
+/// * `principal_type` - The Cedar entity type for the principal (e.g., `"User"`).
+/// * `principal_id` - The principal identifier (e.g., `"alice"`).
+/// * `resource_type` - The Cedar entity type for the resource (e.g., `"McpServer"`).
+/// * `resource_id` - The resource identifier (e.g., `"my-server"`).
+/// * `config_json` - Optional configuration as a JSON string.
+///
+/// # Returns
+///
+/// A JSON object with `principal`, `action`, `resource` (Cedar EntityUID
+/// strings), `entitiesJson` (JSON array string), `error`, and `isOk` fields.
+#[wasm_bindgen(js_name = "generateRequest")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "wasm-bindgen requires flat parameter lists; cannot use struct across WASM boundary"
+)]
+pub fn generate_request(
+    schema_stub: &str,
+    tools_json: &str,
+    input_json: &str,
+    principal_type: &str,
+    principal_id: &str,
+    resource_type: &str,
+    resource_id: &str,
+    config_json: Option<String>,
+) -> String {
+    let config_ref = config_json.as_deref();
+    let result = generate_request_inner(
+        schema_stub,
+        tools_json,
+        input_json,
+        principal_type,
+        principal_id,
+        resource_type,
+        resource_id,
+        config_ref,
+    );
+    drop(config_json);
+    serde_json::to_string(&result).unwrap_or_else(|e| {
+        format!(
+            r#"{{"isOk":false,"error":"Serialization error: {}","principal":null,"action":null,"resource":null,"entitiesJson":null}}"#,
+            e
+        )
+    })
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Mirrors generate_request's flat parameter list for WASM boundary"
+)]
+fn generate_request_inner(
+    schema_stub: &str,
+    tools_json: &str,
+    input_json: &str,
+    principal_type: &str,
+    principal_id: &str,
+    resource_type: &str,
+    resource_id: &str,
+    config_json: Option<&str>,
+) -> WasmRequestResult {
+    // Parse config. Mirrors the detailed error path in schema generation:
+    // surface the underlying serde_json message when one is available, and
+    // fall back to "unrecognized fields" only when the JSON is structurally
+    // valid but does not match the expected shape.
+    let config: SchemaGeneratorConfig = match config_json {
+        Some(json) if !json.is_empty() => {
+            let Ok(c) = serde_json::from_str::<WasmConfig>(json) else {
+                return req_err(format!(
+                    "Invalid config: {}",
+                    serde_json::from_str::<serde_json::Value>(json)
+                        .err()
+                        .map_or_else(|| "unrecognized fields".to_string(), |e| e.to_string())
+                ));
+            };
+            c.into()
+        }
+        _ => SchemaGeneratorConfig::default(),
+    };
+
+    // Build SchemaGenerator
+    let Ok(mut generator) = SchemaGenerator::from_cedarschema_str_with_config(schema_stub, config)
+    else {
+        return req_err("Schema error: failed to parse schema stub".to_string());
+    };
+
+    // Parse and add tool descriptions
+    let Ok(server_desc) = ServerDescription::from_json_str(tools_json) else {
+        return req_err("Invalid tool descriptions: failed to parse JSON".to_string());
+    };
+
+    if let Err(e) = generator.add_actions_from_server_description(&server_desc) {
+        return req_err(format!("Error adding tools: {e}"));
+    }
+
+    // Create RequestGenerator
+    let Ok(req_gen) = generator.new_request_generator() else {
+        return req_err("Failed to create request generator".to_string());
+    };
+
+    // Parse MCP tool input
+    let Ok(input) = Input::from_json_str(input_json) else {
+        return req_err("Invalid tool input: failed to parse JSON".to_string());
+    };
+
+    // Delegate to the generator crate's string-based wrapper, which builds
+    // namespaced principal / action / resource UIDs internally and propagates
+    // the real entity set the generator produces from the input.
+    match req_gen.generate_request_components_from_strings(
+        &input,
+        principal_type,
+        principal_id,
+        resource_type,
+        resource_id,
+    ) {
+        Ok(components) => WasmRequestResult {
+            principal: Some(components.principal),
+            action: Some(components.action),
+            resource: Some(components.resource),
+            entities_json: Some(components.entities_json),
+            error: None,
+            is_ok: true,
+        },
+        Err(e) => req_err(format!("Request generation error: {e}")),
+    }
+}
+
+fn req_err(error: String) -> WasmRequestResult {
+    WasmRequestResult {
+        principal: None,
+        action: None,
+        resource: None,
+        entities_json: None,
+        error: Some(error),
+        is_ok: false,
+    }
+}
+
 /// Convenience constructor for error results.
 fn err_result(error: String) -> WasmSchemaResult {
     WasmSchemaResult {
@@ -192,6 +360,7 @@ fn generate_schema_inner(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
     use super::*;
 
     #[test]
@@ -224,7 +393,6 @@ mod tests {
         ]"#;
 
         let result_json = generate_schema(stub, tools, None);
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
 
@@ -243,7 +411,6 @@ mod tests {
     #[test]
     fn test_invalid_stub() {
         let result_json = generate_schema("not a valid schema", "[]", None);
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(!result.is_ok);
@@ -266,7 +433,6 @@ mod tests {
         "#;
 
         let result_json = generate_schema(stub, "[]", None);
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         // Empty tools should still produce a valid (minimal) schema
@@ -289,7 +455,6 @@ mod tests {
         "#;
 
         let result_json = generate_schema(stub, "[]", Some("not valid json".to_string()));
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(!result.is_ok);
@@ -316,7 +481,6 @@ mod tests {
         "#;
 
         let result_json = generate_schema(stub, "not valid json", None);
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(!result.is_ok);
@@ -358,7 +522,6 @@ mod tests {
         let config = r#"{"numbersAsDecimal": true, "includeOutputs": false}"#;
 
         let result_json = generate_schema(stub, tools, Some(config.to_string()));
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(
@@ -388,7 +551,6 @@ mod tests {
 
         // Empty string config should use defaults (same as None)
         let result_json = generate_schema(stub, "[]", Some(String::new()));
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(result.is_ok);
@@ -451,7 +613,6 @@ mod tests {
         ]"#;
 
         let result_json = generate_schema(stub, tools, None);
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(result.is_ok);
@@ -470,6 +631,7 @@ mod tests {
 
 #[cfg(test)]
 mod coverage_tests {
+    #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
     use super::*;
 
     /// Stub shared across coverage tests.
@@ -520,7 +682,6 @@ mod coverage_tests {
         ]"#;
 
         let result_json = generate_schema(STUB, tools, None);
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(
@@ -566,7 +727,6 @@ mod coverage_tests {
         }"#;
 
         let result_json = generate_schema(STUB, tools, Some(config.to_string()));
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(
@@ -584,7 +744,6 @@ mod coverage_tests {
         // schema and schema_json should be None, error should explain
         // the failure, is_ok should be false.
         let result_json = generate_schema("invalid", "[]", None);
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(!result.is_ok);
@@ -629,7 +788,6 @@ mod coverage_tests {
         ]"#;
 
         let result_json = generate_schema(STUB, tools, None);
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(
@@ -662,7 +820,6 @@ mod coverage_tests {
         ]"#;
 
         let result_json = generate_schema(STUB, tools, None);
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(
@@ -695,7 +852,6 @@ mod coverage_tests {
 
         let config = r#"{"objectsAsRecords": true}"#;
         let result_json = generate_schema(STUB, tools, Some(config.to_string()));
-        #[expect(clippy::expect_used, reason = "Test assertion")]
         let result: WasmSchemaResult =
             serde_json::from_str(&result_json).expect("Should parse result");
         assert!(
@@ -717,5 +873,429 @@ mod coverage_tests {
 
         let result = generate_schema_inner(STUB, "[]", Some("{}"));
         assert!(result.is_ok);
+    }
+}
+
+#[cfg(test)]
+mod request_tests {
+    #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
+    use super::*;
+
+    const STUB: &str = r#"
+        namespace TestServer {
+            @mcp_principal
+            entity User;
+            @mcp_resource
+            entity McpServer;
+            action "call_tool" appliesTo {
+                principal: [User],
+                resource: [McpServer]
+            };
+        }
+    "#;
+
+    const TOOLS: &str = r#"[
+        {
+            "name": "read_file",
+            "description": "Read a file from disk",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string" }
+                },
+                "required": ["path"]
+            }
+        }
+    ]"#;
+
+    // NOTE: the happy-path coverage for request generation lives in
+    // `test_generate_request_entities_propagate_real_generator_output` below,
+    // which asserts exact principal / action / resource UIDs and non-empty
+    // entity output in one deeper test rather than several shallow ones.
+
+    #[test]
+    fn test_generate_request_invalid_input() {
+        let result_json = generate_request(
+            STUB,
+            TOOLS,
+            "not valid json",
+            "User",
+            "alice",
+            "McpServer",
+            "server1",
+            None,
+        );
+        let result: WasmRequestResult =
+            serde_json::from_str(&result_json).expect("Should parse result");
+        assert!(!result.is_ok);
+        assert!(result
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("Invalid tool input"));
+    }
+
+    #[test]
+    fn test_generate_request_invalid_stub() {
+        let input = r#"{"params": {"tool": "read_file", "args": {"path": "/tmp"}}}"#;
+        let result_json = generate_request(
+            "invalid schema",
+            TOOLS,
+            input,
+            "User",
+            "alice",
+            "McpServer",
+            "server1",
+            None,
+        );
+        let result: WasmRequestResult =
+            serde_json::from_str(&result_json).expect("Should parse result");
+        assert!(!result.is_ok);
+        assert!(result
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("Schema error"));
+    }
+
+    #[test]
+    fn test_generate_request_entities_propagate_real_generator_output() {
+        // Regression for PR #73 review: the WASM crate previously hardcoded
+        // `entities_json: "[]"` instead of forwarding the generator's real
+        // output. A hardcoded "[]" would pass "is an array" and
+        // "starts_with('[')" checks, so the assertion has to require
+        // entities that only the real generator can produce.
+        //
+        // Per the generator's context-building rules, inputs with nested
+        // objects, nulls, and floats become entity attributes. Using an
+        // input that must produce a non-empty entity set makes the test
+        // fail under a regression to the old hardcoded behavior.
+        let tools = r#"[{
+            "name": "ingest",
+            "description": "Ingest a record",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "metadata": {
+                        "type": "object",
+                        "properties": {
+                            "source": { "type": "string" },
+                            "region": { "type": "string" }
+                        },
+                        "required": ["source"]
+                    },
+                    "score": { "type": "number" },
+                    "note":  { "type": "string" }
+                },
+                "required": ["metadata", "score"]
+            }
+        }]"#;
+        let input = r#"{
+            "params": {
+                "tool": "ingest",
+                "args": {
+                    "metadata": { "source": "sensor-42", "region": "us-east" },
+                    "score": 0.87,
+                    "note": "ok"
+                }
+            }
+        }"#;
+
+        let result_json =
+            generate_request(STUB, tools, input, "User", "alice", "McpServer", "s1", None);
+        let result: WasmRequestResult =
+            serde_json::from_str(&result_json).expect("Should parse result");
+
+        assert!(result.is_ok, "Error: {:?}", result.error);
+
+        // Principal / action / resource must be correctly namespaced.
+        assert_eq!(
+            result.principal.as_deref(),
+            Some(r#"TestServer::User::"alice""#),
+            "principal was not namespaced correctly",
+        );
+        assert!(
+            result
+                .action
+                .as_deref()
+                .unwrap_or_default()
+                .contains("TestServer::Action::\"ingest\""),
+            "action should be namespaced to the schema: {:?}",
+            result.action,
+        );
+        assert_eq!(
+            result.resource.as_deref(),
+            Some(r#"TestServer::McpServer::"s1""#),
+            "resource was not namespaced correctly",
+        );
+
+        // Entities must be the generator's real output, not a hardcoded "[]".
+        let ej = result
+            .entities_json
+            .as_ref()
+            .expect("entities_json present");
+        let parsed: serde_json::Value =
+            serde_json::from_str(ej).expect("entities_json should be valid JSON");
+        let arr = parsed
+            .as_array()
+            .expect("entities_json should be a JSON array");
+        assert!(
+            !arr.is_empty(),
+            "entities_json must contain entities the generator produced from the \
+             nested-object / float / null input. A hardcoded \"[]\" would fail here. \
+             Got: {ej}"
+        );
+    }
+
+    #[test]
+    fn test_generate_request_error_fields_complete() {
+        let result_json =
+            generate_request(STUB, TOOLS, "bad", "User", "alice", "McpServer", "s1", None);
+        let result: WasmRequestResult =
+            serde_json::from_str(&result_json).expect("Should parse result");
+        assert!(!result.is_ok);
+        assert!(result.principal.is_none());
+        assert!(result.action.is_none());
+        assert!(result.resource.is_none());
+        assert!(result.entities_json.is_none());
+        assert!(result.error.is_some());
+    }
+
+    #[test]
+    fn test_generate_request_invalid_config() {
+        let input = r#"{"params": {"tool": "read_file", "args": {"path": "/tmp"}}}"#;
+        let result_json = generate_request(
+            STUB,
+            TOOLS,
+            input,
+            "User",
+            "alice",
+            "McpServer",
+            "s1",
+            Some("not valid json".to_string()),
+        );
+        let result: WasmRequestResult =
+            serde_json::from_str(&result_json).expect("Should parse result");
+        assert!(!result.is_ok);
+        assert!(result
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("Invalid config"));
+    }
+
+    #[test]
+    fn test_generate_request_invalid_tools_json() {
+        let input = r#"{"params": {"tool": "read_file", "args": {"path": "/tmp"}}}"#;
+        let result_json = generate_request(
+            STUB,
+            "not valid tools json",
+            input,
+            "User",
+            "alice",
+            "McpServer",
+            "s1",
+            None,
+        );
+        let result: WasmRequestResult =
+            serde_json::from_str(&result_json).expect("Should parse result");
+        assert!(!result.is_ok);
+        assert!(result
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("Invalid tool descriptions"));
+    }
+
+    #[test]
+    fn test_generate_request_empty_config_uses_defaults() {
+        let input = r#"{"params": {"tool": "read_file", "args": {"path": "/tmp"}}}"#;
+        let result_json = generate_request(
+            STUB,
+            TOOLS,
+            input,
+            "User",
+            "alice",
+            "McpServer",
+            "s1",
+            Some(String::new()),
+        );
+        let result: WasmRequestResult =
+            serde_json::from_str(&result_json).expect("Should parse result");
+        assert!(
+            result.is_ok,
+            "Empty config should use defaults: {:?}",
+            result.error
+        );
+    }
+
+    #[test]
+    fn test_generate_request_with_explicit_config() {
+        let input = r#"{"params": {"tool": "read_file", "args": {"path": "/tmp"}}}"#;
+        let config = r#"{"numbersAsDecimal": true}"#;
+        let result_json = generate_request(
+            STUB,
+            TOOLS,
+            input,
+            "User",
+            "alice",
+            "McpServer",
+            "s1",
+            Some(config.to_string()),
+        );
+        let result: WasmRequestResult =
+            serde_json::from_str(&result_json).expect("Should parse result");
+        assert!(
+            result.is_ok,
+            "Explicit config should work: {:?}",
+            result.error
+        );
+    }
+
+    #[test]
+    fn test_generate_request_multi_tool() {
+        let multi_tools = r#"[
+            {
+                "name": "read_file",
+                "description": "Read a file",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": { "path": { "type": "string" } },
+                    "required": ["path"]
+                }
+            },
+            {
+                "name": "write_file",
+                "description": "Write a file",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string" },
+                        "content": { "type": "string" }
+                    },
+                    "required": ["path", "content"]
+                }
+            }
+        ]"#;
+        let input = r#"{"params": {"tool": "write_file", "args": {"path": "/tmp/out", "content": "hello"}}}"#;
+        let result_json = generate_request(
+            STUB,
+            multi_tools,
+            input,
+            "User",
+            "alice",
+            "McpServer",
+            "s1",
+            None,
+        );
+        let result: WasmRequestResult =
+            serde_json::from_str(&result_json).expect("Should parse result");
+        assert!(result.is_ok, "Multi-tool should work: {:?}", result.error);
+        assert!(
+            result
+                .action
+                .as_deref()
+                .unwrap_or("")
+                .contains("write_file"),
+            "Action should reference write_file, got: {:?}",
+            result.action
+        );
+    }
+
+    #[test]
+    fn test_generate_request_resource_format() {
+        let input = r#"{"params": {"tool": "read_file", "args": {"path": "/tmp"}}}"#;
+        let result_json = generate_request(
+            STUB,
+            TOOLS,
+            input,
+            "User",
+            "alice",
+            "McpServer",
+            "production-server",
+            None,
+        );
+        let result: WasmRequestResult =
+            serde_json::from_str(&result_json).expect("Should parse result");
+        assert!(result.is_ok, "Error: {:?}", result.error);
+        let resource = result.resource.unwrap();
+        assert!(
+            resource.contains("production-server"),
+            "Resource should contain the resource id, got: {}",
+            resource
+        );
+    }
+
+    #[test]
+    fn test_req_err_helper() {
+        let result = req_err("test error message".to_string());
+        assert!(!result.is_ok);
+        assert_eq!(result.error.as_deref(), Some("test error message"));
+        assert!(result.principal.is_none());
+        assert!(result.action.is_none());
+        assert!(result.resource.is_none());
+        assert!(result.entities_json.is_none());
+    }
+
+    #[test]
+    fn test_wasm_request_result_serialization() {
+        let result = WasmRequestResult {
+            principal: Some("NS::User::\"alice\"".to_string()),
+            action: Some("NS::Action::\"read\"".to_string()),
+            resource: Some("NS::McpServer::\"s1\"".to_string()),
+            entities_json: Some("[]".to_string()),
+            error: None,
+            is_ok: true,
+        };
+        let json = serde_json::to_string(&result).expect("Should serialize");
+        assert!(json.contains("\"isOk\":true"), "camelCase: {}", json);
+        assert!(
+            json.contains("\"entitiesJson\""),
+            "camelCase entities: {}",
+            json
+        );
+    }
+
+    // NOTE: a dedicated no-namespace-schema test used to live here, but the
+    // Cedar schema parser rejects unqualified `entity` declarations without
+    // a surrounding `namespace { ... }` block at this version. The
+    // namespace-absent code path is exercised indirectly by the generator
+    // crate's own tests against schemas that produce unqualified UIDs.
+
+    #[test]
+    fn test_generate_request_inner_all_error_paths() {
+        // Exercise every error branch in generate_request_inner
+
+        // 1. Invalid config
+        let r = generate_request_inner(STUB, TOOLS, "{}", "U", "a", "R", "r", Some("{bad"));
+        assert!(!r.is_ok);
+        assert!(r.error.as_deref().unwrap().contains("Invalid config"));
+
+        // 2. Invalid stub
+        let r = generate_request_inner("bad", TOOLS, "{}", "U", "a", "R", "r", None);
+        assert!(!r.is_ok);
+        assert!(r.error.as_deref().unwrap().contains("Schema error"));
+
+        // 3. Invalid tools
+        let r = generate_request_inner(STUB, "bad", "{}", "U", "a", "R", "r", None);
+        assert!(!r.is_ok);
+        assert!(
+            r.error
+                .as_deref()
+                .unwrap()
+                .contains("Invalid tool descriptions"),
+            "Got: {:?}",
+            r.error
+        );
+
+        // 4. Invalid input
+        let r = generate_request_inner(STUB, TOOLS, "bad", "U", "a", "R", "r", None);
+        assert!(!r.is_ok);
+        assert!(r.error.as_deref().unwrap().contains("Invalid tool input"));
+
+        // 5. Empty config string uses defaults (should succeed)
+        let input = r#"{"params": {"tool": "read_file", "args": {"path": "/tmp"}}}"#;
+        let r = generate_request_inner(STUB, TOOLS, input, "User", "a", "McpServer", "r", Some(""));
+        assert!(r.is_ok, "Empty config should succeed: {:?}", r.error);
     }
 }
