@@ -1,0 +1,81 @@
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type alert_toolInput = {
+    alert?: {
+      proj0: MyMcpServer::Null,
+      proj1: MyMcpServer::alert_tool::Input::alert::Proj1
+    }
+  };
+
+  entity McpServer;
+
+  entity Null;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  action "alert_tool" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: alert_toolInput,
+      session: CommonContext
+    }
+  };
+
+  action "call_tool";
+}
+
+namespace MyMcpServer::alert_tool::Input::alert::Proj1::activeOn {
+  entity Proj1 = {
+    dayOfWeek?: {
+      proj0: MyMcpServer::Null,
+      proj1: Set<String>
+    },
+    startTime?: {
+      proj0: MyMcpServer::Null,
+      proj1: MyMcpServer::alert_tool::Input::alert::Proj1::activeOn::Proj1::startTime::Proj1
+    }
+  };
+}
+
+namespace MyMcpServer::alert_tool::Input::alert {
+  entity Proj1 = {
+    activeOn?: {
+      proj0: MyMcpServer::Null,
+      proj1: MyMcpServer::alert_tool::Input::alert::Proj1::activeOn::Proj1
+    },
+    enabled?: {
+      proj0: MyMcpServer::Null,
+      proj1: Bool
+    },
+    groupByKeys?: {
+      proj0: MyMcpServer::Null,
+      proj1: Set<String>
+    },
+    phantomMode?: {
+      proj0: MyMcpServer::Null,
+      proj1: Bool
+    }
+  };
+}
+
+namespace MyMcpServer::alert_tool::Input::alert::Proj1::activeOn::Proj1::startTime {
+  entity Proj1 = {
+    hours?: {
+      proj0: MyMcpServer::Null,
+      proj1: Long
+    },
+    minutes?: {
+      proj0: MyMcpServer::Null,
+      proj1: Long
+    }
+  };
+}
+

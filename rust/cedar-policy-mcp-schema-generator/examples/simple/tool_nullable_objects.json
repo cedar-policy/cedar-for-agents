@@ -1,0 +1,38 @@
+{
+    "name": "alert_tool",
+    "description": "a tool with nullable object types",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "alert": {
+                "type": ["null", "object"],
+                "properties": {
+                    "enabled": {
+                        "type": ["null", "boolean"],
+                        "description": "Whether the alert is currently active"
+                    },
+                    "groupByKeys": {
+                        "type": ["null", "array"],
+                        "items": { "type": "string" }
+                    },
+                    "phantomMode": {
+                        "type": ["null", "boolean"]
+                    },
+                    "activeOn": {
+                        "type": ["null", "object"],
+                        "properties": {
+                            "dayOfWeek": { "type": ["null", "array"], "items": {"type": "string"} },
+                            "startTime": {
+                                "type": ["null", "object"],
+                                "properties": {
+                                    "hours": { "type": ["null", "integer"] },
+                                    "minutes": { "type": ["null", "integer"] }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

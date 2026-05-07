@@ -273,6 +273,19 @@ mod cli {
         cmd.unwrap().assert().success().stdout(expected);
     }
     #[test]
+    fn test_nullable_objects_cedar_schema() {
+        let expected =
+            std::fs::read_to_string("examples/simple/tool_nullable_objects.cedarschema").unwrap();
+
+        let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
+        let cmd = cmd
+            .arg("generate")
+            .arg("examples/stub.cedarschema")
+            .arg("examples/simple/tool_nullable_objects.json");
+        cmd.unwrap().assert().success().stdout(expected);
+    }
+
+    #[test]
     fn test_input_schema_does_not_exist_error() {
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
