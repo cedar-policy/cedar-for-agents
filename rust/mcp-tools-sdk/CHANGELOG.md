@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added:
 - Adds support for parsing and type validation of requests to (`Input` struct) and responses from (`Output` struct) MCP servers for the `tools/call` procedure.
 
+### Fixed:
+- Fixed parsing of JSON Schema type arrays containing `"object"` or `"array"` (e.g., `"type": ["null", "object"]`). Previously, only primitive types were supported in type arrays.
+
 ## [0.2.0] - 2025-12-05
 
 ### Added:

@@ -269,9 +269,11 @@ fn property_from_json_value(
     ))
 }
 
+/// Extract the `PropertyType` from a json value.
 fn property_type_from_json_value(
     json_value: &LocatedValue,
 ) -> Result<PropertyType, DeserializationError> {
+    // Should be a JSON Schema Object like {"type": "string", "format": "date""}
     let ptype_obj = json_value.get_object().ok_or_else(|| {
         DeserializationError::unexpected_type(
             json_value,
@@ -287,42 +289,9 @@ fn property_type_from_json_value(
             Some("number") => Ok(PropertyType::Number),
             Some("string") => {
                 if let Some(enum_json) = ptype_obj.get("enum") {
-                    let enum_variants = enum_json.get_array().ok_or_else(|| DeserializationError::unexpected_type(
-                        enum_json,
-                        "Expected `enum` attributed to be a JSON array of strings.",
-                        ContentType::PropertyType
-                    ))?;
-                    let variants = enum_variants.iter().map(|variant| {
-                        variant.get_smolstr().ok_or_else(|| DeserializationError::unexpected_type(
-                            variant,
-                            "Expected element of `enum` attribute to be a string.",
-                            ContentType::PropertyType
-                        ))
-                    }).collect::<Result<Vec<_>,_>>()?;
-                    if variants.is_empty() {
-                        Err(DeserializationError::unexpected_value(
-                            enum_json,
-                            "Expected non-empty list of variants for `enum` attribute.",
-                            ContentType::PropertyType
-                        ))
-                    } else {
-                        Ok(PropertyType::Enum { variants })
-                    }
+                    enum_from_json_value(enum_json)
                 } else if let Some(format_json) = ptype_obj.get("format") {
-                    match format_json.get_str() {
-                        Some("date") => Ok(PropertyType::Datetime),
-                        Some("date-time") => Ok(PropertyType::Datetime),
-                        Some("duration") => Ok(PropertyType::Duration),
-                        Some("ipv4") => Ok(PropertyType::IpAddr),
-                        Some("ipv6") => Ok(PropertyType::IpAddr),
-                        Some("decimal") => Ok(PropertyType::Decimal),
-                        Some(_) => Ok(PropertyType::String),
-                        None => Err(DeserializationError::unexpected_type(
-                            format_json,
-                            "Expected `format` attribute to be a string.",
-                            ContentType::PropertyType
-                        ))
-                    }
+                    property_type_of_format(format_json)
                 } else {
                     Ok(PropertyType::String)
                 }
@@ -357,38 +326,8 @@ fn property_type_from_json_value(
                 "Expected one of: `boolean`, `integer`, `float`, `number`, `string`, `null`, `array`, `object`.",
                 ContentType::PropertyType
             )),
-            None => {
-                if let Some(types_json) = type_json.get_array() {
-                    let types = types_json
-                        .iter()
-                        .map(|ty_json| {
-                            match ty_json.get_str() {
-                                Some("boolean") => Ok(PropertyType::Bool),
-                                Some("integer") => Ok(PropertyType::Integer),
-                                Some("float") => Ok(PropertyType::Float),
-                                Some("number") => Ok(PropertyType::Number),
-                                Some("string") => Ok(PropertyType::String),
-                                Some("null") => Ok(PropertyType::Null),
-                                Some(_) => Err(DeserializationError::unexpected_value(
-                                    ty_json,
-                                    "Expected one of `boolean`, `integer`, `float`, `number`, `string`, `null`.",
-                                    ContentType::PropertyType
-                                )),
-                                None => property_type_from_json_value(ty_json)
-                            }
-                        })
-                        .collect::<Result<_,_>>()?;
-                    Ok(PropertyType::Tuple { types })
-                } else if type_json.is_bool() || type_json.is_null() {
-                    Ok(PropertyType::Unknown)
-                } else {
-                    Err(DeserializationError::unexpected_type(
-                        type_json,
-                        "Expected `type` attribute to be a string.",
-                        ContentType::PropertyType
-                    ))
-                }
-            }
+            // The type is not a simple string, it should be an array
+            None => tuple_type_of_json_value(type_json, ptype_obj)
         }
     } else if let Some(union_json) = get_value_from_map(ptype_obj, &["anyOf", "oneOf"]) {
         let typ_arr = union_json.get_array().ok_or_else(|| {
@@ -421,6 +360,125 @@ fn property_type_from_json_value(
         Ok(PropertyType::Ref { name: s.into() })
     } else {
         Ok(PropertyType::Unknown)
+    }
+}
+
+fn enum_from_json_value(enum_json: &LocatedValue) -> Result<PropertyType, DeserializationError> {
+    let enum_variants = enum_json.get_array().ok_or_else(|| {
+        DeserializationError::unexpected_type(
+            enum_json,
+            "Expected `enum` attributed to be a JSON array of strings.",
+            ContentType::PropertyType,
+        )
+    })?;
+    let variants = enum_variants
+        .iter()
+        .map(|variant| {
+            variant.get_smolstr().ok_or_else(|| {
+                DeserializationError::unexpected_type(
+                    variant,
+                    "Expected element of `enum` attribute to be a string.",
+                    ContentType::PropertyType,
+                )
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if variants.is_empty() {
+        Err(DeserializationError::unexpected_value(
+            enum_json,
+            "Expected non-empty list of variants for `enum` attribute.",
+            ContentType::PropertyType,
+        ))
+    } else {
+        Ok(PropertyType::Enum { variants })
+    }
+}
+
+fn property_type_of_format(
+    format_json: &LocatedValue,
+) -> Result<PropertyType, DeserializationError> {
+    match format_json.get_str() {
+        Some("date") => Ok(PropertyType::Datetime),
+        Some("date-time") => Ok(PropertyType::Datetime),
+        Some("duration") => Ok(PropertyType::Duration),
+        Some("ipv4") => Ok(PropertyType::IpAddr),
+        Some("ipv6") => Ok(PropertyType::IpAddr),
+        Some("decimal") => Ok(PropertyType::Decimal),
+        Some(_) => Ok(PropertyType::String),
+        None => Err(DeserializationError::unexpected_type(
+            format_json,
+            "Expected `format` attribute to be a string.",
+            ContentType::PropertyType,
+        )),
+    }
+}
+
+/// Returns a [`PropertyType::Tuple { types }`] if the json value `type_json`
+/// represents a type union.
+/// Return [`PropertyType::Unknown`] if the json value is a boolean or `null`.
+/// Otherwise, throws a `DeserializationError`.
+fn tuple_type_of_json_value(
+    type_json: &LocatedValue,
+    top_typ: &LinkedHashMap<LocatedString, LocatedValue>,
+) -> Result<PropertyType, DeserializationError> {
+    if let Some(types_json) = type_json.get_array() {
+        let types = types_json
+            .iter()
+            .map(|ty_json| tuple_type_element_of_json_value_array_element(ty_json, top_typ))
+            .collect::<Result<_, _>>()?;
+        Ok(PropertyType::Tuple { types })
+    } else if type_json.is_bool() || type_json.is_null() {
+        Ok(PropertyType::Unknown)
+    } else {
+        Err(DeserializationError::unexpected_type(
+            type_json,
+            "Expected `type` attribute to be a string.",
+            ContentType::PropertyType,
+        ))
+    }
+}
+
+fn tuple_type_element_of_json_value_array_element(
+    ty_json: &LocatedValue,
+    top_typ: &LinkedHashMap<LocatedString, LocatedValue>,
+) -> Result<PropertyType, DeserializationError> {
+    match ty_json.get_str() {
+        Some("boolean") => Ok(PropertyType::Bool),
+        Some("integer") => Ok(PropertyType::Integer),
+        Some("float") => Ok(PropertyType::Float),
+        Some("number") => Ok(PropertyType::Number),
+        Some("string") => Ok(PropertyType::String),
+        Some("null") => Ok(PropertyType::Null),
+        Some("object") => {
+            let required = required_from_json_value(top_typ.get("required"), ContentType::ToolParameters)?;
+            let properties = properties_from_json_value(top_typ.get("properties"), &required, ContentType::ToolParameters)?;
+            let additional_properties = top_typ.get("additionalProperties").and_then(|json| {
+                property_type_from_json_value(json).ok()
+            }).map(Box::new);
+            Ok(PropertyType::Object { properties, additional_properties })
+        }
+        Some("array") => {
+            top_typ.get("items").map(|items_json| {
+                if items_json.is_object() {
+                    let items_type = property_type_from_json_value(items_json)?;
+                    Ok(PropertyType::Array { element_ty: Box::new(items_type) })
+                } else if items_json.is_bool() || items_json.is_null() {
+                    Ok(PropertyType::Array { element_ty: Box::new(PropertyType::Unknown) })
+                } else {
+                    Err(DeserializationError::unexpected_type(
+                        items_json,
+                        "Expected `items` attribute to be a JSON Schema (object) describing the type of array items.",
+                        ContentType::PropertyType
+                    ))
+                }
+            }).unwrap_or_else(|| Ok(PropertyType::Array { element_ty: Box::new(PropertyType::Unknown) }))
+        }
+        Some(_) => Err(DeserializationError::unexpected_value(
+            ty_json,
+            "Expected one of: `boolean`, `integer`, `float`, `number`, `string`, `null`, `array`, `object`.",
+            ContentType::PropertyType
+        )),
+        None => property_type_from_json_value(ty_json)
     }
 }
 
@@ -543,4 +601,94 @@ fn typedefs_are_well_founded(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::parser::json_parser::JsonParser;
+
+    fn parse_property_type(json: &str) -> Result<PropertyType, DeserializationError> {
+        let mut parser = JsonParser::new(json);
+        let value = parser.get_value().expect("JSON should parse");
+        property_type_from_json_value(&value)
+    }
+
+    #[test]
+    fn test_property_type_simple_object() {
+        let result = parse_property_type(
+            r#"{"type": "object", "properties": {"name": {"type": "string"}}}"#,
+        );
+        assert!(matches!(result, Ok(PropertyType::Object { .. })));
+    }
+
+    #[test]
+    fn test_property_type_simple_array() {
+        let result = parse_property_type(r#"{"type": "array", "items": {"type": "integer"}}"#);
+        assert!(matches!(
+            result,
+            Ok(PropertyType::Array { element_ty }) if matches!(*element_ty, PropertyType::Integer)
+        ));
+    }
+
+    #[test]
+    fn test_property_type_primitive_type_array() {
+        let result = parse_property_type(r#"{"type": ["null", "string"]}"#);
+        assert!(matches!(result, Ok(PropertyType::Tuple { types }) if types.len() == 2));
+    }
+
+    #[test]
+    fn test_property_type_string_with_enum() {
+        let result = parse_property_type(r#"{"type": "string", "enum": ["a", "b", "c"]}"#);
+        assert!(matches!(result, Ok(PropertyType::Enum { variants }) if variants.len() == 3));
+    }
+
+    #[test]
+    fn test_property_type_anyof_union() {
+        let result = parse_property_type(r#"{"anyOf": [{"type": "string"}, {"type": "integer"}]}"#);
+        assert!(matches!(result, Ok(PropertyType::Union { types }) if types.len() == 2));
+    }
+
+    #[test]
+    fn test_property_type_ref() {
+        let result = parse_property_type(r##"{"$ref": "#/$defs/MyType"}"##);
+        assert!(matches!(result, Ok(PropertyType::Ref { name }) if name == "MyType"));
+    }
+
+    #[test]
+    fn test_union_type_array_with_nested_objects() {
+        let json = r#"{
+            "type": ["null", "object"],
+            "properties": {
+                "enabled": {
+                    "type": ["null", "boolean"],
+                    "description": "Whether the alert is currently active"
+                },
+                "groupByKeys": {
+                    "type": ["null", "array"],
+                    "items": { "type": "string" }
+                },
+                "phantomMode": {
+                    "type": ["null", "boolean"]
+                },
+                "activeOn": {
+                    "type": ["null", "object"],
+                    "properties": {
+                        "dayOfWeek": { "type": ["null", "array"], "items": {"type": "string"} },
+                        "startTime": {
+                            "type": ["null", "object"],
+                            "properties": {
+                                "hours": { "type": ["null", "integer"] },
+                                "minutes": { "type": ["null", "integer"] }
+                            }
+                        }
+                    }
+                }
+            }
+        }"#;
+        let mut parser = JsonParser::new(json);
+        let value = parser.get_value().expect("JSON should parse");
+        let result = property_type_from_json_value(&value);
+        assert!(result.is_ok(), "Expected successful parse, got: {result:?}");
+    }
 }
