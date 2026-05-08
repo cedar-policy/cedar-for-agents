@@ -1688,69 +1688,86 @@ mod test {
     }
 
     #[test]
-    fn test_generate_request_default_config_tuple() {
+    fn test_generate_request_default_config_type_array_union() {
         let request_generator = get_request_generator(
             SchemaGeneratorConfig::default(),
             r#"{
-    "name": "test_tool",
-    "description": "test_description",
-    "parameters": {
-        "properties": {
-            "tuple_attr": {
-                "type": ["boolean", "integer"]
-            }
-        }
-    }
-}"#,
+                "name": "test_tool",
+                "description": "test_description",
+                "parameters": {
+                    "properties": {
+                        "union_attr": {
+                            "type": ["boolean", "integer"]
+                        }
+                    }
+                }
+            }"#,
         );
 
+        let check = |input, field: &str, expect_lit: Literal| {
+            let principal = r#"Test::user::"""#.parse::<EntityUID>().unwrap();
+            let resource = r#"Test::resource::"""#.parse::<EntityUID>().unwrap();
+
+            let (request, entities) = request_generator
+                .generate_request(
+                    principal.clone(),
+                    resource.clone(),
+                    Context::empty(),
+                    Entities::new(),
+                    &input,
+                    None,
+                )
+                .expect("Failed to generate request");
+
+            assert_eq!(request.principal().uid().unwrap(), &principal);
+            assert_eq!(
+                request.action().uid().unwrap(),
+                &r#"Test::Action::"test_tool""#.parse::<EntityUID>().unwrap()
+            );
+            assert_eq!(request.resource().uid().unwrap(), &resource);
+            assert_eq!(entities, Entities::new());
+            assert_matches!(request.context(), Some(Context::Value(kvs)) if {
+                let map = &**kvs;
+                map.len() == 1 &&
+                matches!(map.get("input").map(Value::value_kind), Some(ValueKind::Record(ikvs)) if {
+                    let map = &**ikvs;
+                    map.len() == 1 &&
+                    matches!(map.get("union_attr").map(Value::value_kind), Some(ValueKind::Record(iikvs)) if {
+                        let map = &**iikvs;
+                        map.len() == 1 &&
+                        matches!(map.get(field).map(Value::value_kind), Some(ValueKind::Lit(_)))
+                        && map.get(field).unwrap().value_kind() == &ValueKind::Lit(expect_lit)
+                    })
+                })
+            });
+        };
+
+        // First alternative: boolean
         let input = Input::from_json_str(
             r#"{
-    "params": {
-        "tool": "test_tool",
-        "args": {
-            "tuple_attr": [true, 0]
-        }
-    }
-}"#,
+                "params": {
+                    "tool": "test_tool",
+                    "args": {
+                        "union_attr": true
+                    }
+                }
+            }"#,
         )
         .expect("Failed to parse input");
+        check(input, "typeChoice0", Literal::Bool(true));
 
-        let principal = r#"Test::user::"""#.parse::<EntityUID>().unwrap();
-        let resource = r#"Test::resource::"""#.parse::<EntityUID>().unwrap();
-
-        let (request, entities) = request_generator
-            .generate_request(
-                principal.clone(),
-                resource.clone(),
-                Context::empty(),
-                Entities::new(),
-                &input,
-                None,
-            )
-            .expect("Failed to generate request");
-
-        assert_eq!(request.principal().uid().unwrap(), &principal);
-        assert_eq!(
-            request.action().uid().unwrap(),
-            &r#"Test::Action::"test_tool""#.parse::<EntityUID>().unwrap()
-        );
-        assert_eq!(request.resource().uid().unwrap(), &resource);
-        assert_eq!(entities, Entities::new());
-        assert_matches!(request.context(), Some(Context::Value(kvs)) if {
-            let map = &**kvs;
-            map.len() == 1 &&
-            matches!(map.get("input").map(Value::value_kind), Some(ValueKind::Record(ikvs)) if {
-                let map = &**ikvs;
-                map.len() == 1 &&
-                matches!(map.get("tuple_attr").map(Value::value_kind), Some(ValueKind::Record(iikvs)) if {
-                    let map = &**iikvs;
-                    map.len() == 2 &&
-                    matches!(map.get("proj0").map(Value::value_kind), Some(ValueKind::Lit(Literal::Bool(true)))) &&
-                    matches!(map.get("proj1").map(Value::value_kind), Some(ValueKind::Lit(Literal::Long(0))))
-                })
-            })
-        });
+        let input2 = Input::from_json_str(
+            r#"{
+                "params": {
+                    "tool": "test_tool",
+                    "args": {
+                        "union_attr": 0
+                    }
+                }
+            }"#,
+        )
+        .expect("Failed to parse input");
+        check(input2, "typeChoice1", Literal::Long(0));
     }
 
     #[test]
