@@ -1,0 +1,48 @@
+{
+  "result": {
+    "tools": [
+      {
+        "name": "tool_a",
+        "description": "Tool A with enum 'mode' having variants fast/slow",
+        "inputSchema": {
+          "json": {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": ["fast", "slow"],
+                "description": "Mode for tool A"
+              },
+              "query": {
+                "type": "string",
+                "description": "The query string"
+              }
+            },
+            "required": ["query"]
+          }
+        }
+      },
+      {
+        "name": "tool_b",
+        "description": "Tool B with enum 'mode' having different variants sync/async",
+        "inputSchema": {
+          "json": {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": ["sync", "async"],
+                "description": "Mode for tool B - different variants from tool A"
+              },
+              "query": {
+                "type": "string",
+                "description": "The query string"
+              }
+            },
+            "required": ["query"]
+          }
+        }
+      }
+    ]
+  }
+}

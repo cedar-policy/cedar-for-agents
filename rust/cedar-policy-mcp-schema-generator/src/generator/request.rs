@@ -26,6 +26,7 @@ use cedar_policy_core::validator::ValidatorSchema;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
 
 use super::identifiers;
+use super::schema::{DeduplicatedEntityType, EntityTypeFingerprint};
 use crate::{RequestGeneratorError, SchemaGeneratorConfig};
 
 use mcp_tools_sdk::data::{Input, Output, TypedValue};
@@ -60,6 +61,8 @@ pub struct RequestGenerator {
     tools: ServerDescription,
     root_namespace: Option<Name>,
     schema: ValidatorSchema,
+    /// Resolved deduplication decisions from the schema generator.
+    resolved_dedup: Option<HashMap<EntityTypeFingerprint, DeduplicatedEntityType>>,
 }
 
 #[derive(Clone, Debug)]
@@ -104,12 +107,14 @@ impl RequestGenerator {
         tools: ServerDescription,
         root_namespace: Option<Name>,
         schema: ValidatorSchema,
+        resolved_dedup: Option<HashMap<EntityTypeFingerprint, DeduplicatedEntityType>>,
     ) -> Self {
         Self {
             config,
             tools,
             root_namespace,
             schema,
+            resolved_dedup,
         }
     }
 
@@ -455,9 +460,26 @@ impl RequestGenerator {
             }
             TypedValue::Enum(s) => {
                 let ty: EntityType = ty_name.parse()?;
-                let ty = ty.qualify_with(namespace);
+
+                // Check if this enum was deduplicated to a different namespace.
+                // Match by base_name AND verify the current namespace is a source,
+                // to avoid false matches with same-named enums that have different variants.
+                let qualified_ty = if let Some(ref resolved) = self.resolved_dedup {
+                    let dedup_info = resolved.iter().find(|(fp, info)| {
+                        fp.base_name().to_string() == ty_name
+                            && info.source_namespaces.contains(&namespace.cloned())
+                    });
+                    if let Some((_, info)) = dedup_info {
+                        ty.qualify_with(info.lca_namespace.as_ref())
+                    } else {
+                        ty.qualify_with(namespace)
+                    }
+                } else {
+                    ty.qualify_with(namespace)
+                };
+
                 let eid = Eid::new(s.as_str());
-                let euid = EntityUID::from_components(ty, eid, None);
+                let euid = EntityUID::from_components(qualified_ty, eid, None);
                 let euid = if self.config.flatten_namespaces {
                     flatten_name(euid)
                 } else {
@@ -2406,5 +2428,205 @@ mod test {
             result.is_err(),
             "Invalid principal type should produce an error"
         );
+    }
+
+    #[test]
+    fn test_generate_request_dedup_enum_resolves_to_lca() {
+        // Two tools share `format` enum ["markdown", "text"]. With dedup enabled,
+        // the request generator should resolve the enum to the LCA namespace (Test)
+        // rather than the tool-local namespace.
+        let tools_json = r#"{
+            "result": {
+                "tools": [
+                    {
+                        "name": "tool_a",
+                        "description": "Tool A",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "format": {
+                                        "type": "string",
+                                        "enum": ["markdown", "text"]
+                                    }
+                                },
+                                "required": ["format"]
+                            }
+                        }
+                    },
+                    {
+                        "name": "tool_b",
+                        "description": "Tool B",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "format": {
+                                        "type": "string",
+                                        "enum": ["markdown", "text"]
+                                    }
+                                },
+                                "required": ["format"]
+                            }
+                        }
+                    }
+                ]
+            }
+        }"#;
+
+        let config = SchemaGeneratorConfig::default().deduplicate_entity_types(true);
+        let mut schema_generator = get_schema_generator(config);
+        let description =
+            ServerDescription::from_json_str(tools_json).expect("Failed to parse tools JSON");
+        schema_generator
+            .add_actions_from_server_description(&description)
+            .expect("Failed to add server description");
+
+        let request_generator = schema_generator
+            .new_request_generator()
+            .expect("Failed to create request generator");
+
+        let input = Input::from_json_str(
+            r#"{
+            "params": {
+                "tool": "tool_a",
+                "args": { "format": "markdown" }
+            }
+        }"#,
+        )
+        .expect("Failed to parse input");
+
+        let principal = r#"Test::user::"""#.parse::<EntityUID>().unwrap();
+        let resource = r#"Test::resource::"""#.parse::<EntityUID>().unwrap();
+
+        let (request, _entities) = request_generator
+            .generate_request(
+                principal,
+                resource,
+                Context::empty(),
+                Entities::new(),
+                &input,
+                None,
+            )
+            .expect("Failed to generate request");
+
+        // The enum should resolve to the LCA namespace (Test::format) not the tool-local one
+        assert_matches!(request.context(), Some(Context::Value(kvs)) if {
+            let map = &**kvs;
+            matches!(map.get("input").map(Value::value_kind), Some(ValueKind::Record(ikvs)) if {
+                let map = &**ikvs;
+                matches!(map.get("format").map(Value::value_kind), Some(ValueKind::Lit(Literal::EntityUID(eid))) if {
+                    **eid == "Test::format::\"markdown\"".parse().expect("Failed to parse EID")
+                })
+            })
+        });
+    }
+
+    #[test]
+    fn test_generate_request_dedup_enum_non_deduped_stays_local() {
+        // tool_a and tool_b share `format` ["markdown", "text"] (deduplicated to LCA).
+        // tool_c has `format` ["json", "xml"] (not deduplicated — stays local).
+        // Verify that tool_c's enum resolves to its local namespace.
+        let tools_json = r#"{
+            "result": {
+                "tools": [
+                    {
+                        "name": "tool_a",
+                        "description": "Tool A",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "format": {
+                                        "type": "string",
+                                        "enum": ["markdown", "text"]
+                                    }
+                                },
+                                "required": ["format"]
+                            }
+                        }
+                    },
+                    {
+                        "name": "tool_b",
+                        "description": "Tool B",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "format": {
+                                        "type": "string",
+                                        "enum": ["markdown", "text"]
+                                    }
+                                },
+                                "required": ["format"]
+                            }
+                        }
+                    },
+                    {
+                        "name": "tool_c",
+                        "description": "Tool C",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "format": {
+                                        "type": "string",
+                                        "enum": ["json", "xml"]
+                                    }
+                                },
+                                "required": ["format"]
+                            }
+                        }
+                    }
+                ]
+            }
+        }"#;
+
+        let config = SchemaGeneratorConfig::default().deduplicate_entity_types(true);
+        let mut schema_generator = get_schema_generator(config);
+        let description =
+            ServerDescription::from_json_str(tools_json).expect("Failed to parse tools JSON");
+        schema_generator
+            .add_actions_from_server_description(&description)
+            .expect("Failed to add server description");
+
+        let request_generator = schema_generator
+            .new_request_generator()
+            .expect("Failed to create request generator");
+
+        let input = Input::from_json_str(
+            r#"{
+            "params": {
+                "tool": "tool_c",
+                "args": { "format": "json" }
+            }
+        }"#,
+        )
+        .expect("Failed to parse input");
+
+        let principal = r#"Test::user::"""#.parse::<EntityUID>().unwrap();
+        let resource = r#"Test::resource::"""#.parse::<EntityUID>().unwrap();
+
+        let (request, _entities) = request_generator
+            .generate_request(
+                principal,
+                resource,
+                Context::empty(),
+                Entities::new(),
+                &input,
+                None,
+            )
+            .expect("Failed to generate request");
+
+        // tool_c's format should resolve locally, NOT to the LCA
+        assert_matches!(request.context(), Some(Context::Value(kvs)) if {
+            let map = &**kvs;
+            matches!(map.get("input").map(Value::value_kind), Some(ValueKind::Record(ikvs)) if {
+                let map = &**ikvs;
+                matches!(map.get("format").map(Value::value_kind), Some(ValueKind::Lit(Literal::EntityUID(eid))) if {
+                    **eid == "Test::tool_c::Input::format::\"json\"".parse().expect("Failed to parse EID")
+                })
+            })
+        });
     }
 }

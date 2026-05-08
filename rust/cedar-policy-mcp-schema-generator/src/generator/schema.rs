@@ -33,7 +33,7 @@ use nonempty::NonEmpty;
 
 use smol_str::{SmolStr, ToSmolStr};
 
-use std::collections::{btree_map::Entry, BTreeMap, HashMap};
+use std::collections::{btree_map::Entry, BTreeMap, HashMap, HashSet};
 
 /// A type reserved to configure how the schema generator functions
 #[derive(Debug, Clone)]
@@ -43,6 +43,7 @@ pub struct SchemaGeneratorConfig {
     pub(crate) erase_annotations: bool,
     pub(crate) flatten_namespaces: bool,
     pub(crate) numbers_as_decimal: bool,
+    pub(crate) deduplicate_entity_types: bool,
 }
 
 impl SchemaGeneratorConfig {
@@ -120,6 +121,21 @@ impl SchemaGeneratorConfig {
             ..self
         }
     }
+
+    /// Updates config to set `deduplicate_entity_types` to `val` (default: false)
+    ///
+    /// If `deduplicate_entity_types` is set to `true`, then entity types with
+    /// equivalent definitions across multiple tools will be consolidated into
+    /// a single entity type placed in the lowest common ancestor namespace.
+    ///
+    /// Currently supports enum entity types (matched by name + variant values).
+    /// Future versions may extend to structural entity types.
+    pub fn deduplicate_entity_types(self, val: bool) -> Self {
+        Self {
+            deduplicate_entity_types: val,
+            ..self
+        }
+    }
 }
 
 impl Default for SchemaGeneratorConfig {
@@ -130,8 +146,135 @@ impl Default for SchemaGeneratorConfig {
             erase_annotations: true,
             flatten_namespaces: false,
             numbers_as_decimal: false,
+            deduplicate_entity_types: false,
         }
     }
+}
+
+/// A fingerprint that uniquely identifies an entity type's definition.
+/// Two entity types are considered equivalent (and thus deduplication candidates)
+/// if and only if they produce the same fingerprint.
+///
+/// Designed as an enum to support future extension to other entity type kinds.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) enum EntityTypeFingerprint {
+    /// Fingerprint for enum entity types: matched by name + ordered variant values.
+    Enum {
+        base_name: UnreservedId,
+        variants: Vec<SmolStr>,
+    },
+}
+
+impl EntityTypeFingerprint {
+    pub(crate) fn base_name(&self) -> &UnreservedId {
+        match self {
+            Self::Enum { base_name, .. } => base_name,
+        }
+    }
+}
+
+/// The resolved placement for a deduplicated entity type.
+#[derive(Debug, Clone)]
+pub(crate) struct DeduplicatedEntityType {
+    /// The LCA namespace where the shared entity type will be placed
+    pub(crate) lca_namespace: Option<Name>,
+    /// The original namespaces where this entity type appeared before dedup
+    pub(crate) source_namespaces: Vec<Option<Name>>,
+}
+
+/// Tracks all entity type occurrences and computes deduplication decisions.
+#[derive(Debug, Clone, Default)]
+struct DeduplicationMap {
+    /// Maps each unique fingerprint to the namespaces where it was seen
+    occurrences: HashMap<EntityTypeFingerprint, Vec<Option<Name>>>,
+}
+
+impl DeduplicationMap {
+    fn record(&mut self, fingerprint: EntityTypeFingerprint, namespace: Option<Name>) {
+        self.occurrences
+            .entry(fingerprint)
+            .or_default()
+            .push(namespace);
+    }
+
+    /// Resolve all duplicates: returns a map from fingerprint to placement info
+    /// for entity types that appear in more than one namespace.
+    fn resolve_duplicates(&self) -> HashMap<EntityTypeFingerprint, DeduplicatedEntityType> {
+        self.occurrences
+            .iter()
+            .filter(|(_, namespaces)| namespaces.len() > 1)
+            .map(|(fp, namespaces)| {
+                let lca = compute_lca(namespaces);
+                (
+                    fp.clone(),
+                    DeduplicatedEntityType {
+                        lca_namespace: lca,
+                        source_namespaces: namespaces.clone(),
+                    },
+                )
+            })
+            .collect()
+    }
+}
+
+/// Compute the lowest common ancestor namespace of a set of namespaces.
+///
+/// Namespaces are hierarchical (e.g., `MyMcpServer::tool_a::Input`).
+/// The LCA is the longest common prefix of all namespace paths.
+///
+/// Examples:
+/// - LCA of `A::B::C` and `A::B::D` is `A::B`
+/// - LCA of `A::B::C` and `A::D::E` is `A`
+/// - LCA of `A::B` and `A::B` is `A::B`
+///
+/// For the root namespace case (`None`), the LCA is `None` (global namespace).
+fn compute_lca(namespaces: &[Option<Name>]) -> Option<Name> {
+    // Empty list → None
+    if namespaces.is_empty() {
+        return None;
+    }
+
+    // If any namespace is None (global), the LCA is None
+    if namespaces.iter().any(|ns| ns.is_none()) {
+        return None;
+    }
+
+    // Convert each Name to its string representation
+    let name_strings: Vec<String> = namespaces
+        .iter()
+        .map(|ns| {
+            // Safe to unwrap: we checked for None above
+            #[expect(clippy::unwrap_used, reason = "None case handled above")]
+            ns.as_ref().unwrap().to_string()
+        })
+        .collect();
+
+    // Split each string into path segments
+    let segment_lists: Vec<Vec<&str>> = name_strings
+        .iter()
+        .map(|s| s.split("::").collect())
+        .collect();
+
+    let first = segment_lists.first()?;
+    let mut prefix_len = 0;
+
+    for (i, segment) in first.iter().enumerate() {
+        if segment_lists
+            .iter()
+            .all(|segs| segs.get(i) == Some(segment))
+        {
+            prefix_len = i + 1;
+        } else {
+            break;
+        }
+    }
+
+    if prefix_len == 0 {
+        return None;
+    }
+
+    let prefix: String = first.get(..prefix_len)?.join("::");
+    prefix.parse::<Name>().ok()
 }
 
 /// A type that allows constructing a Cedar Schema (Fragment)
@@ -151,6 +294,10 @@ pub struct SchemaGenerator {
     actions: Option<Vec<ActionEntityUID<RawName>>>,
     config: SchemaGeneratorConfig,
     tools: ServerDescription,
+    /// Resolved deduplication decisions, populated during pass 1
+    /// (only when deduplicate_entity_types is true).
+    /// Maps fingerprint → placement info for entity types that appear in multiple tools.
+    resolved_dedup: Option<HashMap<EntityTypeFingerprint, DeduplicatedEntityType>>,
 }
 
 impl SchemaGenerator {
@@ -290,6 +437,7 @@ impl SchemaGenerator {
             actions,
             config,
             tools: ServerDescription::new(Vec::new().into_iter(), HashMap::new()),
+            resolved_dedup: None,
         })
     }
 
@@ -314,7 +462,133 @@ impl SchemaGenerator {
             self.tools.clone(),
             self.namespace.clone(),
             schema,
+            self.resolved_dedup.clone(),
         ))
+    }
+
+    /// Look up whether a given fingerprint was deduplicated.
+    /// Returns the LCA namespace if so.
+    fn get_dedup_namespace(&self, fingerprint: &EntityTypeFingerprint) -> Option<&Option<Name>> {
+        self.resolved_dedup
+            .as_ref()
+            .and_then(|map| map.get(fingerprint))
+            .map(|d| &d.lca_namespace)
+    }
+
+    /// Recursively scan parameters for enum properties and record their fingerprints.
+    /// Recurses into nested objects to find enums at any depth.
+    #[expect(
+        clippy::ref_option,
+        reason = "Consistent with the rest of the codebase's namespace parameter style."
+    )]
+    fn collect_enum_fingerprints(
+        parameters: &Parameters,
+        namespace: &Option<Name>,
+        dedup_map: &mut DeduplicationMap,
+    ) {
+        for property in parameters.properties() {
+            Self::collect_enum_fingerprints_from_property_type(
+                property.name(),
+                property.property_type(),
+                namespace,
+                dedup_map,
+            );
+        }
+        // Also scan type definitions within parameters
+        for type_def in parameters.type_definitions() {
+            Self::collect_enum_fingerprints_from_property_type(
+                type_def.name(),
+                type_def.property_type(),
+                namespace,
+                dedup_map,
+            );
+        }
+    }
+
+    /// Recursively scan a single property type for enum occurrences.
+    /// For objects, computes the child namespace and recurses into nested properties.
+    #[expect(
+        clippy::ref_option,
+        reason = "Consistent with the rest of the codebase's namespace parameter style."
+    )]
+    fn collect_enum_fingerprints_from_property_type(
+        name: &str,
+        property_type: &PropertyType,
+        namespace: &Option<Name>,
+        dedup_map: &mut DeduplicationMap,
+    ) {
+        match property_type {
+            PropertyType::Enum { variants } => {
+                if !variants.is_empty() {
+                    if let Ok(base_name) = name.parse::<UnreservedId>() {
+                        let fingerprint = EntityTypeFingerprint::Enum {
+                            base_name,
+                            variants: variants.clone(),
+                        };
+                        dedup_map.record(fingerprint, namespace.clone());
+                    }
+                }
+            }
+            PropertyType::Object {
+                properties,
+                additional_properties,
+            } => {
+                if let Ok(obj_name) = name.parse::<Name>() {
+                    let child_ns = Some(obj_name.qualify_with_name(namespace.as_ref()));
+                    for prop in properties {
+                        Self::collect_enum_fingerprints_from_property_type(
+                            prop.name(),
+                            prop.property_type(),
+                            &child_ns,
+                            dedup_map,
+                        );
+                    }
+                    if let Some(additional) = additional_properties {
+                        let tag_name = format!("{name}Tag");
+                        Self::collect_enum_fingerprints_from_property_type(
+                            &tag_name,
+                            additional.as_ref(),
+                            &child_ns,
+                            dedup_map,
+                        );
+                    }
+                }
+            }
+            PropertyType::Array { element_ty } => {
+                Self::collect_enum_fingerprints_from_property_type(
+                    name,
+                    element_ty.as_ref(),
+                    namespace,
+                    dedup_map,
+                );
+            }
+            PropertyType::Union { types } => {
+                if let Ok(union_name) = name.parse::<Name>() {
+                    let child_ns = Some(union_name.qualify_with_name(namespace.as_ref()));
+                    for (i, ty) in types.iter().enumerate() {
+                        let variant_name = format!("TypeChoice{i}");
+                        Self::collect_enum_fingerprints_from_property_type(
+                            &variant_name,
+                            ty,
+                            &child_ns,
+                            dedup_map,
+                        );
+                    }
+                }
+            }
+            PropertyType::Tuple { types } => {
+                if let Ok(tuple_name) = name.parse::<Name>() {
+                    let child_ns = Some(tuple_name.qualify_with_name(namespace.as_ref()));
+                    for (i, ty) in types.iter().enumerate() {
+                        let proj_name = format!("Proj{i}");
+                        Self::collect_enum_fingerprints_from_property_type(
+                            &proj_name, ty, &child_ns, dedup_map,
+                        );
+                    }
+                }
+            }
+            _ => {}
+        }
     }
 
     /// Add a new action to the generated Cedar Schema
@@ -387,6 +661,112 @@ impl SchemaGenerator {
                 &common_types,
             )?;
             self.add_commontype(&namespace, ty, ty_name, true)?;
+        }
+
+        // Pass 1: Collect enum occurrences for deduplication
+        if self.config.deduplicate_entity_types {
+            let mut dedup_map = DeduplicationMap::default();
+
+            // Scan all tool descriptions for enum properties
+            for tool_description in description.tool_descriptions() {
+                let tool_ns: Name = tool_description.name().parse()?;
+                let tool_ns = tool_ns.qualify_with_name(self.namespace.as_ref());
+                let input_ns = Some(identifiers::INPUT_NAME.qualify_with_name(Some(&tool_ns)));
+
+                // Scan input parameters for enums
+                Self::collect_enum_fingerprints(
+                    tool_description.inputs(),
+                    &input_ns,
+                    &mut dedup_map,
+                );
+
+                // Also scan tool-level type definitions for enums
+                for type_def in tool_description.type_definitions() {
+                    if let PropertyType::Enum { variants } = type_def.property_type() {
+                        if !variants.is_empty() {
+                            if let Ok(base_name) = type_def.name().parse::<UnreservedId>() {
+                                let fingerprint = EntityTypeFingerprint::Enum {
+                                    base_name,
+                                    variants: variants.clone(),
+                                };
+                                dedup_map.record(fingerprint, Some(tool_ns.clone()));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Resolve duplicates and compute LCA placements
+            let resolved = dedup_map.resolve_duplicates();
+
+            // Determine which fingerprints to skip:
+            // - Same base_name targeting the same LCA (different variants conflict)
+            // - Base_name already exists in the LCA namespace
+            let mut skipped = HashSet::<&EntityTypeFingerprint>::new();
+
+            // Group by (base_name, lca_namespace) to detect same-name conflicts
+            let mut lca_groups: HashMap<
+                (&UnreservedId, &Option<Name>),
+                Vec<&EntityTypeFingerprint>,
+            > = HashMap::new();
+            for (fp, info) in &resolved {
+                lca_groups
+                    .entry((fp.base_name(), &info.lca_namespace))
+                    .or_default()
+                    .push(fp);
+            }
+            for fps in lca_groups.values() {
+                if fps.len() > 1 {
+                    skipped.extend(fps.iter());
+                }
+            }
+
+            // Skip fingerprints whose base_name collides with existing types in the LCA
+            for (fp, info) in &resolved {
+                if skipped.contains(fp) {
+                    continue;
+                }
+                let base_name = fp.base_name();
+                if let Some(nsdef) = self.fragment.0.get(&info.lca_namespace) {
+                    if nsdef.entity_types.contains_key(base_name)
+                        || nsdef.common_types.keys().any(|k| k.as_ref() == base_name)
+                    {
+                        skipped.insert(fp);
+                    }
+                }
+            }
+
+            // Place non-skipped entity types in their LCA namespace
+            let mut placed = HashMap::new();
+            for (fingerprint, dedup_info) in &resolved {
+                if skipped.contains(fingerprint) {
+                    continue;
+                }
+                let lca_ns = &dedup_info.lca_namespace;
+                self.add_namespace(lca_ns.clone());
+
+                match fingerprint {
+                    EntityTypeFingerprint::Enum {
+                        base_name,
+                        variants,
+                    } => {
+                        #[expect(
+                            clippy::unwrap_used,
+                            reason = "Variants are non-empty by construction from PropertyType::Enum"
+                        )]
+                        let choices = NonEmpty::from_slice(variants).unwrap();
+                        let ty = EntityType {
+                            kind: EntityTypeKind::Enum { choices },
+                            annotations: Annotations::new(),
+                            loc: None,
+                        };
+                        self.add_entitytype(lca_ns, ty, base_name.clone(), true)?;
+                    }
+                }
+                placed.insert(fingerprint.clone(), dedup_info.clone());
+            }
+
+            self.resolved_dedup = Some(placed);
         }
 
         for tool_description in description.tool_descriptions() {
@@ -901,16 +1281,32 @@ impl SchemaGenerator {
             PropertyType::Enum { variants } => {
                 let choices = NonEmpty::from_slice(variants)
                     .ok_or_else(|| SchemaGeneratorError::empty_enum_choice(ty_name.to_string()))?;
-                let ty = EntityType {
-                    kind: EntityTypeKind::Enum { choices },
-                    annotations: Annotations::new(),
-                    loc: None,
+
+                // Check if this enum was deduplicated (placed in LCA namespace during Pass 1)
+                let fingerprint = EntityTypeFingerprint::Enum {
+                    base_name: ty_name.clone(),
+                    variants: variants.clone(),
                 };
-                self.add_entitytype(namespace, ty, ty_name.clone(), true)?;
-                let name = RawName::new_from_unreserved(ty_name, None);
-                let name = RawName::from_name(name.qualify_with_name(namespace.as_ref()));
-                TypeVariant::Entity {
-                    name: self.flatten_rawname(name),
+                if let Some(lca_ns) = self.get_dedup_namespace(&fingerprint) {
+                    // Reference the shared type in the LCA namespace (already placed in Pass 1)
+                    let name = RawName::new_from_unreserved(ty_name, None);
+                    let name = RawName::from_name(name.qualify_with_name(lca_ns.as_ref()));
+                    TypeVariant::Entity {
+                        name: self.flatten_rawname(name),
+                    }
+                } else {
+                    // Original behavior: place locally
+                    let ty = EntityType {
+                        kind: EntityTypeKind::Enum { choices },
+                        annotations: Annotations::new(),
+                        loc: None,
+                    };
+                    self.add_entitytype(namespace, ty, ty_name.clone(), true)?;
+                    let name = RawName::new_from_unreserved(ty_name, None);
+                    let name = RawName::from_name(name.qualify_with_name(namespace.as_ref()));
+                    TypeVariant::Entity {
+                        name: self.flatten_rawname(name),
+                    }
                 }
             }
             PropertyType::Array { element_ty } => {

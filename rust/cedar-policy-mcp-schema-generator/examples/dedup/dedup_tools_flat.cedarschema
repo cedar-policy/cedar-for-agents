@@ -1,0 +1,67 @@
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type tool_aInput = {
+    format?: MyMcpServer::format,
+    mode_a?: MyMcpServer::tool_a_Input_mode_a,
+    query: String
+  };
+
+  type tool_bInput = {
+    format?: MyMcpServer::format,
+    mode_b?: MyMcpServer::tool_b_Input_mode_b,
+    query: String
+  };
+
+  type tool_cInput = {
+    format?: MyMcpServer::tool_c_Input_format,
+    query: String
+  };
+
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  entity format enum ["markdown", "text"];
+
+  entity tool_a_Input_mode_a enum ["fast", "slow"];
+
+  entity tool_b_Input_mode_b enum ["sync", "async"];
+
+  entity tool_c_Input_format enum ["json", "xml"];
+
+  action "call_tool";
+
+  action "tool_a" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      session: CommonContext
+    }
+  };
+
+  action "tool_b" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
+      session: CommonContext
+    }
+  };
+
+  action "tool_c" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_cInput,
+      session: CommonContext
+    }
+  };
+}

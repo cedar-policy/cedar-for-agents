@@ -1,0 +1,75 @@
+{
+  "result": {
+    "tools": [
+      {
+        "name": "tool_x",
+        "description": "Tool X with same enum at different nested depths to test LCA computation",
+        "inputSchema": {
+          "json": {
+            "type": "object",
+            "properties": {
+              "B": {
+                "type": "object",
+                "properties": {
+                  "C": {
+                    "type": "object",
+                    "properties": {
+                      "priority": {
+                        "type": "string",
+                        "enum": ["high", "medium", "low"],
+                        "description": "Shared enum in B::C"
+                      },
+                      "value_c": {
+                        "type": "string",
+                        "description": "A value in C"
+                      }
+                    },
+                    "required": ["value_c"]
+                  },
+                  "D": {
+                    "type": "object",
+                    "properties": {
+                      "priority": {
+                        "type": "string",
+                        "enum": ["high", "medium", "low"],
+                        "description": "Shared enum in B::D"
+                      },
+                      "value_d": {
+                        "type": "integer",
+                        "description": "A value in D"
+                      }
+                    },
+                    "required": ["value_d"]
+                  }
+                },
+                "required": ["C", "D"]
+              },
+              "E": {
+                "type": "object",
+                "properties": {
+                  "F": {
+                    "type": "object",
+                    "properties": {
+                      "priority": {
+                        "type": "string",
+                        "enum": ["high", "medium", "low"],
+                        "description": "Shared enum in E::F"
+                      },
+                      "value_f": {
+                        "type": "boolean",
+                        "description": "A value in F"
+                      }
+                    },
+                    "required": ["value_f"]
+                  }
+                },
+                "required": ["F"]
+              }
+            },
+            "required": ["B", "E"]
+          }
+        }
+      }
+    ]
+  }
+}
