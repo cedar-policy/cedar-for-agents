@@ -25,7 +25,7 @@ use super::parser;
 use super::validation::{validate_input, validate_output};
 
 /// The type a `Property` can take
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PropertyType {
     Unknown,
     Bool,
@@ -61,7 +61,7 @@ pub enum PropertyType {
 
 /// Representation of an input (or output) `Property`
 /// I.e., an attribute of an JSON Object Schema type
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Property {
     pub(crate) name: SmolStr,
     pub(crate) description: Option<String>,

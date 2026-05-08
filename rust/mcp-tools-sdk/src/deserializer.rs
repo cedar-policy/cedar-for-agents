@@ -607,6 +607,7 @@ fn typedefs_are_well_founded(
 mod test {
     use super::*;
     use crate::parser::json_parser::JsonParser;
+    use cool_asserts::assert_matches;
 
     fn parse_property_type(json: &str) -> Result<PropertyType, DeserializationError> {
         let mut parser = JsonParser::new(json);
@@ -635,6 +636,21 @@ mod test {
     fn test_property_type_primitive_type_array() {
         let result = parse_property_type(r#"{"type": ["null", "string"]}"#);
         assert!(matches!(result, Ok(PropertyType::Union { types }) if types.len() == 2));
+    }
+
+    #[test]
+    fn test_property_type_primitive_type_tuple() {
+        let result = parse_property_type(
+            r#"{"type": "array", "prefixItems": [{"type": "null"}, {"type": "string"}], "items": false}"#,
+        );
+        // TODO: We don't support tuples right now and this results in Array of unknowns instead
+        assert_matches!(
+            result,
+            Ok(PropertyType::Array {
+                element_ty
+            })
+            if *element_ty == PropertyType::Unknown
+        );
     }
 
     #[test]
