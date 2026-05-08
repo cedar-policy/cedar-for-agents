@@ -1189,7 +1189,7 @@ mod test {
             "null_attr": { "type": "null" },
             "enum_attr": { "type": "string", "enum": ["this", "that"] },
             "arr_attr": { "type": "array", "items": { "type": "integer" } },
-            "tuple_attr": { "type": ["string", "boolean"] },
+            "union_attr_as_type_array": { "type": ["string", "boolean"] },
             "union_attr": {
                 "anyOf": [
                     { "type": "string" },
@@ -1211,7 +1211,7 @@ mod test {
             "bool_attr", "int_attr", "float_attr", "num_attr",
             "str_attr", "dec_attr", "date_attr", "dt_attr",
             "dur_attr", "ipv4_attr", "ipv6_attr", "null_attr",
-            "enum_attr", "arr_attr", "tuple_attr", "union_attr",
+            "enum_attr", "arr_attr", "union_attr_as_type_array", "union_attr",
             "obj_attr", "ref_attr"
         ]
     }
@@ -1239,7 +1239,7 @@ mod test {
             "null_attr": null,
             "enum_attr": "this",
             "arr_attr": [0, 1, 2],
-            "tuple_attr": ["a part of a pair", true],
+            "union_attr_as_type_array": "a part of a pair",
             "union_attr": null,
             "obj_attr": {
                 "req_attr": false,
@@ -1432,7 +1432,7 @@ mod test {
             "null_attr": { "type": "null" },
             "enum_attr": { "type": "string", "enum": ["this", "that"] },
             "arr_attr": { "type": "array", "items": { "type": "integer" } },
-            "tuple_attr": { "type": ["string", "boolean"] },
+            "union_attr_as_type_array": { "type": ["string", "boolean"] },
             "union_attr": {
                 "anyOf": [
                     { "type": "string" },
@@ -1445,7 +1445,7 @@ mod test {
             "bool_attr", "int_attr", "float_attr", "num_attr",
             "str_attr", "dec_attr", "date_attr", "dt_attr",
             "dur_attr", "ipv4_attr", "ipv6_attr", "null_attr",
-            "enum_attr", "arr_attr", "tuple_attr", "union_attr",
+            "enum_attr", "arr_attr", "union_attr_as_type_array", "union_attr",
             "ref_attr"
         ]
     }
@@ -1471,14 +1471,46 @@ mod test {
             "null_attr": null,
             "enum_attr": "this",
             "arr_attr": [0, 1, 2],
-            "tuple_attr": ["a part of a pair", true],
+            "union_attr_as_type_array": "a part of a pair",
             "union_attr": null,
             "ref_attr": false
         }
     }
 }"#;
+
         let output = Output::from_json_str(tool_output).unwrap();
         tools.validate_output("test_tool", &output).unwrap();
+
+        let tool_output_union_alt = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+        "structuredContent": {
+            "bool_attr": false,
+            "int_attr": 1,
+            "float_attr": 1.0,
+            "num_attr": 1.2e12,
+            "str_attr": "my cool str",
+            "dec_attr": "0.0001",
+            "date_attr": "2025-11-19",
+            "dt_attr": "2025-11-19T12:11:00",
+            "dur_attr": "PT1D",
+            "ipv4_attr": "0.0.0.0",
+            "ipv6_attr": "::1",
+            "null_attr": null,
+            "enum_attr": "this",
+            "arr_attr": [0, 1, 2],
+            "union_attr_as_type_array": true,
+            "union_attr": "hello",
+            "ref_attr": false
+        }
+    }
+}"#;
+
+        let output_union_alt = Output::from_json_str(tool_output_union_alt).unwrap();
+        tools
+            .validate_output("test_tool", &output_union_alt)
+            .unwrap();
     }
 
     #[test]
@@ -1822,7 +1854,7 @@ mod test {
         let input = Input::from_json_str(tool_input).unwrap();
         assert_matches!(
             tools.validate_input(&input),
-            Err(ValidationError::WrongTupleSize(..))
+            Err(ValidationError::InvalidValueForUnionType)
         )
     }
 
@@ -1833,7 +1865,7 @@ mod test {
     "inputSchema": {
         "type": "object",
         "properties": {
-            "attr": { 
+            "attr": {
                 "anyOf": [
                     {"type": "string", "format": "date-time" },
                     {"type": "integer"}

@@ -327,7 +327,7 @@ fn property_type_from_json_value(
                 ContentType::PropertyType
             )),
             // The type is not a simple string, it should be an array
-            None => tuple_type_of_json_value(type_json, ptype_obj)
+            None => union_type_of_json_value(type_json, ptype_obj)
         }
     } else if let Some(union_json) = get_value_from_map(ptype_obj, &["anyOf", "oneOf"]) {
         let typ_arr = union_json.get_array().ok_or_else(|| {
@@ -413,11 +413,11 @@ fn property_type_of_format(
     }
 }
 
-/// Returns a [`PropertyType::Tuple { types }`] if the json value `type_json`
+/// Returns a [`PropertyType::Union { types }`] if the json value `type_json`
 /// represents a type union.
 /// Return [`PropertyType::Unknown`] if the json value is a boolean or `null`.
 /// Otherwise, throws a `DeserializationError`.
-fn tuple_type_of_json_value(
+fn union_type_of_json_value(
     type_json: &LocatedValue,
     top_typ: &LinkedHashMap<LocatedString, LocatedValue>,
 ) -> Result<PropertyType, DeserializationError> {
@@ -426,7 +426,7 @@ fn tuple_type_of_json_value(
             .iter()
             .map(|ty_json| tuple_type_element_of_json_value_array_element(ty_json, top_typ))
             .collect::<Result<_, _>>()?;
-        Ok(PropertyType::Tuple { types })
+        Ok(PropertyType::Union { types })
     } else if type_json.is_bool() || type_json.is_null() {
         Ok(PropertyType::Unknown)
     } else {
@@ -634,7 +634,7 @@ mod test {
     #[test]
     fn test_property_type_primitive_type_array() {
         let result = parse_property_type(r#"{"type": ["null", "string"]}"#);
-        assert!(matches!(result, Ok(PropertyType::Tuple { types }) if types.len() == 2));
+        assert!(matches!(result, Ok(PropertyType::Union { types }) if types.len() == 2));
     }
 
     #[test]
