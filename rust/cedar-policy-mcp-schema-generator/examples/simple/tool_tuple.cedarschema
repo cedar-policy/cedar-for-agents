@@ -1,0 +1,38 @@
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type tuple_toolInput = {
+    coordinate?: {
+      proj0: MyMcpServer::Number,
+      proj1: MyMcpServer::Number
+    },
+    ids?: Set<String>,
+    labeled_value?: {
+      proj0: String,
+      proj1: Long
+    }
+  };
+
+  entity McpServer;
+
+  entity Number;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  action "call_tool";
+
+  action "tuple_tool" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tuple_toolInput,
+      session: CommonContext
+    }
+  };
+}
