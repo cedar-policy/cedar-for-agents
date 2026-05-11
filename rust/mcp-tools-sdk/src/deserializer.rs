@@ -297,22 +297,7 @@ fn property_type_from_json_value(
                 }
             }
             Some("null") => Ok(PropertyType::Null),
-            Some("array") => {
-                ptype_obj.get("items").map(|items_json| {
-                    if items_json.is_object() {
-                        let items_type = property_type_from_json_value(items_json)?;
-                        Ok(PropertyType::Array { element_ty: Box::new(items_type) })
-                    } else if items_json.is_bool() || items_json.is_null() {
-                        Ok(PropertyType::Array { element_ty: Box::new(PropertyType::Unknown) })
-                    } else {
-                        Err(DeserializationError::unexpected_type(
-                            items_json,
-                            "Expected `items` attribute to be a JSON Schema (object) describing the type of array items.",
-                            ContentType::PropertyType
-                        ))
-                    }
-                }).unwrap_or_else(|| Ok(PropertyType::Array { element_ty: Box::new(PropertyType::Unknown) }))
-            }
+            Some("array") => property_type_from_json_array_def(ptype_obj),
             Some("object") => {
                 let required = required_from_json_value(ptype_obj.get("required"), ContentType::ToolParameters)?;
                 let properties = properties_from_json_value(ptype_obj.get("properties"), &required, ContentType::ToolParameters)?;
@@ -360,6 +345,63 @@ fn property_type_from_json_value(
         Ok(PropertyType::Ref { name: s.into() })
     } else {
         Ok(PropertyType::Unknown)
+    }
+}
+
+/// Generate a [`PropertyType`] when the JSON value's is like `{"type": "array", "items": {...} }`.
+/// Depending on whether there is `prefixItems` and `"items": "false"`, this results in a
+/// [`PropertyType::Tuple`] or a [`PropertyType::Array`].
+fn property_type_from_json_array_def(
+    ptype_obj: &LinkedHashMap<LocatedString, LocatedValue>,
+) -> Result<PropertyType, DeserializationError> {
+    let prefix_items = ptype_obj.get("prefixItems").and_then(|v| v.get_array());
+    let items_json = ptype_obj.get("items");
+
+    if let Some(prefix) = prefix_items {
+        let prefix_types: Vec<PropertyType> = prefix
+            .iter()
+            .map(property_type_from_json_value)
+            .collect::<Result<_, _>>()?;
+
+        match items_json {
+            // items: false means closed tuple
+            Some(items) if items.get_bool() == Some(false) => Ok(PropertyType::Tuple {
+                types: prefix_types,
+            }),
+            // items is a schema — check if all prefixItems match it, collapse to array
+            Some(items) if items.is_object() => {
+                let items_type = property_type_from_json_value(items)?;
+                if prefix_types.iter().all(|t| *t == items_type) {
+                    Ok(PropertyType::Array {
+                        element_ty: Box::new(items_type),
+                    })
+                } else {
+                    Ok(PropertyType::Array {
+                        element_ty: Box::new(PropertyType::Unknown),
+                    })
+                }
+            }
+            // items absent or items: true — open-ended, not a tuple
+            _ => Ok(PropertyType::Array {
+                element_ty: Box::new(PropertyType::Unknown),
+            }),
+        }
+    } else {
+        // No prefixItems — standard array handling
+        items_json.map(|items_json| {
+            if items_json.is_object() {
+                let items_type = property_type_from_json_value(items_json)?;
+                Ok(PropertyType::Array { element_ty: Box::new(items_type) })
+            } else if items_json.is_bool() || items_json.is_null() {
+                Ok(PropertyType::Array { element_ty: Box::new(PropertyType::Unknown) })
+            } else {
+                Err(DeserializationError::unexpected_type(
+                    items_json,
+                    "Expected `items` attribute to be a JSON Schema (object) describing the type of array items.",
+                    ContentType::PropertyType
+                ))
+            }
+        }).unwrap_or_else(|| Ok(PropertyType::Array { element_ty: Box::new(PropertyType::Unknown) }))
     }
 }
 
@@ -607,7 +649,6 @@ fn typedefs_are_well_founded(
 mod test {
     use super::*;
     use crate::parser::json_parser::JsonParser;
-    use cool_asserts::assert_matches;
 
     fn parse_property_type(json: &str) -> Result<PropertyType, DeserializationError> {
         let mut parser = JsonParser::new(json);
@@ -639,18 +680,130 @@ mod test {
     }
 
     #[test]
-    fn test_property_type_primitive_type_tuple() {
-        let result = parse_property_type(
-            r#"{"type": "array", "prefixItems": [{"type": "null"}, {"type": "string"}], "items": false}"#,
-        );
-        // TODO: We don't support tuples right now and this results in Array of unknowns instead
-        assert_matches!(
-            result,
-            Ok(PropertyType::Array {
-                element_ty
-            })
-            if *element_ty == PropertyType::Unknown
-        );
+    fn test_property_tuple() {
+        // Tuple cases (prefixItems with items: false)
+        let tuple_cases = vec![
+            (
+                // Empty tuple: empty prefixItems with items: false
+                r#"{"type": "array", "prefixItems": [], "items": false}"#,
+                PropertyType::Tuple { types: vec![] },
+            ),
+            (
+                // Singleton tuple with a string
+                r#"{"type": "array", "prefixItems": [{"type": "string"}], "items": false}"#,
+                PropertyType::Tuple {
+                    types: vec![PropertyType::String],
+                },
+            ),
+            (
+                // Tuple of integer and string
+                r#"{"type": "array", "prefixItems": [{"type": "integer"}, {"type": "string"}], "items": false}"#,
+                PropertyType::Tuple {
+                    types: vec![PropertyType::Integer, PropertyType::String],
+                },
+            ),
+            (
+                // Tuple with null element, a valid tuple
+                r#"{"type": "array", "prefixItems": [{"type": "null"}, {"type": "string"}], "items": false}"#,
+                PropertyType::Tuple {
+                    types: vec![PropertyType::Null, PropertyType::String],
+                },
+            ),
+            (
+                // Complex tuple type: tuple with nested object element
+                r#"{"type": "array", "prefixItems": [{"type": "string"}, {"type": "object", "properties": {"x": {"type": "integer"}}}], "items": false}"#,
+                PropertyType::Tuple {
+                    types: vec![
+                        PropertyType::String,
+                        PropertyType::Object {
+                            properties: vec![Property::new(
+                                "x".into(),
+                                false,
+                                PropertyType::Integer,
+                                None,
+                            )],
+                            additional_properties: None,
+                        },
+                    ],
+                },
+            ),
+            (
+                // Tuple with nested array element
+                r#"{"type": "array", "prefixItems": [{"type": "array", "items": {"type": "boolean"}}], "items": false}"#,
+                PropertyType::Tuple {
+                    types: vec![PropertyType::Array {
+                        element_ty: Box::new(PropertyType::Bool),
+                    }],
+                },
+            ),
+            (
+                // A tuple with all types being the same; still not an array when we know items:false
+                r#"{"type": "array", "prefixItems": [{"type": "integer"}, {"type": "integer"}, {"type": "integer"}], "items": false}"#,
+                PropertyType::Tuple {
+                    types: vec![
+                        PropertyType::Integer,
+                        PropertyType::Integer,
+                        PropertyType::Integer,
+                    ],
+                },
+            ),
+            (
+                // Tuple with enum element
+                r#"{"type": "array", "prefixItems": [{"type": "string", "enum": ["a", "b"]}, {"type": "number"}], "items": false}"#,
+                PropertyType::Tuple {
+                    types: vec![
+                        PropertyType::Enum {
+                            variants: vec!["a".into(), "b".into()],
+                        },
+                        PropertyType::Number,
+                    ],
+                },
+            ),
+        ];
+
+        // Non-tuple cases: test boundary bewteen tuples and arrays
+        let non_tuple_cases = vec![
+            (
+                // prefixItems without items: false — not a closed tuple, treat as array, but type unknown
+                r#"{"type": "array", "prefixItems": [{"type": "null"}, {"type": "string"}]}"#,
+                PropertyType::Array {
+                    element_ty: Box::new(PropertyType::Unknown),
+                },
+            ),
+            (
+                // prefixItems with items: true — open-ended, not a tuple, also unknown element type
+                r#"{"type": "array", "prefixItems": [{"type": "integer"}], "items": true}"#,
+                PropertyType::Array {
+                    element_ty: Box::new(PropertyType::Unknown),
+                },
+            ),
+            (
+                // No prefixItems, just items — plain array
+                r#"{"type": "array", "items": {"type": "string"}}"#,
+                PropertyType::Array {
+                    element_ty: Box::new(PropertyType::String),
+                },
+            ),
+            (
+                // prefixItems with items as a schema (additional items allowed with a type) — not a tuple
+                r#"{"type": "array", "prefixItems": [{"type": "integer"}], "items": {"type": "string"}}"#,
+                PropertyType::Array {
+                    element_ty: Box::new(PropertyType::Unknown),
+                },
+            ),
+            (
+                // prefixItems and items are the same type — should collapse to array of that type
+                r#"{"type": "array", "prefixItems": [{"type": "string"}, {"type": "string"}], "items": {"type": "string"}}"#,
+                PropertyType::Array {
+                    element_ty: Box::new(PropertyType::String),
+                },
+            ),
+        ];
+
+        for (json, expected) in tuple_cases.iter().chain(non_tuple_cases.iter()) {
+            let result = parse_property_type(json).unwrap();
+            assert_eq!(result, *expected, "Failed for input: {json}");
+        }
     }
 
     #[test]

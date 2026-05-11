@@ -1,0 +1,30 @@
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type mixed_array_toolInput = {
+    mixed_array?: Set<MyMcpServer::Unknown>
+  };
+
+  entity McpServer;
+
+  entity Unknown;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  action "call_tool";
+
+  action "mixed_array_tool" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: mixed_array_toolInput,
+      session: CommonContext
+    }
+  };
+}
