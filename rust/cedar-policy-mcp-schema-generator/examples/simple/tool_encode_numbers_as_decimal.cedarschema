@@ -32,9 +32,9 @@ namespace MyMcpServer {
     obj_attr?: MyMcpServer::test_tool::Input::obj_attr,
     str_attr?: String,
     tagged_obj_attr?: MyMcpServer::test_tool::Input::tagged_obj_attr,
-    tuple_attr?: {
-      proj0: String,
-      proj1: Long
+    union_array_attr?: {
+      typeChoice0?: String,
+      typeChoice1?: Long
     },
     union_attr?: {
       typeChoice0?: String,
@@ -62,4 +62,3 @@ namespace MyMcpServer {
     }
   };
 }
-
