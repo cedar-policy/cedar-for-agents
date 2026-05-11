@@ -86,6 +86,18 @@ mod lib {
             SchemaGeneratorConfig::default(),
         );
     }
+
+    #[test]
+    fn mixed_array_tool() {
+        // This test has prefixItems with a different type than items results in Set<Unknown>.
+        // You will not be able to write meanigful policies against those types.
+        // See https://github.com/cedar-policy/cedar-for-agents/issues/90 for an improvement.
+        run_integration_test(
+            "examples/simple/tool_mixed_array.json",
+            "examples/simple/tool_mixed_array.cedarschema",
+            SchemaGeneratorConfig::default(),
+        );
+    }
 }
 
 #[cfg(feature = "cli")]

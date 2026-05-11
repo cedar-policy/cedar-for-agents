@@ -1,0 +1,17 @@
+{
+    "name": "mixed_array_tool",
+    "description": "a tool with a non-tuple open array using prefixItems",
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "mixed_array": {
+                "type": "array",
+                "prefixItems": [
+                    { "type": "integer" },
+                    { "type": "string" }
+                ],
+                "items": { "type": "boolean" }
+            }
+        }
+    }
+}
