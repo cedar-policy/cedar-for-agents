@@ -76,8 +76,8 @@ fn output_schema(
         },
     };
     match output_format {
-        OutputFormat::Human => writeln!(writer, "{}", schema.to_cedarschema()?),
-        OutputFormat::Json => writeln!(writer, "{}", serde_json::to_string(schema)?),
+        OutputFormat::Human => write!(writer, "{}", schema.to_cedarschema()?),
+        OutputFormat::Json => write!(writer, "{}", serde_json::to_string(schema)?),
     }
     .map_err(|e| {
         CliError::write_schema_file(

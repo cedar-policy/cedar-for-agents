@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added:
 - Adds support for parsing and type validation of requests to (`Input` struct) and responses from (`Output` struct) MCP servers for the `tools/call` procedure.
 
+### Changed:
+- Types arrays in JSON Schemas are translated to union of types instead of tuples.
+
 ### Fixed:
 - Fixed parsing of JSON Schema type arrays containing `"object"` or `"array"` (e.g., `"type": ["null", "object"]`). Previously, only primitive types were supported in type arrays.
 
@@ -19,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Adds `Unknown` `PropertyType` to represent when a property's (sub-)type is not provided.
 
 ### Fixed:
-- Fixed a bug in MCP Tool description parser that would reject legal JSON schemas when the schemas included 
+- Fixed a bug in MCP Tool description parser that would reject legal JSON schemas when the schemas included
 array and property types that are unspecified.
 
 ## [0.1.0] - 2025-11-11

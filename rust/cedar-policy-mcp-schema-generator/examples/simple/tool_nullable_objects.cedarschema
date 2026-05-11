@@ -6,8 +6,8 @@ namespace MyMcpServer {
 
   type alert_toolInput = {
     alert?: {
-      proj0: MyMcpServer::Null,
-      proj1: MyMcpServer::alert_tool::Input::alert::Proj1
+      typeChoice0?: MyMcpServer::Null,
+      typeChoice1?: MyMcpServer::alert_tool::Input::alert::TypeChoice1
     }
   };
 
@@ -32,50 +32,49 @@ namespace MyMcpServer {
   action "call_tool";
 }
 
-namespace MyMcpServer::alert_tool::Input::alert::Proj1::activeOn {
-  entity Proj1 = {
+namespace MyMcpServer::alert_tool::Input::alert::TypeChoice1::activeOn {
+  entity TypeChoice1 = {
     dayOfWeek?: {
-      proj0: MyMcpServer::Null,
-      proj1: Set<String>
+      typeChoice0?: MyMcpServer::Null,
+      typeChoice1?: Set<String>
     },
     startTime?: {
-      proj0: MyMcpServer::Null,
-      proj1: MyMcpServer::alert_tool::Input::alert::Proj1::activeOn::Proj1::startTime::Proj1
+      typeChoice0?: MyMcpServer::Null,
+      typeChoice1?: MyMcpServer::alert_tool::Input::alert::TypeChoice1::activeOn::TypeChoice1::startTime::TypeChoice1
     }
   };
 }
 
 namespace MyMcpServer::alert_tool::Input::alert {
-  entity Proj1 = {
+  entity TypeChoice1 = {
     activeOn?: {
-      proj0: MyMcpServer::Null,
-      proj1: MyMcpServer::alert_tool::Input::alert::Proj1::activeOn::Proj1
+      typeChoice0?: MyMcpServer::Null,
+      typeChoice1?: MyMcpServer::alert_tool::Input::alert::TypeChoice1::activeOn::TypeChoice1
     },
     enabled?: {
-      proj0: MyMcpServer::Null,
-      proj1: Bool
+      typeChoice0?: MyMcpServer::Null,
+      typeChoice1?: Bool
     },
     groupByKeys?: {
-      proj0: MyMcpServer::Null,
-      proj1: Set<String>
+      typeChoice0?: MyMcpServer::Null,
+      typeChoice1?: Set<String>
     },
     phantomMode?: {
-      proj0: MyMcpServer::Null,
-      proj1: Bool
+      typeChoice0?: MyMcpServer::Null,
+      typeChoice1?: Bool
     }
   };
 }
 
-namespace MyMcpServer::alert_tool::Input::alert::Proj1::activeOn::Proj1::startTime {
-  entity Proj1 = {
+namespace MyMcpServer::alert_tool::Input::alert::TypeChoice1::activeOn::TypeChoice1::startTime {
+  entity TypeChoice1 = {
     hours?: {
-      proj0: MyMcpServer::Null,
-      proj1: Long
+      typeChoice0?: MyMcpServer::Null,
+      typeChoice1?: Long
     },
     minutes?: {
-      proj0: MyMcpServer::Null,
-      proj1: Long
+      typeChoice0?: MyMcpServer::Null,
+      typeChoice1?: Long
     }
   };
 }
-
