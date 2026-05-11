@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added:
 - Adds support for parsing and type validation of requests to (`Input` struct) and responses from (`Output` struct) MCP servers for the `tools/call` procedure.
+- Adds translation of tuple definitions in JSON Schema to `PropertyType::Tuple`.
 
 ### Changed:
 - Types arrays in JSON Schemas are translated to union of types instead of tuples.

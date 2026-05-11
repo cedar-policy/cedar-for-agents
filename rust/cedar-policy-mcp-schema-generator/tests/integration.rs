@@ -502,25 +502,25 @@ mod cli {
         std::fs::write(&entities_fname, "[]").unwrap();
 
         let request_json = r#"{
-    "principal": "MyMcpServer::User::\"test_user\"",
-    "resource": "MyMcpServer::McpServer::\"test_server\"",
-    "context": {
-        "session": {
-            "currentTimestamp": {
-                "__extn": {
-                    "fn": "datetime",
-                    "arg": "2025-12-16"
-                }
-            },
-            "ipaddr": {
-                "__extn": {
-                    "fn": "ip",
-                    "arg": "10.0.0.1"
+            "principal": "MyMcpServer::User::\"test_user\"",
+            "resource": "MyMcpServer::McpServer::\"test_server\"",
+            "context": {
+                "session": {
+                    "currentTimestamp": {
+                        "__extn": {
+                            "fn": "datetime",
+                            "arg": "2025-12-16"
+                        }
+                    },
+                    "ipaddr": {
+                        "__extn": {
+                            "fn": "ip",
+                            "arg": "10.0.0.1"
+                        }
+                    }
                 }
             }
-        }
-    }
-}"#;
+        }"#;
         let request_fname = temp_dir.path().join("request.json");
         std::fs::write(&request_fname, request_json).unwrap();
 
@@ -528,22 +528,22 @@ mod cli {
         std::fs::write(
             &policy_fname,
             r#"permit(principal, action, resource) when {
-    context.input.coordinate.proj0 == decimal("1.0") &&
-    context.input.labeled_value.proj0 == "hello" &&
-    context.input.labeled_value.proj1 == 42
-};"#,
+                context.input.coordinate.proj0 == decimal("1.0") &&
+                context.input.labeled_value.proj0 == "hello" &&
+                context.input.labeled_value.proj1 == 42
+            };"#,
         )
         .unwrap();
 
         let input = r#"{
-    "params": {
-        "tool": "tuple_tool",
-        "args": {
-            "coordinate": [1.0, 2.5],
-            "labeled_value": ["hello", 42]
-        }
-    }
-}"#;
+            "params": {
+                "tool": "tuple_tool",
+                "args": {
+                    "coordinate": [1.0, 2.5],
+                    "labeled_value": ["hello", 42]
+                }
+            }
+        }"#;
         let input_fname = temp_dir.path().join("input.json");
         std::fs::write(&input_fname, input).unwrap();
 
@@ -571,25 +571,25 @@ mod cli {
         std::fs::write(&entities_fname, "[]").unwrap();
 
         let request_json = r#"{
-    "principal": "MyMcpServer::User::\"test_user\"",
-    "resource": "MyMcpServer::McpServer::\"test_server\"",
-    "context": {
-        "session": {
-            "currentTimestamp": {
-                "__extn": {
-                    "fn": "datetime",
-                    "arg": "2025-12-16"
-                }
-            },
-            "ipaddr": {
-                "__extn": {
-                    "fn": "ip",
-                    "arg": "10.0.0.1"
+            "principal": "MyMcpServer::User::\"test_user\"",
+            "resource": "MyMcpServer::McpServer::\"test_server\"",
+            "context": {
+                "session": {
+                    "currentTimestamp": {
+                        "__extn": {
+                            "fn": "datetime",
+                            "arg": "2025-12-16"
+                        }
+                    },
+                    "ipaddr": {
+                        "__extn": {
+                            "fn": "ip",
+                            "arg": "10.0.0.1"
+                        }
+                    }
                 }
             }
-        }
-    }
-}"#;
+        }"#;
         let request_fname = temp_dir.path().join("request.json");
         std::fs::write(&request_fname, request_json).unwrap();
 
@@ -597,19 +597,19 @@ mod cli {
         std::fs::write(
             &policy_fname,
             r#"permit(principal, action, resource) when {
-    context.input.coordinate.proj0 == decimal("99.0")
-};"#,
+                context.input.coordinate.proj0 == decimal("99.0")
+            };"#,
         )
         .unwrap();
 
         let input = r#"{
-    "params": {
-        "tool": "tuple_tool",
-        "args": {
-            "coordinate": [1.0, 2.5]
-        }
-    }
-}"#;
+            "params": {
+                "tool": "tuple_tool",
+                "args": {
+                    "coordinate": [1.0, 2.5]
+                }
+            }
+        }"#;
         let input_fname = temp_dir.path().join("input.json");
         std::fs::write(&input_fname, input).unwrap();
 
