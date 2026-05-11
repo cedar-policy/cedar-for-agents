@@ -77,6 +77,15 @@ mod lib {
             SchemaGeneratorConfig::default().flatten_namespaces(true),
         );
     }
+
+    #[test]
+    fn tuple_tool() {
+        run_integration_test(
+            "examples/simple/tool_tuple.json",
+            "examples/simple/tool_tuple.cedarschema",
+            SchemaGeneratorConfig::default(),
+        );
+    }
 }
 
 #[cfg(feature = "cli")]
@@ -477,6 +486,141 @@ mod cli {
             .arg(resource)
             .arg("--context")
             .arg(&context_fname)
+            .arg("--policies")
+            .arg(&policy_fname)
+            .arg("--entities")
+            .arg(&entities_fname)
+            .arg("--mcp-tool-input")
+            .arg(&input_fname);
+        cmd.unwrap().assert().success().stdout("DENY\n").stderr("");
+    }
+
+    #[test]
+    fn test_authorize_tuple_allow() {
+        let temp_dir = TempDir::new().unwrap();
+        let entities_fname = temp_dir.path().join("entities.json");
+        std::fs::write(&entities_fname, "[]").unwrap();
+
+        let request_json = r#"{
+    "principal": "MyMcpServer::User::\"test_user\"",
+    "resource": "MyMcpServer::McpServer::\"test_server\"",
+    "context": {
+        "session": {
+            "currentTimestamp": {
+                "__extn": {
+                    "fn": "datetime",
+                    "arg": "2025-12-16"
+                }
+            },
+            "ipaddr": {
+                "__extn": {
+                    "fn": "ip",
+                    "arg": "10.0.0.1"
+                }
+            }
+        }
+    }
+}"#;
+        let request_fname = temp_dir.path().join("request.json");
+        std::fs::write(&request_fname, request_json).unwrap();
+
+        let policy_fname = temp_dir.path().join("policies.cedar");
+        std::fs::write(
+            &policy_fname,
+            r#"permit(principal, action, resource) when {
+    context.input.coordinate.proj0 == decimal("1.0") &&
+    context.input.labeled_value.proj0 == "hello" &&
+    context.input.labeled_value.proj1 == 42
+};"#,
+        )
+        .unwrap();
+
+        let input = r#"{
+    "params": {
+        "tool": "tuple_tool",
+        "args": {
+            "coordinate": [1.0, 2.5],
+            "labeled_value": ["hello", 42]
+        }
+    }
+}"#;
+        let input_fname = temp_dir.path().join("input.json");
+        std::fs::write(&input_fname, input).unwrap();
+
+        let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
+        let cmd = cmd
+            .arg("authorize")
+            .arg("examples/stub.cedarschema")
+            .arg("examples/simple/tool_tuple.json")
+            .arg("--encode-numbers-as-decimal")
+            .arg("--request-json")
+            .arg(&request_fname)
+            .arg("--policies")
+            .arg(&policy_fname)
+            .arg("--entities")
+            .arg(&entities_fname)
+            .arg("--mcp-tool-input")
+            .arg(&input_fname);
+        cmd.unwrap().assert().success().stdout("ALLOW\n").stderr("");
+    }
+
+    #[test]
+    fn test_authorize_tuple_deny() {
+        let temp_dir = TempDir::new().unwrap();
+        let entities_fname = temp_dir.path().join("entities.json");
+        std::fs::write(&entities_fname, "[]").unwrap();
+
+        let request_json = r#"{
+    "principal": "MyMcpServer::User::\"test_user\"",
+    "resource": "MyMcpServer::McpServer::\"test_server\"",
+    "context": {
+        "session": {
+            "currentTimestamp": {
+                "__extn": {
+                    "fn": "datetime",
+                    "arg": "2025-12-16"
+                }
+            },
+            "ipaddr": {
+                "__extn": {
+                    "fn": "ip",
+                    "arg": "10.0.0.1"
+                }
+            }
+        }
+    }
+}"#;
+        let request_fname = temp_dir.path().join("request.json");
+        std::fs::write(&request_fname, request_json).unwrap();
+
+        let policy_fname = temp_dir.path().join("policies.cedar");
+        std::fs::write(
+            &policy_fname,
+            r#"permit(principal, action, resource) when {
+    context.input.coordinate.proj0 == decimal("99.0")
+};"#,
+        )
+        .unwrap();
+
+        let input = r#"{
+    "params": {
+        "tool": "tuple_tool",
+        "args": {
+            "coordinate": [1.0, 2.5]
+        }
+    }
+}"#;
+        let input_fname = temp_dir.path().join("input.json");
+        std::fs::write(&input_fname, input).unwrap();
+
+        let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
+        let cmd = cmd
+            .arg("authorize")
+            .arg("examples/stub.cedarschema")
+            .arg("examples/simple/tool_tuple.json")
+            .arg("--encode-numbers-as-decimal")
+            .arg("--request-json")
+            .arg(&request_fname)
             .arg("--policies")
             .arg(&policy_fname)
             .arg("--entities")
