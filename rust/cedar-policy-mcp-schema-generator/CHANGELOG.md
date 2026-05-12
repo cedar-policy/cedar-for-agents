@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - Coming soon
+
 ### Added
 - Adds the ability to convert a MCP tool request (and optionally response) to a Cedar request and entity data compliant to the generated Schema.
 - Adds support for JSON Schema tuples in MCP tool schemas, which are translated to a record of projections.
