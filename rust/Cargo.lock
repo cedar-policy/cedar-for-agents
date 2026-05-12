@@ -290,7 +290,7 @@ dependencies = [
  "ipnet",
  "iso8601",
  "linked-hash-map",
- "mcp-tools-sdk",
+ "mcp-tools-sdk 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "miette",
  "nonempty",
  "serde",
@@ -306,7 +306,7 @@ name = "cedar-policy-mcp-schema-generator-wasm"
 version = "0.1.0"
 dependencies = [
  "cedar-policy-mcp-schema-generator",
- "mcp-tools-sdk",
+ "mcp-tools-sdk 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde",
  "serde_json",
  "wasm-bindgen",
@@ -889,6 +889,23 @@ dependencies = [
  "nonempty",
  "smol_str",
  "tempfile",
+ "thiserror",
+]
+
+[[package]]
+name = "mcp-tools-sdk"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b8548034e087691c57da613e3611e1d6cd0e010dae513a30dc68c96f0a12aa4"
+dependencies = [
+ "chrono",
+ "ipnet",
+ "iso8601",
+ "itertools",
+ "linked-hash-map",
+ "miette",
+ "nonempty",
+ "smol_str",
  "thiserror",
 ]
 
