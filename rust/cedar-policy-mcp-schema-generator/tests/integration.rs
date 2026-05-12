@@ -60,6 +60,69 @@ mod lib {
         );
     }
 
+    fn run_inline_test(
+        tools_json: &str,
+        expected_schema: &str,
+        config: SchemaGeneratorConfig,
+    ) {
+        let description =
+            ServerDescription::from_json_str(tools_json).expect("Failed to parse tools JSON");
+        let stub_file =
+            std::fs::File::open("examples/stub.cedarschema").expect("Failed to read schema file");
+        let input_schema = Fragment::from_cedarschema_file(stub_file, Extensions::all_available())
+            .expect("Failed to parse input schema")
+            .0;
+
+        let mut generator = SchemaGenerator::new_with_config(input_schema, config)
+            .expect("input schema file is malformed");
+        generator
+            .add_actions_from_server_description(&description)
+            .expect("Failed to add tool actions to schema generator");
+
+        let actual_schema = generator
+            .get_schema()
+            .clone()
+            .to_cedarschema()
+            .expect("Failed to resolve generated schema");
+        assert!(
+            expected_schema == actual_schema,
+            "{} != {}",
+            expected_schema,
+            actual_schema
+        );
+    }
+
+    fn run_inline_test_with_stub(
+        tools_json: &str,
+        stub_schema: &str,
+        expected_schema: &str,
+        config: SchemaGeneratorConfig,
+    ) {
+        let description =
+            ServerDescription::from_json_str(tools_json).expect("Failed to parse tools JSON");
+        let extensions = Extensions::all_available();
+        let (input_schema, _) = Fragment::from_cedarschema_str(stub_schema, extensions)
+            .expect("Failed to parse custom stub schema");
+
+        let mut generator = SchemaGenerator::new_with_config(input_schema, config)
+            .expect("input schema file is malformed");
+        generator
+            .add_actions_from_server_description(&description)
+            .expect("Failed to add tool actions to schema generator");
+
+        let actual_schema = generator
+            .get_schema()
+            .clone()
+            .to_cedarschema()
+            .expect("Failed to resolve generated schema");
+        assert!(
+            expected_schema == actual_schema,
+            "{} != {}",
+            expected_schema,
+            actual_schema
+        );
+    }
+
     #[test]
     fn strands_agent() {
         run_integration_test(
@@ -170,48 +233,10 @@ mod lib {
     fn dedup_collision_existing_entity_in_lca() {
         // Two tools share an enum named "McpServer" (same name as existing entity type
         // in the LCA namespace). Dedup should skip this enum — each tool keeps its own copy.
-        let description = ServerDescription::from_json_file(
+        run_integration_test(
             "examples/dedup/dedup_collision_existing_entity.json",
-        )
-        .expect("Failed to read tools file");
-        let stub_file =
-            std::fs::File::open("examples/stub.cedarschema").expect("Failed to read schema file");
-        let input_schema = Fragment::from_cedarschema_file(stub_file, Extensions::all_available())
-            .expect("Failed to parse input schema")
-            .0;
-
-        let config = SchemaGeneratorConfig::default().deduplicate_entity_types(true);
-        let mut generator =
-            SchemaGenerator::new_with_config(input_schema, config).expect("schema is malformed");
-        generator
-            .add_actions_from_server_description(&description)
-            .expect("Collision should be skipped, not produce an error");
-
-        let schema = generator.get_schema();
-        // The enum should remain local in each tool's Input namespace
-        let tool_a_input_ns = Some("MyMcpServer::tool_a::Input".parse().unwrap());
-        let tool_b_input_ns = Some("MyMcpServer::tool_b::Input".parse().unwrap());
-
-        let tool_a_nsdef = schema
-            .0
-            .get(&tool_a_input_ns)
-            .expect("Expected tool_a::Input namespace to exist");
-        let tool_b_nsdef = schema
-            .0
-            .get(&tool_b_input_ns)
-            .expect("Expected tool_b::Input namespace to exist");
-
-        assert!(
-            tool_a_nsdef
-                .entity_types
-                .contains_key(&"McpServer".parse().unwrap()),
-            "McpServer enum should stay local in tool_a::Input"
-        );
-        assert!(
-            tool_b_nsdef
-                .entity_types
-                .contains_key(&"McpServer".parse().unwrap()),
-            "McpServer enum should stay local in tool_b::Input"
+            "examples/dedup/dedup_collision_existing_entity.cedarschema",
+            SchemaGeneratorConfig::default().deduplicate_entity_types(true),
         );
     }
 
@@ -244,10 +269,6 @@ namespace MyMcpServer {
 }
 "#;
 
-        let extensions = Extensions::all_available();
-        let (input_schema, _) = Fragment::from_cedarschema_str(stub_schema, extensions)
-            .expect("Failed to parse custom stub schema");
-
         let tools_json = r#"{
             "result": {
                 "tools": [
@@ -297,50 +318,59 @@ namespace MyMcpServer {
             }
         }"#;
 
-        let description =
-            ServerDescription::from_json_str(tools_json).expect("Failed to parse tools JSON");
+        let expected_schema = "\
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
 
-        let config = SchemaGeneratorConfig::default().deduplicate_entity_types(true);
-        let mut generator =
-            SchemaGenerator::new_with_config(input_schema, config).expect("schema is malformed");
-        generator
-            .add_actions_from_server_description(&description)
-            .expect("Should reuse existing enum, not produce an error");
+  type tool_aInput = {
+    query: String,
+    status?: MyMcpServer::status
+  };
 
-        let schema = generator.get_schema();
+  type tool_bInput = {
+    data: String,
+    status?: MyMcpServer::status
+  };
 
-        // The pre-existing status enum in the root namespace should still be there
-        let root_ns = Some("MyMcpServer".parse().unwrap());
-        let root_nsdef = schema.0.get(&root_ns).expect("Root namespace should exist");
-        assert!(
-            root_nsdef
-                .entity_types
-                .contains_key(&"status".parse().unwrap()),
-            "Pre-existing status enum should remain in root namespace"
-        );
+  entity McpServer;
 
-        // Tools should NOT have local copies — they reference the existing one
-        let tool_a_input_ns = Some("MyMcpServer::tool_a::Input".parse().unwrap());
-        let tool_b_input_ns = Some("MyMcpServer::tool_b::Input".parse().unwrap());
-        assert!(
-            schema.0.get(&tool_a_input_ns).is_none()
-                || !schema
-                    .0
-                    .get(&tool_a_input_ns)
-                    .unwrap()
-                    .entity_types
-                    .contains_key(&"status".parse().unwrap()),
-            "status should NOT be duplicated in tool_a::Input"
-        );
-        assert!(
-            schema.0.get(&tool_b_input_ns).is_none()
-                || !schema
-                    .0
-                    .get(&tool_b_input_ns)
-                    .unwrap()
-                    .entity_types
-                    .contains_key(&"status".parse().unwrap()),
-            "status should NOT be duplicated in tool_b::Input"
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  entity status enum [\"active\", \"inactive\"];
+
+  action \"call_tool\";
+
+  action \"tool_a\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      session: CommonContext
+    }
+  };
+
+  action \"tool_b\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
+      session: CommonContext
+    }
+  };
+}
+";
+
+        run_inline_test_with_stub(
+            tools_json,
+            stub_schema,
+            expected_schema,
+            SchemaGeneratorConfig::default().deduplicate_entity_types(true),
         );
     }
 
@@ -373,10 +403,6 @@ namespace MyMcpServer {
 }
 "#;
 
-        let extensions = Extensions::all_available();
-        let (input_schema, _) = Fragment::from_cedarschema_str(stub_schema, extensions)
-            .expect("Failed to parse custom stub schema");
-
         let tools_json = r#"{
             "result": {
                 "tools": [
@@ -426,52 +452,67 @@ namespace MyMcpServer {
             }
         }"#;
 
-        let description =
-            ServerDescription::from_json_str(tools_json).expect("Failed to parse tools JSON");
+        let expected_schema = "\
+namespace MyMcpServer::tool_a::Input {
+  entity status enum [\"active\", \"inactive\"];
+}
 
-        let config = SchemaGeneratorConfig::default().deduplicate_entity_types(true);
-        let mut generator =
-            SchemaGenerator::new_with_config(input_schema, config).expect("schema is malformed");
-        generator
-            .add_actions_from_server_description(&description)
-            .expect("Collision should be skipped, not produce an error");
+namespace MyMcpServer::tool_b::Input {
+  entity status enum [\"active\", \"inactive\"];
+}
 
-        let schema = generator.get_schema();
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
 
-        // The pre-existing status enum (different variants) remains unchanged
-        let root_ns = Some("MyMcpServer".parse().unwrap());
-        let root_nsdef = schema.0.get(&root_ns).expect("Root namespace should exist");
-        assert!(
-            root_nsdef
-                .entity_types
-                .contains_key(&"status".parse().unwrap()),
-            "Pre-existing status enum should remain in root namespace"
-        );
+  type tool_aInput = {
+    query: String,
+    status?: MyMcpServer::tool_a::Input::status
+  };
 
-        // Each tool should have its own local status enum since dedup was skipped
-        let tool_a_input_ns = Some("MyMcpServer::tool_a::Input".parse().unwrap());
-        let tool_b_input_ns = Some("MyMcpServer::tool_b::Input".parse().unwrap());
+  type tool_bInput = {
+    data: String,
+    status?: MyMcpServer::tool_b::Input::status
+  };
 
-        let tool_a_nsdef = schema
-            .0
-            .get(&tool_a_input_ns)
-            .expect("Expected tool_a::Input namespace to exist");
-        let tool_b_nsdef = schema
-            .0
-            .get(&tool_b_input_ns)
-            .expect("Expected tool_b::Input namespace to exist");
+  entity McpServer;
 
-        assert!(
-            tool_a_nsdef
-                .entity_types
-                .contains_key(&"status".parse().unwrap()),
-            "status enum should stay local in tool_a::Input"
-        );
-        assert!(
-            tool_b_nsdef
-                .entity_types
-                .contains_key(&"status".parse().unwrap()),
-            "status enum should stay local in tool_b::Input"
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  entity status enum [\"open\", \"closed\"];
+
+  action \"call_tool\";
+
+  action \"tool_a\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      session: CommonContext
+    }
+  };
+
+  action \"tool_b\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
+      session: CommonContext
+    }
+  };
+}
+";
+
+        run_inline_test_with_stub(
+            tools_json,
+            stub_schema,
+            expected_schema,
+            SchemaGeneratorConfig::default().deduplicate_entity_types(true),
         );
     }
 
@@ -509,46 +550,97 @@ namespace MyMcpServer {
             }
         }"#;
 
-        let description =
-            ServerDescription::from_json_str(tools_json).expect("Failed to parse tools JSON");
-        let stub_file =
-            std::fs::File::open("examples/stub.cedarschema").expect("Failed to read schema file");
-        let input_schema = Fragment::from_cedarschema_file(stub_file, Extensions::all_available())
-            .expect("Failed to parse input schema")
-            .0;
+        let expected_schema = "\
+namespace MyMcpServer::tool_a::Input {
+  entity mode enum [\"fast\", \"slow\"];
+}
 
-        let config = SchemaGeneratorConfig::default().deduplicate_entity_types(true);
-        let mut generator =
-            SchemaGenerator::new_with_config(input_schema, config).expect("schema is malformed");
-        generator
-            .add_actions_from_server_description(&description)
-            .expect("Should succeed — conflicting dedup entries are skipped");
+namespace MyMcpServer::tool_b::Input {
+  entity mode enum [\"fast\", \"slow\"];
+}
 
-        let schema = generator.get_schema();
+namespace MyMcpServer::tool_c::Input {
+  entity mode enum [\"sync\", \"async\"];
+}
 
-        // Neither enum should be deduplicated — each stays in its tool's Input namespace
-        let root_ns = Some("MyMcpServer".parse().unwrap());
-        let root_nsdef = schema.0.get(&root_ns).expect("Root namespace should exist");
-        assert!(
-            !root_nsdef
-                .entity_types
-                .contains_key(&"mode".parse().unwrap()),
-            "mode should NOT be placed in the root namespace"
+namespace MyMcpServer::tool_d::Input {
+  entity mode enum [\"sync\", \"async\"];
+}
+
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type tool_aInput = {
+    mode: MyMcpServer::tool_a::Input::mode
+  };
+
+  type tool_bInput = {
+    mode: MyMcpServer::tool_b::Input::mode
+  };
+
+  type tool_cInput = {
+    mode: MyMcpServer::tool_c::Input::mode
+  };
+
+  type tool_dInput = {
+    mode: MyMcpServer::tool_d::Input::mode
+  };
+
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  action \"call_tool\";
+
+  action \"tool_a\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      session: CommonContext
+    }
+  };
+
+  action \"tool_b\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
+      session: CommonContext
+    }
+  };
+
+  action \"tool_c\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_cInput,
+      session: CommonContext
+    }
+  };
+
+  action \"tool_d\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_dInput,
+      session: CommonContext
+    }
+  };
+}
+";
+
+        run_inline_test(
+            tools_json,
+            expected_schema,
+            SchemaGeneratorConfig::default().deduplicate_entity_types(true),
         );
-
-        // All four tools should have their own local `mode` entity type
-        for tool in &["tool_a", "tool_b", "tool_c", "tool_d"] {
-            let input_ns = Some(format!("MyMcpServer::{}::Input", tool).parse().unwrap());
-            let nsdef = schema
-                .0
-                .get(&input_ns)
-                .unwrap_or_else(|| panic!("Expected {}::Input namespace to exist", tool));
-            assert!(
-                nsdef.entity_types.contains_key(&"mode".parse().unwrap()),
-                "mode should stay local in {}::Input",
-                tool
-            );
-        }
     }
 
     #[test]
@@ -600,55 +692,56 @@ namespace MyMcpServer {
             }
         }"#;
 
-        let description =
-            ServerDescription::from_json_str(tools_json).expect("Failed to parse tools JSON");
-        let stub_file =
-            std::fs::File::open("examples/stub.cedarschema").expect("Failed to read schema file");
-        let input_schema = Fragment::from_cedarschema_file(stub_file, Extensions::all_available())
-            .expect("Failed to parse input schema")
-            .0;
+        let expected_schema = "\
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
 
-        let config = SchemaGeneratorConfig::default().deduplicate_entity_types(true);
-        let mut generator =
-            SchemaGenerator::new_with_config(input_schema, config).expect("schema is malformed");
-        generator
-            .add_actions_from_server_description(&description)
-            .expect("Should succeed with array-nested enum dedup");
+  type tool_aInput = {
+    priorities: Set<MyMcpServer::priorities>
+  };
 
-        let schema = generator.get_schema();
+  type tool_bInput = {
+    priorities: Set<MyMcpServer::priorities>
+  };
 
-        // The enum should be deduplicated to the LCA namespace (MyMcpServer)
-        let root_ns = Some("MyMcpServer".parse().unwrap());
-        let root_nsdef = schema.0.get(&root_ns).expect("Root namespace should exist");
-        assert!(
-            root_nsdef
-                .entity_types
-                .contains_key(&"priorities".parse().unwrap()),
-            "priorities enum should be deduplicated to the root namespace"
-        );
+  entity McpServer;
 
-        // Neither tool's Input namespace should have a local copy
-        let tool_a_input_ns = Some("MyMcpServer::tool_a::Input".parse().unwrap());
-        let tool_b_input_ns = Some("MyMcpServer::tool_b::Input".parse().unwrap());
-        assert!(
-            schema.0.get(&tool_a_input_ns).is_none()
-                || !schema
-                    .0
-                    .get(&tool_a_input_ns)
-                    .unwrap()
-                    .entity_types
-                    .contains_key(&"priorities".parse().unwrap()),
-            "priorities should NOT be in tool_a::Input"
-        );
-        assert!(
-            schema.0.get(&tool_b_input_ns).is_none()
-                || !schema
-                    .0
-                    .get(&tool_b_input_ns)
-                    .unwrap()
-                    .entity_types
-                    .contains_key(&"priorities".parse().unwrap()),
-            "priorities should NOT be in tool_b::Input"
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  entity priorities enum [\"high\", \"medium\", \"low\"];
+
+  action \"call_tool\";
+
+  action \"tool_a\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      session: CommonContext
+    }
+  };
+
+  action \"tool_b\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
+      session: CommonContext
+    }
+  };
+}
+";
+
+        run_inline_test(
+            tools_json,
+            expected_schema,
+            SchemaGeneratorConfig::default().deduplicate_entity_types(true),
         );
     }
 
@@ -714,58 +807,68 @@ namespace MyMcpServer {
             }
         }"#;
 
-        let description =
-            ServerDescription::from_json_str(tools_json).expect("Failed to parse tools JSON");
-        let stub_file =
-            std::fs::File::open("examples/stub.cedarschema").expect("Failed to read schema file");
-        let input_schema = Fragment::from_cedarschema_file(stub_file, Extensions::all_available())
-            .expect("Failed to parse input schema")
-            .0;
+        let expected_schema = "\
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
 
-        let config = SchemaGeneratorConfig::default()
-            .include_outputs(true)
-            .deduplicate_entity_types(true);
-        let mut generator =
-            SchemaGenerator::new_with_config(input_schema, config).expect("schema is malformed");
-        generator
-            .add_actions_from_server_description(&description)
-            .expect("Should succeed with output enum dedup");
+  type tool_aInput = {
+    query: String
+  };
 
-        let schema = generator.get_schema();
+  type tool_aOutput = {
+    status: MyMcpServer::status
+  };
 
-        // The status enum should be deduplicated to the LCA of the two Output namespaces.
-        // tool_a::Output and tool_b::Output -> LCA is MyMcpServer
-        let root_ns = Some("MyMcpServer".parse().unwrap());
-        let root_nsdef = schema.0.get(&root_ns).expect("Root namespace should exist");
-        assert!(
-            root_nsdef
-                .entity_types
-                .contains_key(&"status".parse().unwrap()),
-            "status enum should be deduplicated to the root namespace"
-        );
+  type tool_bInput = {
+    id: String
+  };
 
-        // Neither tool's Output namespace should have a local copy
-        let tool_a_output_ns = Some("MyMcpServer::tool_a::Output".parse().unwrap());
-        let tool_b_output_ns = Some("MyMcpServer::tool_b::Output".parse().unwrap());
-        assert!(
-            schema.0.get(&tool_a_output_ns).is_none()
-                || !schema
-                    .0
-                    .get(&tool_a_output_ns)
-                    .unwrap()
-                    .entity_types
-                    .contains_key(&"status".parse().unwrap()),
-            "status should NOT be in tool_a::Output"
-        );
-        assert!(
-            schema.0.get(&tool_b_output_ns).is_none()
-                || !schema
-                    .0
-                    .get(&tool_b_output_ns)
-                    .unwrap()
-                    .entity_types
-                    .contains_key(&"status".parse().unwrap()),
-            "status should NOT be in tool_b::Output"
+  type tool_bOutput = {
+    status: MyMcpServer::status
+  };
+
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  entity status enum [\"success\", \"failure\", \"pending\"];
+
+  action \"call_tool\";
+
+  action \"tool_a\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      output?: tool_aOutput,
+      session: CommonContext
+    }
+  };
+
+  action \"tool_b\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
+      output?: tool_bOutput,
+      session: CommonContext
+    }
+  };
+}
+";
+
+        run_inline_test(
+            tools_json,
+            expected_schema,
+            SchemaGeneratorConfig::default()
+                .include_outputs(true)
+                .deduplicate_entity_types(true),
         );
     }
 
@@ -821,57 +924,66 @@ namespace MyMcpServer {
             }
         }"#;
 
-        let description =
-            ServerDescription::from_json_str(tools_json).expect("Failed to parse tools JSON");
-        let stub_file =
-            std::fs::File::open("examples/stub.cedarschema").expect("Failed to read schema file");
-        let input_schema = Fragment::from_cedarschema_file(stub_file, Extensions::all_available())
-            .expect("Failed to parse input schema")
-            .0;
+        let expected_schema = "\
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
 
-        let config = SchemaGeneratorConfig::default()
-            .include_outputs(true)
-            .deduplicate_entity_types(true);
-        let mut generator =
-            SchemaGenerator::new_with_config(input_schema, config).expect("schema is malformed");
-        generator
-            .add_actions_from_server_description(&description)
-            .expect("Should succeed with cross input/output enum dedup");
+  type tool_aInput = {
+    priority: MyMcpServer::priority
+  };
 
-        let schema = generator.get_schema();
+  type tool_aOutput = {  };
 
-        // LCA of tool_a::Input and tool_b::Output is MyMcpServer
-        let root_ns = Some("MyMcpServer".parse().unwrap());
-        let root_nsdef = schema.0.get(&root_ns).expect("Root namespace should exist");
-        assert!(
-            root_nsdef
-                .entity_types
-                .contains_key(&"priority".parse().unwrap()),
-            "priority enum should be deduplicated to the root namespace"
-        );
+  type tool_bInput = {
+    id: String
+  };
 
-        // Neither source namespace should have a local copy
-        let tool_a_input_ns = Some("MyMcpServer::tool_a::Input".parse().unwrap());
-        let tool_b_output_ns = Some("MyMcpServer::tool_b::Output".parse().unwrap());
-        assert!(
-            schema.0.get(&tool_a_input_ns).is_none()
-                || !schema
-                    .0
-                    .get(&tool_a_input_ns)
-                    .unwrap()
-                    .entity_types
-                    .contains_key(&"priority".parse().unwrap()),
-            "priority should NOT be in tool_a::Input"
-        );
-        assert!(
-            schema.0.get(&tool_b_output_ns).is_none()
-                || !schema
-                    .0
-                    .get(&tool_b_output_ns)
-                    .unwrap()
-                    .entity_types
-                    .contains_key(&"priority".parse().unwrap()),
-            "priority should NOT be in tool_b::Output"
+  type tool_bOutput = {
+    priority: MyMcpServer::priority
+  };
+
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  entity priority enum [\"high\", \"medium\", \"low\"];
+
+  action \"call_tool\";
+
+  action \"tool_a\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      output?: tool_aOutput,
+      session: CommonContext
+    }
+  };
+
+  action \"tool_b\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
+      output?: tool_bOutput,
+      session: CommonContext
+    }
+  };
+}
+";
+
+        run_inline_test(
+            tools_json,
+            expected_schema,
+            SchemaGeneratorConfig::default()
+                .include_outputs(true)
+                .deduplicate_entity_types(true),
         );
     }
 
@@ -928,45 +1040,58 @@ namespace MyMcpServer {
             }
         }"#;
 
-        let description =
-            ServerDescription::from_json_str(tools_json).expect("Failed to parse tools JSON");
-        let stub_file =
-            std::fs::File::open("examples/stub.cedarschema").expect("Failed to read schema file");
-        let input_schema = Fragment::from_cedarschema_file(stub_file, Extensions::all_available())
-            .expect("Failed to parse input schema")
-            .0;
+        let expected_schema = "\
+namespace MyMcpServer::tool_a::Input {
+  entity status enum [\"success\", \"failure\"];
+}
 
-        // deduplicate_entity_types = true, but include_outputs = false (default)
-        let config = SchemaGeneratorConfig::default().deduplicate_entity_types(true);
-        let mut generator =
-            SchemaGenerator::new_with_config(input_schema, config).expect("schema is malformed");
-        generator
-            .add_actions_from_server_description(&description)
-            .expect("Should succeed");
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
 
-        let schema = generator.get_schema();
+  type tool_aInput = {
+    status: MyMcpServer::tool_a::Input::status
+  };
 
-        // The enum only appears once (in tool_a::Input), so it should NOT be deduplicated
-        let root_ns = Some("MyMcpServer".parse().unwrap());
-        let root_nsdef = schema.0.get(&root_ns).expect("Root namespace should exist");
-        assert!(
-            !root_nsdef
-                .entity_types
-                .contains_key(&"status".parse().unwrap()),
-            "status should NOT be deduplicated to root when include_outputs is false"
-        );
+  type tool_bInput = {
+    id: String
+  };
 
-        // tool_a should have its own local status enum
-        let tool_a_input_ns = Some("MyMcpServer::tool_a::Input".parse().unwrap());
-        let tool_a_nsdef = schema
-            .0
-            .get(&tool_a_input_ns)
-            .expect("Expected tool_a::Input namespace to exist");
-        assert!(
-            tool_a_nsdef
-                .entity_types
-                .contains_key(&"status".parse().unwrap()),
-            "status should remain local in tool_a::Input"
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  action \"call_tool\";
+
+  action \"tool_a\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      session: CommonContext
+    }
+  };
+
+  action \"tool_b\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
+      session: CommonContext
+    }
+  };
+}
+";
+
+        run_inline_test(
+            tools_json,
+            expected_schema,
+            SchemaGeneratorConfig::default().deduplicate_entity_types(true),
         );
     }
 }

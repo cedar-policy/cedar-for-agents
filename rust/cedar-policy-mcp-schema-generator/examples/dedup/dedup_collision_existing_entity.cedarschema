@@ -1,0 +1,51 @@
+namespace MyMcpServer::tool_a::Input {
+  entity McpServer enum ["primary", "secondary"];
+}
+
+namespace MyMcpServer::tool_b::Input {
+  entity McpServer enum ["primary", "secondary"];
+}
+
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type tool_aInput = {
+    McpServer?: MyMcpServer::tool_a::Input::McpServer,
+    query: String
+  };
+
+  type tool_bInput = {
+    McpServer?: MyMcpServer::tool_b::Input::McpServer,
+    data: String
+  };
+
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  action "call_tool";
+
+  action "tool_a" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      session: CommonContext
+    }
+  };
+
+  action "tool_b" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
+      session: CommonContext
+    }
+  };
+}
