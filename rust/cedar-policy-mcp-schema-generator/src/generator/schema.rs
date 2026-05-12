@@ -466,6 +466,26 @@ impl SchemaGenerator {
         ))
     }
 
+    /// Check if a fingerprint matches an existing entity type definition.
+    fn fingerprint_matches_entity(
+        fingerprint: &EntityTypeFingerprint,
+        entity: &EntityType<RawName>,
+    ) -> bool {
+        match fingerprint {
+            EntityTypeFingerprint::Enum {
+                base_name: _,
+                variants,
+            } => match &entity.kind {
+                EntityTypeKind::Enum { choices } => {
+                    let existing: Vec<&SmolStr> = choices.iter().collect();
+                    let candidate: Vec<&SmolStr> = variants.iter().collect();
+                    existing == candidate
+                }
+                _ => false,
+            },
+        }
+    }
+
     /// Look up whether a given fingerprint was deduplicated.
     /// Returns the LCA namespace if so.
     fn get_dedup_namespace(&self, fingerprint: &EntityTypeFingerprint) -> Option<&Option<Name>> {
@@ -663,86 +683,111 @@ impl SchemaGenerator {
             self.add_commontype(&namespace, ty, ty_name, true)?;
         }
 
-        // Pass 1: Collect enum occurrences for deduplication
-        if self.config.deduplicate_entity_types {
-            let mut dedup_map = DeduplicationMap::default();
+        self.deduplicate_entities(description)?;
 
-            // Scan all tool descriptions for enum properties
-            for tool_description in description.tool_descriptions() {
-                let tool_ns: Name = tool_description.name().parse()?;
-                let tool_ns = tool_ns.qualify_with_name(self.namespace.as_ref());
-                let input_ns = Some(identifiers::INPUT_NAME.qualify_with_name(Some(&tool_ns)));
+        for tool_description in description.tool_descriptions() {
+            self.add_action_from_tool_description_inner(tool_description, common_types.clone())?
+        }
+        Ok(())
+    }
 
-                // Scan input parameters for enums
+    /// Scans all tool descriptions for equivalent enum entity types and places
+    /// shared definitions in the lowest common ancestor namespace.
+    /// Must be called before individual tool actions are processed.
+    fn deduplicate_entities(
+        &mut self,
+        description: &ServerDescription,
+    ) -> Result<(), SchemaGeneratorError> {
+        if !self.config.deduplicate_entity_types {
+            return Ok(());
+        }
+
+        let mut dedup_map = DeduplicationMap::default();
+
+        for tool_description in description.tool_descriptions() {
+            let tool_ns: Name = tool_description.name().parse()?;
+            let tool_ns = tool_ns.qualify_with_name(self.namespace.as_ref());
+            let input_ns = Some(identifiers::INPUT_NAME.qualify_with_name(Some(&tool_ns)));
+
+            Self::collect_enum_fingerprints(tool_description.inputs(), &input_ns, &mut dedup_map);
+
+            if self.config.include_outputs {
+                let output_ns = Some(identifiers::OUTPUT_NAME.qualify_with_name(Some(&tool_ns)));
                 Self::collect_enum_fingerprints(
-                    tool_description.inputs(),
-                    &input_ns,
+                    tool_description.outputs(),
+                    &output_ns,
                     &mut dedup_map,
                 );
+            }
 
-                // Also scan tool-level type definitions for enums
-                for type_def in tool_description.type_definitions() {
-                    if let PropertyType::Enum { variants } = type_def.property_type() {
-                        if !variants.is_empty() {
-                            if let Ok(base_name) = type_def.name().parse::<UnreservedId>() {
-                                let fingerprint = EntityTypeFingerprint::Enum {
-                                    base_name,
-                                    variants: variants.clone(),
-                                };
-                                dedup_map.record(fingerprint, Some(tool_ns.clone()));
-                            }
+            for type_def in tool_description.type_definitions() {
+                if let PropertyType::Enum { variants } = type_def.property_type() {
+                    if !variants.is_empty() {
+                        if let Ok(base_name) = type_def.name().parse::<UnreservedId>() {
+                            let fingerprint = EntityTypeFingerprint::Enum {
+                                base_name,
+                                variants: variants.clone(),
+                            };
+                            dedup_map.record(fingerprint, Some(tool_ns.clone()));
                         }
                     }
                 }
             }
+        }
 
-            // Resolve duplicates and compute LCA placements
-            let resolved = dedup_map.resolve_duplicates();
+        let resolved = dedup_map.resolve_duplicates();
 
-            // Determine which fingerprints to skip:
-            // - Same base_name targeting the same LCA (different variants conflict)
-            // - Base_name already exists in the LCA namespace
-            let mut skipped = HashSet::<&EntityTypeFingerprint>::new();
+        // Determine which fingerprints to skip:
+        // - Same base_name targeting the same LCA (different variants conflict)
+        // - Base_name already exists in the LCA namespace
+        let mut skipped = HashSet::<&EntityTypeFingerprint>::new();
 
-            // Group by (base_name, lca_namespace) to detect same-name conflicts
-            let mut lca_groups: HashMap<
-                (&UnreservedId, &Option<Name>),
-                Vec<&EntityTypeFingerprint>,
-            > = HashMap::new();
-            for (fp, info) in &resolved {
-                lca_groups
-                    .entry((fp.base_name(), &info.lca_namespace))
-                    .or_default()
-                    .push(fp);
+        // Group by (base_name, lca_namespace) to detect same-name conflicts
+        let mut lca_groups: HashMap<(&UnreservedId, &Option<Name>), Vec<&EntityTypeFingerprint>> =
+            HashMap::new();
+        for (fp, info) in &resolved {
+            lca_groups
+                .entry((fp.base_name(), &info.lca_namespace))
+                .or_default()
+                .push(fp);
+        }
+        for fps in lca_groups.values() {
+            if fps.len() > 1 {
+                skipped.extend(fps.iter());
             }
-            for fps in lca_groups.values() {
-                if fps.len() > 1 {
-                    skipped.extend(fps.iter());
-                }
-            }
+        }
 
-            // Skip fingerprints whose base_name collides with existing types in the LCA
-            for (fp, info) in &resolved {
-                if skipped.contains(fp) {
-                    continue;
-                }
-                let base_name = fp.base_name();
-                if let Some(nsdef) = self.fragment.0.get(&info.lca_namespace) {
-                    if nsdef.entity_types.contains_key(base_name)
-                        || nsdef.common_types.keys().any(|k| k.as_ref() == base_name)
-                    {
+        // Skip fingerprints whose base_name collides with a *different* type in the LCA.
+        // If the LCA already has an identical enum (same name + same variants), we reuse it.
+        let mut reused = HashSet::<&EntityTypeFingerprint>::new();
+        for (fp, info) in &resolved {
+            if skipped.contains(fp) {
+                continue;
+            }
+            let base_name = fp.base_name();
+            if let Some(nsdef) = self.fragment.0.get(&info.lca_namespace) {
+                if nsdef.common_types.keys().any(|k| k.as_ref() == base_name) {
+                    skipped.insert(fp);
+                } else if let Some(existing_entity) = nsdef.entity_types.get(base_name) {
+                    if Self::fingerprint_matches_entity(fp, existing_entity) {
+                        reused.insert(fp);
+                    } else {
                         skipped.insert(fp);
                     }
                 }
             }
+        }
 
-            // Place non-skipped entity types in their LCA namespace
-            let mut placed = HashMap::new();
-            for (fingerprint, dedup_info) in &resolved {
-                if skipped.contains(fingerprint) {
-                    continue;
-                }
-                let lca_ns = &dedup_info.lca_namespace;
+        // Place non-skipped entity types in their LCA namespace.
+        // Reused types already exist — record them in `placed` without re-inserting.
+        let mut placed = HashMap::new();
+        for (fingerprint, dedup_info) in &resolved {
+            if skipped.contains(fingerprint) {
+                continue;
+            }
+            let lca_ns = &dedup_info.lca_namespace;
+
+            if !reused.contains(fingerprint) {
                 self.add_namespace(lca_ns.clone());
 
                 match fingerprint {
@@ -763,15 +808,11 @@ impl SchemaGenerator {
                         self.add_entitytype(lca_ns, ty, base_name.clone(), true)?;
                     }
                 }
-                placed.insert(fingerprint.clone(), dedup_info.clone());
             }
-
-            self.resolved_dedup = Some(placed);
+            placed.insert(fingerprint.clone(), dedup_info.clone());
         }
 
-        for tool_description in description.tool_descriptions() {
-            self.add_action_from_tool_description_inner(tool_description, common_types.clone())?
-        }
+        self.resolved_dedup = Some(placed);
         Ok(())
     }
 
