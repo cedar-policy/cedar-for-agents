@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
-## [0.3.0] - Coming soon
+## [0.3.0] - 2026-05-12
 
 ### Added:
 - Adds support for parsing and type validation of requests to (`Input` struct) and responses from (`Output` struct) MCP servers for the `tools/call` procedure.
