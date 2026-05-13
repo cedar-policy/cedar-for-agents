@@ -86,6 +86,11 @@ pub(crate) struct ConfigOptions {
     /// range than decimals. Decimals are limited between [-922337203685477.5808, 922337203685477.5807].
     #[arg(long, default_value_t = false)]
     pub(crate) encode_numbers_as_decimal: bool,
+    /// Whether to deduplicate entity types with equivalent definitions across tools, placing
+    /// the shared type in the lowest common ancestor namespace (default: false). Currently
+    /// applies to enum entity types matched by name and variant values.
+    #[arg(long, default_value_t = false)]
+    pub(crate) deduplicate_entity_types: bool,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug, Serialize)]

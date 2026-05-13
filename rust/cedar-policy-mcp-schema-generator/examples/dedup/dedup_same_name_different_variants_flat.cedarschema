@@ -1,0 +1,47 @@
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type tool_aInput = {
+    mode?: MyMcpServer::tool_a_Input_mode,
+    query: String
+  };
+
+  type tool_bInput = {
+    mode?: MyMcpServer::tool_b_Input_mode,
+    query: String
+  };
+
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  entity tool_a_Input_mode enum ["fast", "slow"];
+
+  entity tool_b_Input_mode enum ["sync", "async"];
+
+  action "call_tool";
+
+  action "tool_a" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      session: CommonContext
+    }
+  };
+
+  action "tool_b" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
+      session: CommonContext
+    }
+  };
+}

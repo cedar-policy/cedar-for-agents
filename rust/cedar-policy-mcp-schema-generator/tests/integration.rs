@@ -60,6 +60,65 @@ mod lib {
         );
     }
 
+    fn run_inline_test(tools_json: &str, expected_schema: &str, config: SchemaGeneratorConfig) {
+        let description =
+            ServerDescription::from_json_str(tools_json).expect("Failed to parse tools JSON");
+        let stub_file =
+            std::fs::File::open("examples/stub.cedarschema").expect("Failed to read schema file");
+        let input_schema = Fragment::from_cedarschema_file(stub_file, Extensions::all_available())
+            .expect("Failed to parse input schema")
+            .0;
+
+        let mut generator = SchemaGenerator::new_with_config(input_schema, config)
+            .expect("input schema file is malformed");
+        generator
+            .add_actions_from_server_description(&description)
+            .expect("Failed to add tool actions to schema generator");
+
+        let actual_schema = generator
+            .get_schema()
+            .clone()
+            .to_cedarschema()
+            .expect("Failed to resolve generated schema");
+        assert!(
+            expected_schema == actual_schema,
+            "{} != {}",
+            expected_schema,
+            actual_schema
+        );
+    }
+
+    fn run_inline_test_with_stub(
+        tools_json: &str,
+        stub_schema: &str,
+        expected_schema: &str,
+        config: SchemaGeneratorConfig,
+    ) {
+        let description =
+            ServerDescription::from_json_str(tools_json).expect("Failed to parse tools JSON");
+        let extensions = Extensions::all_available();
+        let (input_schema, _) = Fragment::from_cedarschema_str(stub_schema, extensions)
+            .expect("Failed to parse custom stub schema");
+
+        let mut generator = SchemaGenerator::new_with_config(input_schema, config)
+            .expect("input schema file is malformed");
+        generator
+            .add_actions_from_server_description(&description)
+            .expect("Failed to add tool actions to schema generator");
+
+        let actual_schema = generator
+            .get_schema()
+            .clone()
+            .to_cedarschema()
+            .expect("Failed to resolve generated schema");
+        assert!(
+            expected_schema == actual_schema,
+            "{} != {}",
+            expected_schema,
+            actual_schema
+        );
+    }
+
     #[test]
     fn strands_agent() {
         run_integration_test(
@@ -96,6 +155,1019 @@ mod lib {
             "examples/simple/tool_mixed_array.json",
             "examples/simple/tool_mixed_array.cedarschema",
             SchemaGeneratorConfig::default(),
+        );
+    }
+
+    #[test]
+    fn dedup_entity_types() {
+        run_integration_test(
+            "examples/dedup/dedup_tools.json",
+            "examples/dedup/dedup_tools.cedarschema",
+            SchemaGeneratorConfig::default().deduplicate_entity_types(true),
+        );
+    }
+
+    #[test]
+    fn dedup_entity_types_flat() {
+        run_integration_test(
+            "examples/dedup/dedup_tools.json",
+            "examples/dedup/dedup_tools_flat.cedarschema",
+            SchemaGeneratorConfig::default()
+                .deduplicate_entity_types(true)
+                .flatten_namespaces(true),
+        );
+    }
+
+    #[test]
+    fn dedup_same_name_different_variants() {
+        // Two tools have an enum with the same name ("mode") but different variants.
+        // They should NOT be deduplicated — each stays in its own Input namespace.
+        run_integration_test(
+            "examples/dedup/dedup_same_name_different_variants.json",
+            "examples/dedup/dedup_same_name_different_variants.cedarschema",
+            SchemaGeneratorConfig::default().deduplicate_entity_types(true),
+        );
+    }
+
+    #[test]
+    fn dedup_same_name_different_variants_flat() {
+        run_integration_test(
+            "examples/dedup/dedup_same_name_different_variants.json",
+            "examples/dedup/dedup_same_name_different_variants_flat.cedarschema",
+            SchemaGeneratorConfig::default()
+                .deduplicate_entity_types(true)
+                .flatten_namespaces(true),
+        );
+    }
+
+    #[test]
+    fn dedup_three_way_lca() {
+        // Single tool with the same enum ("priority") at three different nested object depths:
+        //   MyMcpServer::tool_x::Input::B::C::priority
+        //   MyMcpServer::tool_x::Input::B::D::priority
+        //   MyMcpServer::tool_x::Input::E::F::priority
+        // The enum should be deduplicated to the LCA namespace (MyMcpServer::tool_x::Input).
+        run_integration_test(
+            "examples/dedup/dedup_three_way_lca.json",
+            "examples/dedup/dedup_three_way_lca.cedarschema",
+            SchemaGeneratorConfig::default().deduplicate_entity_types(true),
+        );
+    }
+
+    #[test]
+    fn dedup_three_way_lca_flat() {
+        run_integration_test(
+            "examples/dedup/dedup_three_way_lca.json",
+            "examples/dedup/dedup_three_way_lca_flat.cedarschema",
+            SchemaGeneratorConfig::default()
+                .deduplicate_entity_types(true)
+                .flatten_namespaces(true),
+        );
+    }
+
+    #[test]
+    fn dedup_collision_existing_entity_in_lca() {
+        // Two tools share an enum named "McpServer" (same name as existing entity type
+        // in the LCA namespace). Dedup should skip this enum — each tool keeps its own copy.
+        run_integration_test(
+            "examples/dedup/dedup_collision_existing_entity.json",
+            "examples/dedup/dedup_collision_existing_entity.cedarschema",
+            SchemaGeneratorConfig::default().deduplicate_entity_types(true),
+        );
+    }
+
+    #[test]
+    fn dedup_collision_same_enum_already_in_lca() {
+        // The LCA namespace already has an enum entity type with the same name AND same variants.
+        // Dedup should reuse the existing entity — tools reference it instead of creating local copies.
+        let stub_schema = r#"
+namespace MyMcpServer {
+    @mcp_principal("User")
+    entity User {
+        id: String,
+        username: String,
+    };
+
+    @mcp_context("session")
+    type CommonContext = {
+        currentTimestamp: datetime,
+        ipaddr: ipaddr,
+    };
+
+    @mcp_resource("McpServer")
+    entity McpServer;
+
+    @mcp_action("call_tool")
+    action call_tool;
+
+    // Pre-existing enum entity type with same variants as tools
+    entity status enum ["active", "inactive"];
+}
+"#;
+
+        let tools_json = r#"{
+            "result": {
+                "tools": [
+                    {
+                        "name": "tool_a",
+                        "description": "Tool A with status enum",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "status": {
+                                        "type": "string",
+                                        "enum": ["active", "inactive"],
+                                        "description": "Status"
+                                    },
+                                    "query": {
+                                        "type": "string",
+                                        "description": "Query"
+                                    }
+                                },
+                                "required": ["query"]
+                            }
+                        }
+                    },
+                    {
+                        "name": "tool_b",
+                        "description": "Tool B with same status enum",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "status": {
+                                        "type": "string",
+                                        "enum": ["active", "inactive"],
+                                        "description": "Status"
+                                    },
+                                    "data": {
+                                        "type": "string",
+                                        "description": "Data"
+                                    }
+                                },
+                                "required": ["data"]
+                            }
+                        }
+                    }
+                ]
+            }
+        }"#;
+
+        let expected_schema = "\
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type tool_aInput = {
+    query: String,
+    status?: MyMcpServer::status
+  };
+
+  type tool_bInput = {
+    data: String,
+    status?: MyMcpServer::status
+  };
+
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  entity status enum [\"active\", \"inactive\"];
+
+  action \"call_tool\";
+
+  action \"tool_a\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      session: CommonContext
+    }
+  };
+
+  action \"tool_b\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
+      session: CommonContext
+    }
+  };
+}
+";
+
+        run_inline_test_with_stub(
+            tools_json,
+            stub_schema,
+            expected_schema,
+            SchemaGeneratorConfig::default().deduplicate_entity_types(true),
+        );
+    }
+
+    #[test]
+    fn dedup_collision_different_enum_already_in_lca() {
+        // The LCA namespace already has an enum entity type with the same name but DIFFERENT variants.
+        // Dedup should skip — each tool keeps its own local copy.
+        let stub_schema = r#"
+namespace MyMcpServer {
+    @mcp_principal("User")
+    entity User {
+        id: String,
+        username: String,
+    };
+
+    @mcp_context("session")
+    type CommonContext = {
+        currentTimestamp: datetime,
+        ipaddr: ipaddr,
+    };
+
+    @mcp_resource("McpServer")
+    entity McpServer;
+
+    @mcp_action("call_tool")
+    action call_tool;
+
+    // Pre-existing enum with DIFFERENT variants than tools
+    entity status enum ["open", "closed"];
+}
+"#;
+
+        let tools_json = r#"{
+            "result": {
+                "tools": [
+                    {
+                        "name": "tool_a",
+                        "description": "Tool A with status enum",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "status": {
+                                        "type": "string",
+                                        "enum": ["active", "inactive"],
+                                        "description": "Status"
+                                    },
+                                    "query": {
+                                        "type": "string",
+                                        "description": "Query"
+                                    }
+                                },
+                                "required": ["query"]
+                            }
+                        }
+                    },
+                    {
+                        "name": "tool_b",
+                        "description": "Tool B with same status enum",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "status": {
+                                        "type": "string",
+                                        "enum": ["active", "inactive"],
+                                        "description": "Status"
+                                    },
+                                    "data": {
+                                        "type": "string",
+                                        "description": "Data"
+                                    }
+                                },
+                                "required": ["data"]
+                            }
+                        }
+                    }
+                ]
+            }
+        }"#;
+
+        let expected_schema = "\
+namespace MyMcpServer::tool_a::Input {
+  entity status enum [\"active\", \"inactive\"];
+}
+
+namespace MyMcpServer::tool_b::Input {
+  entity status enum [\"active\", \"inactive\"];
+}
+
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type tool_aInput = {
+    query: String,
+    status?: MyMcpServer::tool_a::Input::status
+  };
+
+  type tool_bInput = {
+    data: String,
+    status?: MyMcpServer::tool_b::Input::status
+  };
+
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  entity status enum [\"open\", \"closed\"];
+
+  action \"call_tool\";
+
+  action \"tool_a\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      session: CommonContext
+    }
+  };
+
+  action \"tool_b\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
+      session: CommonContext
+    }
+  };
+}
+";
+
+        run_inline_test_with_stub(
+            tools_json,
+            stub_schema,
+            expected_schema,
+            SchemaGeneratorConfig::default().deduplicate_entity_types(true),
+        );
+    }
+
+    #[test]
+    fn dedup_skip_both_when_same_name_different_variants_both_duplicated() {
+        // Two pairs of tools define `mode` with different variants:
+        //   tool_a, tool_b: mode ["fast", "slow"]
+        //   tool_c, tool_d: mode ["sync", "async"]
+        // Both fingerprints have >1 occurrence, both compute LCA = MyMcpServer.
+        // Since they'd collide at the same LCA, BOTH should be skipped.
+        let tools_json = r#"{
+            "result": {
+                "tools": [
+                    {
+                        "name": "tool_a",
+                        "description": "Tool A",
+                        "inputSchema": { "json": { "type": "object", "properties": { "mode": { "type": "string", "enum": ["fast", "slow"] } }, "required": ["mode"] } }
+                    },
+                    {
+                        "name": "tool_b",
+                        "description": "Tool B",
+                        "inputSchema": { "json": { "type": "object", "properties": { "mode": { "type": "string", "enum": ["fast", "slow"] } }, "required": ["mode"] } }
+                    },
+                    {
+                        "name": "tool_c",
+                        "description": "Tool C",
+                        "inputSchema": { "json": { "type": "object", "properties": { "mode": { "type": "string", "enum": ["sync", "async"] } }, "required": ["mode"] } }
+                    },
+                    {
+                        "name": "tool_d",
+                        "description": "Tool D",
+                        "inputSchema": { "json": { "type": "object", "properties": { "mode": { "type": "string", "enum": ["sync", "async"] } }, "required": ["mode"] } }
+                    }
+                ]
+            }
+        }"#;
+
+        let expected_schema = "\
+namespace MyMcpServer::tool_a::Input {
+  entity mode enum [\"fast\", \"slow\"];
+}
+
+namespace MyMcpServer::tool_b::Input {
+  entity mode enum [\"fast\", \"slow\"];
+}
+
+namespace MyMcpServer::tool_c::Input {
+  entity mode enum [\"sync\", \"async\"];
+}
+
+namespace MyMcpServer::tool_d::Input {
+  entity mode enum [\"sync\", \"async\"];
+}
+
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type tool_aInput = {
+    mode: MyMcpServer::tool_a::Input::mode
+  };
+
+  type tool_bInput = {
+    mode: MyMcpServer::tool_b::Input::mode
+  };
+
+  type tool_cInput = {
+    mode: MyMcpServer::tool_c::Input::mode
+  };
+
+  type tool_dInput = {
+    mode: MyMcpServer::tool_d::Input::mode
+  };
+
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  action \"call_tool\";
+
+  action \"tool_a\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      session: CommonContext
+    }
+  };
+
+  action \"tool_b\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
+      session: CommonContext
+    }
+  };
+
+  action \"tool_c\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_cInput,
+      session: CommonContext
+    }
+  };
+
+  action \"tool_d\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_dInput,
+      session: CommonContext
+    }
+  };
+}
+";
+
+        run_inline_test(
+            tools_json,
+            expected_schema,
+            SchemaGeneratorConfig::default().deduplicate_entity_types(true),
+        );
+    }
+
+    #[test]
+    fn dedup_same_variants_different_order_not_deduplicated() {
+        // Two tools have an enum with the same variants but in different order.
+        // Order is significant, so they should NOT be deduplicated.
+        let tools_json = r#"{
+            "result": {
+                "tools": [
+                    {
+                        "name": "tool_a",
+                        "description": "Tool A",
+                        "inputSchema": { "json": { "type": "object", "properties": { "mode": { "type": "string", "enum": ["fast", "slow"] } }, "required": ["mode"] } }
+                    },
+                    {
+                        "name": "tool_b",
+                        "description": "Tool B",
+                        "inputSchema": { "json": { "type": "object", "properties": { "mode": { "type": "string", "enum": ["slow", "fast"] } }, "required": ["mode"] } }
+                    }
+                ]
+            }
+        }"#;
+
+        let expected_schema = "\
+namespace MyMcpServer::tool_a::Input {
+  entity mode enum [\"fast\", \"slow\"];
+}
+
+namespace MyMcpServer::tool_b::Input {
+  entity mode enum [\"slow\", \"fast\"];
+}
+
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type tool_aInput = {
+    mode: MyMcpServer::tool_a::Input::mode
+  };
+
+  type tool_bInput = {
+    mode: MyMcpServer::tool_b::Input::mode
+  };
+
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  action \"call_tool\";
+
+  action \"tool_a\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      session: CommonContext
+    }
+  };
+
+  action \"tool_b\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
+      session: CommonContext
+    }
+  };
+}
+";
+
+        run_inline_test(
+            tools_json,
+            expected_schema,
+            SchemaGeneratorConfig::default().deduplicate_entity_types(true),
+        );
+    }
+
+    #[test]
+    fn dedup_enum_inside_array() {
+        // Two tools have the same enum nested inside an array property.
+        // The enum should still be deduplicated.
+        let tools_json = r#"{
+            "result": {
+                "tools": [
+                    {
+                        "name": "tool_a",
+                        "description": "Tool A",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "priorities": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "enum": ["high", "medium", "low"]
+                                        }
+                                    }
+                                },
+                                "required": ["priorities"]
+                            }
+                        }
+                    },
+                    {
+                        "name": "tool_b",
+                        "description": "Tool B",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "priorities": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "enum": ["high", "medium", "low"]
+                                        }
+                                    }
+                                },
+                                "required": ["priorities"]
+                            }
+                        }
+                    }
+                ]
+            }
+        }"#;
+
+        let expected_schema = "\
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type tool_aInput = {
+    priorities: Set<MyMcpServer::priorities>
+  };
+
+  type tool_bInput = {
+    priorities: Set<MyMcpServer::priorities>
+  };
+
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  entity priorities enum [\"high\", \"medium\", \"low\"];
+
+  action \"call_tool\";
+
+  action \"tool_a\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      session: CommonContext
+    }
+  };
+
+  action \"tool_b\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
+      session: CommonContext
+    }
+  };
+}
+";
+
+        run_inline_test(
+            tools_json,
+            expected_schema,
+            SchemaGeneratorConfig::default().deduplicate_entity_types(true),
+        );
+    }
+
+    #[test]
+    fn dedup_enum_across_outputs() {
+        // Two tools share an enum in their outputSchema.
+        // With include_outputs + deduplicate_entity_types, the enum should be
+        // deduplicated to the LCA namespace.
+        let tools_json = r#"{
+            "result": {
+                "tools": [
+                    {
+                        "name": "tool_a",
+                        "description": "Tool A",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "query": { "type": "string" }
+                                },
+                                "required": ["query"]
+                            }
+                        },
+                        "outputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "status": {
+                                        "type": "string",
+                                        "enum": ["success", "failure", "pending"]
+                                    }
+                                },
+                                "required": ["status"]
+                            }
+                        }
+                    },
+                    {
+                        "name": "tool_b",
+                        "description": "Tool B",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "id": { "type": "string" }
+                                },
+                                "required": ["id"]
+                            }
+                        },
+                        "outputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "status": {
+                                        "type": "string",
+                                        "enum": ["success", "failure", "pending"]
+                                    }
+                                },
+                                "required": ["status"]
+                            }
+                        }
+                    }
+                ]
+            }
+        }"#;
+
+        let expected_schema = "\
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type tool_aInput = {
+    query: String
+  };
+
+  type tool_aOutput = {
+    status: MyMcpServer::status
+  };
+
+  type tool_bInput = {
+    id: String
+  };
+
+  type tool_bOutput = {
+    status: MyMcpServer::status
+  };
+
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  entity status enum [\"success\", \"failure\", \"pending\"];
+
+  action \"call_tool\";
+
+  action \"tool_a\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      output?: tool_aOutput,
+      session: CommonContext
+    }
+  };
+
+  action \"tool_b\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
+      output?: tool_bOutput,
+      session: CommonContext
+    }
+  };
+}
+";
+
+        run_inline_test(
+            tools_json,
+            expected_schema,
+            SchemaGeneratorConfig::default()
+                .include_outputs(true)
+                .deduplicate_entity_types(true),
+        );
+    }
+
+    #[test]
+    fn dedup_enum_across_input_and_output() {
+        // One tool has an enum in inputSchema, the other has the same enum in outputSchema.
+        // They should still be deduplicated to the LCA.
+        let tools_json = r#"{
+            "result": {
+                "tools": [
+                    {
+                        "name": "tool_a",
+                        "description": "Tool A with enum in input",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "priority": {
+                                        "type": "string",
+                                        "enum": ["high", "medium", "low"]
+                                    }
+                                },
+                                "required": ["priority"]
+                            }
+                        }
+                    },
+                    {
+                        "name": "tool_b",
+                        "description": "Tool B with same enum in output",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "id": { "type": "string" }
+                                },
+                                "required": ["id"]
+                            }
+                        },
+                        "outputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "priority": {
+                                        "type": "string",
+                                        "enum": ["high", "medium", "low"]
+                                    }
+                                },
+                                "required": ["priority"]
+                            }
+                        }
+                    }
+                ]
+            }
+        }"#;
+
+        let expected_schema = "\
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type tool_aInput = {
+    priority: MyMcpServer::priority
+  };
+
+  type tool_aOutput = {  };
+
+  type tool_bInput = {
+    id: String
+  };
+
+  type tool_bOutput = {
+    priority: MyMcpServer::priority
+  };
+
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  entity priority enum [\"high\", \"medium\", \"low\"];
+
+  action \"call_tool\";
+
+  action \"tool_a\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      output?: tool_aOutput,
+      session: CommonContext
+    }
+  };
+
+  action \"tool_b\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
+      output?: tool_bOutput,
+      session: CommonContext
+    }
+  };
+}
+";
+
+        run_inline_test(
+            tools_json,
+            expected_schema,
+            SchemaGeneratorConfig::default()
+                .include_outputs(true)
+                .deduplicate_entity_types(true),
+        );
+    }
+
+    #[test]
+    fn dedup_output_not_scanned_without_include_outputs() {
+        // When include_outputs is false, output enums should NOT participate in dedup.
+        // tool_a has "status" in input, tool_b has same "status" in output only.
+        // Without include_outputs, the output enum is never generated, so no dedup happens.
+        let tools_json = r#"{
+            "result": {
+                "tools": [
+                    {
+                        "name": "tool_a",
+                        "description": "Tool A with enum in input",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "status": {
+                                        "type": "string",
+                                        "enum": ["success", "failure"]
+                                    }
+                                },
+                                "required": ["status"]
+                            }
+                        }
+                    },
+                    {
+                        "name": "tool_b",
+                        "description": "Tool B with same enum in output only",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "id": { "type": "string" }
+                                },
+                                "required": ["id"]
+                            }
+                        },
+                        "outputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "status": {
+                                        "type": "string",
+                                        "enum": ["success", "failure"]
+                                    }
+                                },
+                                "required": ["status"]
+                            }
+                        }
+                    }
+                ]
+            }
+        }"#;
+
+        let expected_schema = "\
+namespace MyMcpServer::tool_a::Input {
+  entity status enum [\"success\", \"failure\"];
+}
+
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type tool_aInput = {
+    status: MyMcpServer::tool_a::Input::status
+  };
+
+  type tool_bInput = {
+    id: String
+  };
+
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  action \"call_tool\";
+
+  action \"tool_a\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      session: CommonContext
+    }
+  };
+
+  action \"tool_b\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
+      session: CommonContext
+    }
+  };
+}
+";
+
+        run_inline_test(
+            tools_json,
+            expected_schema,
+            SchemaGeneratorConfig::default().deduplicate_entity_types(true),
         );
     }
 }

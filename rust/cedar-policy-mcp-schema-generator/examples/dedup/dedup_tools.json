@@ -1,0 +1,79 @@
+{
+  "result": {
+    "tools": [
+      {
+        "name": "tool_a",
+        "description": "Tool A for testing deduplication",
+        "inputSchema": {
+          "json": {
+            "type": "object",
+            "properties": {
+              "format": {
+                "type": "string",
+                "enum": ["markdown", "text"],
+                "description": "Output format"
+              },
+              "mode_a": {
+                "type": "string",
+                "enum": ["fast", "slow"],
+                "description": "Processing mode for tool A"
+              },
+              "query": {
+                "type": "string",
+                "description": "The query string"
+              }
+            },
+            "required": ["query"]
+          }
+        }
+      },
+      {
+        "name": "tool_b",
+        "description": "Tool B for testing deduplication",
+        "inputSchema": {
+          "json": {
+            "type": "object",
+            "properties": {
+              "format": {
+                "type": "string",
+                "enum": ["markdown", "text"],
+                "description": "Output format"
+              },
+              "mode_b": {
+                "type": "string",
+                "enum": ["sync", "async"],
+                "description": "Processing mode for tool B"
+              },
+              "query": {
+                "type": "string",
+                "description": "The query string"
+              }
+            },
+            "required": ["query"]
+          }
+        }
+      },
+      {
+        "name": "tool_c",
+        "description": "Tool C with different format variants",
+        "inputSchema": {
+          "json": {
+            "type": "object",
+            "properties": {
+              "format": {
+                "type": "string",
+                "enum": ["json", "xml"],
+                "description": "Output format for tool C"
+              },
+              "query": {
+                "type": "string",
+                "description": "The query string"
+              }
+            },
+            "required": ["query"]
+          }
+        }
+      }
+    ]
+  }
+}

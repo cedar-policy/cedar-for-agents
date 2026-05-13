@@ -1,0 +1,48 @@
+{
+  "result": {
+    "tools": [
+      {
+        "name": "tool_a",
+        "description": "Tool A with enum named 'McpServer' that collides with existing entity in LCA",
+        "inputSchema": {
+          "json": {
+            "type": "object",
+            "properties": {
+              "McpServer": {
+                "type": "string",
+                "enum": ["primary", "secondary"],
+                "description": "Enum that collides with existing McpServer entity type"
+              },
+              "query": {
+                "type": "string",
+                "description": "The query string"
+              }
+            },
+            "required": ["query"]
+          }
+        }
+      },
+      {
+        "name": "tool_b",
+        "description": "Tool B with same enum named 'McpServer'",
+        "inputSchema": {
+          "json": {
+            "type": "object",
+            "properties": {
+              "McpServer": {
+                "type": "string",
+                "enum": ["primary", "secondary"],
+                "description": "Same enum that collides with existing McpServer entity type"
+              },
+              "data": {
+                "type": "string",
+                "description": "Some data"
+              }
+            },
+            "required": ["data"]
+          }
+        }
+      }
+    ]
+  }
+}

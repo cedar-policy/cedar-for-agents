@@ -1,0 +1,61 @@
+namespace MyMcpServer::tool_x::Input::B {
+  entity C = {
+    priority?: MyMcpServer::tool_x::Input::priority,
+    value_c: String
+  };
+
+  entity D = {
+    priority?: MyMcpServer::tool_x::Input::priority,
+    value_d: Long
+  };
+}
+
+namespace MyMcpServer::tool_x::Input::E {
+  entity F = {
+    priority?: MyMcpServer::tool_x::Input::priority,
+    value_f: Bool
+  };
+}
+
+namespace MyMcpServer::tool_x::Input {
+  entity B = {
+    C: MyMcpServer::tool_x::Input::B::C,
+    D: MyMcpServer::tool_x::Input::B::D
+  };
+
+  entity E = {
+    F: MyMcpServer::tool_x::Input::E::F
+  };
+
+  entity priority enum ["high", "medium", "low"];
+}
+
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type tool_xInput = {
+    B: MyMcpServer::tool_x::Input::B,
+    E: MyMcpServer::tool_x::Input::E
+  };
+
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  action "call_tool";
+
+  action "tool_x" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_xInput,
+      session: CommonContext
+    }
+  };
+}

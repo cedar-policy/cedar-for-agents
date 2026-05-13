@@ -36,6 +36,7 @@ fn get_config(config_options: &ConfigOptions) -> SchemaGeneratorConfig {
         .erase_annotations(!config_options.keep_annotations)
         .flatten_namespaces(config_options.flatten_namespaces)
         .encode_numbers_as_decimal(config_options.encode_numbers_as_decimal)
+        .deduplicate_entity_types(config_options.deduplicate_entity_types)
 }
 
 fn read_schema(file: impl AsRef<Path>) -> Result<Fragment<RawName>, CliError> {
