@@ -17,7 +17,7 @@
 use super::identifiers;
 use crate::{RequestGenerator, SchemaGeneratorError};
 
-use cedar_policy_core::ast::{InternalName, Name, UnreservedId};
+use cedar_policy_core::ast::{Id, InternalName, Name, UnreservedId};
 use cedar_policy_core::est::Annotations;
 use cedar_policy_core::validator::{
     json_schema::{
@@ -234,25 +234,22 @@ fn compute_lca(namespaces: &[Option<Name>]) -> Option<Name> {
         return None;
     }
 
-    // If any namespace is None (global), the LCA is None
-    if namespaces.iter().any(|ns| ns.is_none()) {
-        return None;
-    }
-
-    // Convert each Name to its string representation
-    let name_strings: Vec<String> = namespaces
+    // Collect all Some values; if any namespace is None (global), the LCA is None
+    let names: Vec<&Name> = namespaces
         .iter()
-        .map(|ns| {
-            // Safe to unwrap: we checked for None above
-            #[expect(clippy::unwrap_used, reason = "None case handled above")]
-            ns.as_ref().unwrap().to_string()
+        .map(|ns| ns.as_ref())
+        .collect::<Option<Vec<&Name>>>()?;
+
+    // Get path segments (namespace components + basename) as Vec<&Id> for each name
+    let segment_lists: Vec<Vec<&Id>> = names
+        .iter()
+        .map(|name| {
+            let internal: &InternalName = name.as_ref();
+            internal
+                .namespace_components()
+                .chain(std::iter::once(internal.basename()))
+                .collect()
         })
-        .collect();
-
-    // Split each string into path segments
-    let segment_lists: Vec<Vec<&str>> = name_strings
-        .iter()
-        .map(|s| s.split("::").collect())
         .collect();
 
     let first = segment_lists.first()?;
@@ -261,7 +258,7 @@ fn compute_lca(namespaces: &[Option<Name>]) -> Option<Name> {
     for (i, segment) in first.iter().enumerate() {
         if segment_lists
             .iter()
-            .all(|segs| segs.get(i) == Some(segment))
+            .all(|segs: &Vec<&Id>| segs.get(i) == Some(segment))
         {
             prefix_len = i + 1;
         } else {
@@ -273,8 +270,10 @@ fn compute_lca(namespaces: &[Option<Name>]) -> Option<Name> {
         return None;
     }
 
-    let prefix: String = first.get(..prefix_len)?.join("::");
-    prefix.parse::<Name>().ok()
+    let prefix = first.get(..prefix_len)?;
+    let basename = (*prefix.last()?).clone();
+    let path = prefix.get(..prefix.len() - 1)?.iter().map(|&id| id.clone());
+    Name::try_from(InternalName::new(basename, path, None)).ok()
 }
 
 /// A type that allows constructing a Cedar Schema (Fragment)

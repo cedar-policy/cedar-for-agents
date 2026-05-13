@@ -60,11 +60,7 @@ mod lib {
         );
     }
 
-    fn run_inline_test(
-        tools_json: &str,
-        expected_schema: &str,
-        config: SchemaGeneratorConfig,
-    ) {
+    fn run_inline_test(tools_json: &str, expected_schema: &str, config: SchemaGeneratorConfig) {
         let description =
             ServerDescription::from_json_str(tools_json).expect("Failed to parse tools JSON");
         let stub_file =
@@ -630,6 +626,86 @@ namespace MyMcpServer {
     resource: [McpServer],
     context: {
       input: tool_dInput,
+      session: CommonContext
+    }
+  };
+}
+";
+
+        run_inline_test(
+            tools_json,
+            expected_schema,
+            SchemaGeneratorConfig::default().deduplicate_entity_types(true),
+        );
+    }
+
+    #[test]
+    fn dedup_same_variants_different_order_not_deduplicated() {
+        // Two tools have an enum with the same variants but in different order.
+        // Order is significant, so they should NOT be deduplicated.
+        let tools_json = r#"{
+            "result": {
+                "tools": [
+                    {
+                        "name": "tool_a",
+                        "description": "Tool A",
+                        "inputSchema": { "json": { "type": "object", "properties": { "mode": { "type": "string", "enum": ["fast", "slow"] } }, "required": ["mode"] } }
+                    },
+                    {
+                        "name": "tool_b",
+                        "description": "Tool B",
+                        "inputSchema": { "json": { "type": "object", "properties": { "mode": { "type": "string", "enum": ["slow", "fast"] } }, "required": ["mode"] } }
+                    }
+                ]
+            }
+        }"#;
+
+        let expected_schema = "\
+namespace MyMcpServer::tool_a::Input {
+  entity mode enum [\"fast\", \"slow\"];
+}
+
+namespace MyMcpServer::tool_b::Input {
+  entity mode enum [\"slow\", \"fast\"];
+}
+
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type tool_aInput = {
+    mode: MyMcpServer::tool_a::Input::mode
+  };
+
+  type tool_bInput = {
+    mode: MyMcpServer::tool_b::Input::mode
+  };
+
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  action \"call_tool\";
+
+  action \"tool_a\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      session: CommonContext
+    }
+  };
+
+  action \"tool_b\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
       session: CommonContext
     }
   };
