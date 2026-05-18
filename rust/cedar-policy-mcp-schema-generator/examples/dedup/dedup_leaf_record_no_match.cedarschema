@@ -1,0 +1,78 @@
+namespace MyMcpServer::tool_a::Input {
+  entity config = {
+    host: String,
+    port: Long
+  };
+}
+
+namespace MyMcpServer::tool_b::Input {
+  entity config = {
+    timeout: Long,
+    url: String
+  };
+}
+
+namespace MyMcpServer::tool_c::Input {
+  entity config = {
+    host: Long,
+    port: String
+  };
+}
+
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type tool_aInput = {
+    config?: MyMcpServer::tool_a::Input::config,
+    query: String
+  };
+
+  type tool_bInput = {
+    config?: MyMcpServer::tool_b::Input::config,
+    data: String
+  };
+
+  type tool_cInput = {
+    config?: MyMcpServer::tool_c::Input::config,
+    input: String
+  };
+
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  action "call_tool";
+
+  action "tool_a" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      session: CommonContext
+    }
+  };
+
+  action "tool_b" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
+      session: CommonContext
+    }
+  };
+
+  action "tool_c" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_cInput,
+      session: CommonContext
+    }
+  };
+}
