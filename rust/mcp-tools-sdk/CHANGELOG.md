@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - `PropertyType::Decimal` validation properly rejects inputs such as `1-0.2` and `-01.2` (`-` in the numbers and negative number with leading zeroes).
+- JSON parser now decodes JSON escape sequences in JSON strings.
+
 
 ## [0.3.0] - 2026-05-12
 
