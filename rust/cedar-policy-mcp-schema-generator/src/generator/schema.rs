@@ -169,6 +169,22 @@ fn is_primitive(pt: &PropertyType) -> bool {
     )
 }
 
+// Returns `true` if the record is a "leaf" record, i.e. all its properties are of
+// primitive type and it doesn't have any `additionalProperties`
+fn is_leaf_record(p: &PropertyType) -> bool {
+    match p {
+        PropertyType::Object {
+            properties,
+            additional_properties,
+        } => {
+            additional_properties.is_none()
+                && !properties.is_empty()
+                && properties.iter().all(|p| is_primitive(p.property_type()))
+        }
+        _ => false,
+    }
+}
+
 /// A fingerprint that uniquely identifies an entity type's definition.
 /// Two entity types are considered equivalent (and thus deduplication candidates)
 /// if and only if they produce the same fingerprint.
@@ -678,12 +694,7 @@ impl SchemaGenerator {
                         );
                     }
 
-                    // Record leaf record fingerprint if all properties are primitive
-                    // and there are no additional_properties (tags).
-                    if additional_properties.is_none()
-                        && !properties.is_empty()
-                        && properties.iter().all(|p| is_primitive(p.property_type()))
-                    {
+                    if is_leaf_record(property_type) {
                         if let Ok(base_name) = name.parse::<UnreservedId>() {
                             let mut fields: Vec<(SmolStr, PropertyType, bool)> = properties
                                 .iter()
@@ -1609,12 +1620,8 @@ impl SchemaGenerator {
                 properties,
                 additional_properties,
             } => {
-                // Check if this leaf record was deduplicated (placed in LCA namespace during Pass 1)
-                if !self.config.objects_as_records
-                    && additional_properties.is_none()
-                    && !properties.is_empty()
-                    && properties.iter().all(|p| is_primitive(p.property_type()))
-                {
+                // Check if this is a leaf record and it was deduplicated (placed in LCA namespace during Pass 1)
+                if !self.config.objects_as_records && is_leaf_record(property_type) {
                     let mut fields: Vec<(SmolStr, PropertyType, bool)> = properties
                         .iter()
                         .map(|prop| {
