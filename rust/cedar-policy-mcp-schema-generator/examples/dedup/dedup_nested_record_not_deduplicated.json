@@ -1,0 +1,58 @@
+{
+  "result": {
+    "tools": [
+      {
+        "name": "tool_a",
+        "description": "Tool A",
+        "inputSchema": {
+          "json": {
+            "type": "object",
+            "properties": {
+              "config": {
+                "type": "object",
+                "properties": {
+                  "settings": {
+                    "type": "object",
+                    "properties": {
+                      "verbose": { "type": "boolean" },
+                      "timeout": { "type": "integer" }
+                    },
+                    "required": ["verbose"]
+                  }
+                },
+                "required": ["settings"]
+              }
+            },
+            "required": ["config"]
+          }
+        }
+      },
+      {
+        "name": "tool_b",
+        "description": "Tool B",
+        "inputSchema": {
+          "json": {
+            "type": "object",
+            "properties": {
+              "config": {
+                "type": "object",
+                "properties": {
+                  "settings": {
+                    "type": "object",
+                    "properties": {
+                      "verbose": { "type": "boolean" },
+                      "timeout": { "type": "integer" }
+                    },
+                    "required": ["verbose"]
+                  }
+                },
+                "required": ["settings"]
+              }
+            },
+            "required": ["config"]
+          }
+        }
+      }
+    ]
+  }
+}

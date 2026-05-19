@@ -1,0 +1,59 @@
+// Two tools share the same leaf record "metadata" in their outputSchema.
+// With include_outputs + deduplicate_entity_types, the leaf record is deduplicated to the LCA.
+
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type tool_aInput = {
+    query: String
+  };
+
+  type tool_aOutput = {
+    metadata: MyMcpServer::metadata
+  };
+
+  type tool_bInput = {
+    id: String
+  };
+
+  type tool_bOutput = {
+    metadata: MyMcpServer::metadata
+  };
+
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  entity metadata = {
+    author: String,
+    version?: Long
+  };
+
+  action "call_tool";
+
+  action "tool_a" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      output?: tool_aOutput,
+      session: CommonContext
+    }
+  };
+
+  action "tool_b" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
+      output?: tool_bOutput,
+      session: CommonContext
+    }
+  };
+}

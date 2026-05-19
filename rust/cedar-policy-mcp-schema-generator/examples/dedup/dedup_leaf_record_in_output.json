@@ -1,0 +1,64 @@
+{
+  "result": {
+    "tools": [
+      {
+        "name": "tool_a",
+        "description": "Tool A",
+        "inputSchema": {
+          "json": {
+            "type": "object",
+            "properties": {
+              "query": { "type": "string" }
+            },
+            "required": ["query"]
+          }
+        },
+        "outputSchema": {
+          "json": {
+            "type": "object",
+            "properties": {
+              "metadata": {
+                "type": "object",
+                "properties": {
+                  "author": { "type": "string" },
+                  "version": { "type": "integer" }
+                },
+                "required": ["author"]
+              }
+            },
+            "required": ["metadata"]
+          }
+        }
+      },
+      {
+        "name": "tool_b",
+        "description": "Tool B",
+        "inputSchema": {
+          "json": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" }
+            },
+            "required": ["id"]
+          }
+        },
+        "outputSchema": {
+          "json": {
+            "type": "object",
+            "properties": {
+              "metadata": {
+                "type": "object",
+                "properties": {
+                  "author": { "type": "string" },
+                  "version": { "type": "integer" }
+                },
+                "required": ["author"]
+              }
+            },
+            "required": ["metadata"]
+          }
+        }
+      }
+    ]
+  }
+}

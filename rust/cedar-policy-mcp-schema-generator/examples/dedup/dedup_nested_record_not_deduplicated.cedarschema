@@ -1,0 +1,62 @@
+// Two tools have the same nested structure: a wrapping object "config" containing a leaf object
+// "settings". The innermost "settings" entity (all primitive fields) is deduplicated to the LCA,
+// but the wrapping "config" entity is NOT deduplicated because it is not a leaf record.
+
+namespace MyMcpServer::tool_a::Input {
+  entity config = {
+    settings: MyMcpServer::settings
+  };
+}
+
+namespace MyMcpServer::tool_b::Input {
+  entity config = {
+    settings: MyMcpServer::settings
+  };
+}
+
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type tool_aInput = {
+    config: MyMcpServer::tool_a::Input::config
+  };
+
+  type tool_bInput = {
+    config: MyMcpServer::tool_b::Input::config
+  };
+
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  entity settings = {
+    timeout?: Long,
+    verbose: Bool
+  };
+
+  action "call_tool";
+
+  action "tool_a" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      session: CommonContext
+    }
+  };
+
+  action "tool_b" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
+      session: CommonContext
+    }
+  };
+}

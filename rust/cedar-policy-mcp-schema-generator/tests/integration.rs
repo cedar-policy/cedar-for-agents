@@ -1235,6 +1235,33 @@ namespace MyMcpServer {
             SchemaGeneratorConfig::default().deduplicate_entity_types(true),
         );
     }
+
+    #[test]
+    fn dedup_nested_record_not_deduplicated() {
+        // Two tools have the same nested structure: a wrapping object "config" containing
+        // a leaf object "settings". The innermost "settings" entity (all primitive fields)
+        // should be deduplicated to the LCA, but the wrapping "config" entity should NOT
+        // be deduplicated because it is not a leaf record (it references another entity type).
+        run_integration_test(
+            "examples/dedup/dedup_nested_record_not_deduplicated.json",
+            "examples/dedup/dedup_nested_record_not_deduplicated.cedarschema",
+            SchemaGeneratorConfig::default().deduplicate_entity_types(true),
+        );
+    }
+
+    #[test]
+    fn dedup_leaf_record_in_output() {
+        // Two tools share the same leaf record "metadata" in their outputSchema.
+        // With include_outputs + deduplicate_entity_types, the leaf record should be
+        // deduplicated to the LCA namespace.
+        run_integration_test(
+            "examples/dedup/dedup_leaf_record_in_output.json",
+            "examples/dedup/dedup_leaf_record_in_output.cedarschema",
+            SchemaGeneratorConfig::default()
+                .include_outputs(true)
+                .deduplicate_entity_types(true),
+        );
+    }
 }
 
 #[cfg(feature = "cli")]
