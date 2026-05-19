@@ -1,3 +1,7 @@
+// This. is an example where the MyMcpServer::metadata is being de-duplicated for tool_aInput and
+// tool_bInput. The input of tool_c is not a candidate for deduplicate with those two entity types
+// because it doesn't have the same signature.
+
 namespace MyMcpServer::tool_c::Input {
   entity metadata = {
     count: Long,

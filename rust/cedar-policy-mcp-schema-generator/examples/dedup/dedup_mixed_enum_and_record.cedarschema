@@ -1,3 +1,6 @@
+// This example shows that we can de-duplicate both enums and normal entities with attributes.
+// The format enum and the options entities are the result of de-duplication.
+
 namespace MyMcpServer {
   type CommonContext = {
     currentTimestamp: datetime,

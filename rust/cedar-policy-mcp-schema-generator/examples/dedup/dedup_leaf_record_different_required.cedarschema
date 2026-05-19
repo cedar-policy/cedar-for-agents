@@ -1,3 +1,6 @@
+// In this example tool_a::Input::metadata and tool_b::Input::metadata have the same attributes,
+// but in tool_a's input the version is optional, so we cannot de-duplicate the types.
+
 namespace MyMcpServer::tool_a::Input {
   entity metadata = {
     author: String,

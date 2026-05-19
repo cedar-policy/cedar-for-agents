@@ -130,7 +130,6 @@ impl SchemaGeneratorConfig {
     ///
     /// Currently supports enum entity types (matched by name + variant values)
     /// and structural entity types where all attributes are of base type.
-    /// Future versions may extend to structural entity types.
     pub fn deduplicate_entity_types(self, val: bool) -> Self {
         Self {
             deduplicate_entity_types: val,

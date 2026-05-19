@@ -1,7 +1,10 @@
+// There is a second enum of the same shape; it was de-duped because of a name conflict with
+// an entity "status"
 namespace MyMcpServer::tool_a::Input {
   entity status enum ["active", "inactive"];
 }
 
+// Same as the enum, this is not de-duped because of a name conflict with an enum
 namespace MyMcpServer::tool_b::Input {
   entity status = {
     code: Long,

@@ -1,3 +1,6 @@
+// This is an example where the entities have the same name but different attributes; we obviously
+// shouldn't deduplicate them!
+
 namespace MyMcpServer::tool_a::Input {
   entity config = {
     host: String,

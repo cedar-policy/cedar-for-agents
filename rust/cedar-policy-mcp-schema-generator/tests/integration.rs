@@ -39,17 +39,25 @@ mod lib {
             .add_actions_from_server_description(&description)
             .expect("Failed to add tool actions to schema generator");
 
-        // Read expected schema file
+        // The expected files have comments in them to make it nicer to read the examples,
+        // but they need to be stripped before comparison.
         let mut schema_file =
             std::fs::File::open(schema_fname).expect("Failed to read expected output file");
-        let mut expected_schema = String::new();
+        let mut raw_schema = String::new();
         let _ = schema_file
-            .read_to_string(&mut expected_schema)
+            .read_to_string(&mut raw_schema)
             .expect("Failed to read expected schema file");
+        let expected_schema: String = raw_schema
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n")
+            .trim()
+            .to_string()
+            + "\n";
 
         let actual_schema = generator
             .get_schema()
-            .clone()
             .to_cedarschema()
             .expect("Failed to resolve generated schema");
         assert!(
