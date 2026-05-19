@@ -7,12 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Adds `deduplicate_entity_types` option to consolidate equivalent enum entity types (same name and variants) into a single definition at the lowest common ancestor namespace.
+
 ## [0.5.0] - 2026-05-12
 
 ### Added
 - Adds the ability to convert a MCP tool request (and optionally response) to a Cedar request and entity data compliant to the generated Schema.
 - Adds support for JSON Schema tuples in MCP tool schemas, which are translated to a record of projections.
-- Adds `deduplicate_entity_types` option to consolidate equivalent enum entity types (same name and variants) into a single definition at the lowest common ancestor namespace.
+
 
 ### Changed
 - Type arrays in MCP tool schemas now result in records of optional fields (encoding union of types), rather than records of projections (encoding tuples).
