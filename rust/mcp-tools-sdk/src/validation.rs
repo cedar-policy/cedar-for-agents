@@ -232,10 +232,11 @@ fn is_decimal(str: &str) -> bool {
         return false;
     };
 
-    // Validate integer part: 0 or [1-9][0-9]*
-    if integer_part.is_empty()
-        || (integer_part.len() > 1 && integer_part.starts_with('0'))
-        || !integer_part.chars().all(|c| c.is_ascii_digit() || c == '-')
+    // Validate integer part: -?0 or -?[1-9][0-9]*
+    let digits = integer_part.strip_prefix('-').unwrap_or(integer_part);
+    if digits.is_empty()
+        || !digits.chars().all(|c| c.is_ascii_digit())
+        || (digits.len() > 1 && digits.starts_with('0'))
     {
         return false;
     }
@@ -343,5 +344,22 @@ mod test {
     fn test_is_decimal_overflows_is_false() {
         assert!(!is_decimal("922337203685477.5808"));
         assert!(!is_decimal("-922337203685477.5809"))
+    }
+
+    #[test]
+    fn test_is_decimal_leading_zeros_and_misplaced_minus() {
+        let cases: &[(&str, bool)] = &[
+            ("-01.0", false),
+            ("-00.5", false),
+            ("01.0", false),
+            ("00.5", false),
+            ("1-2.0", false),
+            ("--1.0", false),
+            ("-0.5", true),
+            ("-1.0", true),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(is_decimal(input), *expected, "is_decimal({input:?})");
+        }
     }
 }
