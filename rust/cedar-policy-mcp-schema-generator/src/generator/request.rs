@@ -389,9 +389,8 @@ impl RequestGenerator {
             }
             TypedValue::Number(n) => {
                 if self.config.numbers_as_decimal {
-                    let val = match (n.to_f64(), n.to_i64()) {
-                        (_, Some(i)) => format!("{}.0", i),
-                        (Some(f), _) => format!("{:.4}", f),
+                    let val = match n.to_f64() {
+                        Some(f) => format!("{:.4}", f),
                         _ => {
                             return Err(RequestGeneratorError::MalformedDecimalNumber(
                                 n.as_str().into(),
@@ -1577,10 +1576,45 @@ mod test {
                     RestrictedExpr::from((**dval).clone()) == RestrictedExpr::from_str("decimal(\"-0.0100\")").unwrap()
                 ) &&
                 matches!(map.get("pseudo_int").map(Value::value_kind), Some(ValueKind::ExtensionValue(dval)) if
-                    RestrictedExpr::from((**dval).clone()) == RestrictedExpr::from_str("decimal(\"10.0\")").unwrap()
+                    RestrictedExpr::from((**dval).clone()) == RestrictedExpr::from_str("decimal(\"10.0000\")").unwrap()
                 )
             })
         });
+    }
+
+    #[test]
+    fn test_number_as_decimal_consistent_for_integer_and_float_representations() {
+        // Regression: "10" and "10.0" should produce the same decimal literal
+        let config = SchemaGeneratorConfig::default().encode_numbers_as_decimal(true);
+        let schema_gen = get_schema_generator(config);
+        let request_gen = schema_gen
+            .new_request_generator()
+            .expect("Failed to construct request generator");
+        let type_defs = TypeDefsInfo::new();
+        let namespace: Option<cedar_policy_core::ast::Name> = Some("Test".parse().unwrap());
+
+        let cases = vec![
+            ("10", "decimal(\"10.0000\")"),
+            ("10.0", "decimal(\"10.0000\")"),
+            ("5", "decimal(\"5.0000\")"),
+            ("5.0", "decimal(\"5.0000\")"),
+            ("-3", "decimal(\"-3.0000\")"),
+            ("-3.0", "decimal(\"-3.0000\")"),
+        ];
+
+        for (input, expected) in cases {
+            let num = str_to_number(input);
+            let val = TypedValue::Number(num);
+            let (expr, _) = request_gen
+                .val_to_cedar(&val, &type_defs, namespace.as_ref(), "test_type")
+                .unwrap_or_else(|_| panic!("Failed to convert Number({}) to Cedar", input));
+            let expected_expr = RestrictedExpr::from_str(expected).unwrap();
+            assert_eq!(
+                expr, expected_expr,
+                "Number(\"{}\") produced {} but expected {}",
+                input, expr, expected_expr
+            );
+        }
     }
 
     #[test]
