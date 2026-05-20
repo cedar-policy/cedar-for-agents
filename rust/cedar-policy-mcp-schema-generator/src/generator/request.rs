@@ -21,6 +21,7 @@ use cedar_policy_core::ast::{
     Context, Eid, Entity, EntityType, EntityUID, InternalName, Name, Request, RestrictedExpr,
 };
 use cedar_policy_core::entities::Entities;
+use cedar_policy_core::parser::err::ParseErrors;
 use cedar_policy_core::validator::ValidatorSchema;
 
 use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
@@ -459,25 +460,7 @@ impl RequestGenerator {
                 Ok((RestrictedExpr::val(euid), Entities::new()))
             }
             TypedValue::Enum(s) => {
-                let ty: EntityType = ty_name.parse()?;
-
-                // Check if this enum was deduplicated to a different namespace.
-                // Match by base_name AND verify the current namespace is a source,
-                // to avoid false matches with same-named enums that have different variants.
-                let qualified_ty = if let Some(ref resolved) = self.resolved_dedup {
-                    let dedup_info = resolved.iter().find(|(fp, info)| {
-                        fp.base_name().to_string() == ty_name
-                            && info.source_namespaces.contains(&namespace.cloned())
-                    });
-                    if let Some((_, info)) = dedup_info {
-                        ty.qualify_with(info.lca_namespace.as_ref())
-                    } else {
-                        ty.qualify_with(namespace)
-                    }
-                } else {
-                    ty.qualify_with(namespace)
-                };
-
+                let qualified_ty = self.resolved_ty(ty_name, namespace)?;
                 let eid = Eid::new(s.as_str());
                 let euid = EntityUID::from_components(qualified_ty, eid, None);
                 let euid = if self.config.flatten_namespaces {
@@ -568,15 +551,15 @@ impl RequestGenerator {
                 if tags.is_empty() && self.config.objects_as_records {
                     Ok((RestrictedExpr::record(pairs.into_iter())?, entities))
                 } else {
-                    let entity_ty: EntityType = ty_name.parse()?;
-                    let entity_ty = entity_ty.qualify_with(namespace);
+                    // Check if this object was deduplicated to a different namespace.
+                    let qualified_ty = self.resolved_ty(ty_name, namespace)?;
                     // Generate a unique EID for each object's entity representation
                     // This means that all entities are different from all other entities
                     // even if the entities are structurally equivalent.
                     // Perhaps we could generate EIDs in a way that result in equal EIDs for
                     // structurally equivalent entities.
                     let eid = Eid::new(Uuid::new_v4().to_smolstr());
-                    let euid = EntityUID::from_components(entity_ty, eid, None);
+                    let euid = EntityUID::from_components(qualified_ty, eid, None);
                     let euid = if self.config.flatten_namespaces {
                         flatten_name(euid)
                     } else {
@@ -602,6 +585,31 @@ impl RequestGenerator {
             TypedValue::Ref { name, val } => {
                 self.val_to_cedar(val, type_defs, type_defs.get(name), name.as_str())
             }
+        }
+    }
+
+    /// Checks if the type name was deduplicated in another namespace.
+    /// During request generation, the type name and the check on the namepace being
+    /// in the source namespaces is sufficient to resolve the deduplicated type.
+    fn resolved_ty(
+        &self,
+        ty_name: &str,
+        namespace: Option<&Name>,
+    ) -> Result<EntityType, ParseErrors> {
+        let ty: EntityType = ty_name.parse()?;
+
+        if let Some(ref resolved) = self.resolved_dedup {
+            let dedup_info = resolved.iter().find(|(fp, info)| {
+                fp.base_name().to_string() == ty_name
+                    && info.source_namespaces.contains(&namespace.cloned())
+            });
+            if let Some((_, info)) = dedup_info {
+                Ok(ty.qualify_with(info.lca_namespace.as_ref()))
+            } else {
+                Ok(ty.qualify_with(namespace))
+            }
+        } else {
+            Ok(ty.qualify_with(namespace))
         }
     }
 }
@@ -2625,6 +2633,118 @@ mod test {
                 let map = &**ikvs;
                 matches!(map.get("format").map(Value::value_kind), Some(ValueKind::Lit(Literal::EntityUID(eid))) if {
                     **eid == "Test::tool_c::Input::format::\"json\"".parse().expect("Failed to parse EID")
+                })
+            })
+        });
+    }
+
+    #[test]
+    fn test_generate_request_dedup_leaf_record_resolves_to_lca() {
+        // Two tools share a leaf record "opts" {verbose: bool, limit: int}.
+        // The request generator should resolve the entity type to the LCA namespace.
+        let tools_json = r#"{
+            "result": {
+                "tools": [
+                    {
+                        "name": "tool_a",
+                        "description": "Tool A",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "opts": {
+                                        "type": "object",
+                                        "properties": {
+                                            "verbose": { "type": "boolean" },
+                                            "limit": { "type": "integer" }
+                                        },
+                                        "required": ["verbose", "limit"]
+                                    }
+                                },
+                                "required": ["opts"]
+                            }
+                        }
+                    },
+                    {
+                        "name": "tool_b",
+                        "description": "Tool B",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "opts": {
+                                        "type": "object",
+                                        "properties": {
+                                            "verbose": { "type": "boolean" },
+                                            "limit": { "type": "integer" }
+                                        },
+                                        "required": ["verbose", "limit"]
+                                    }
+                                },
+                                "required": ["opts"]
+                            }
+                        }
+                    }
+                ]
+            }
+        }"#;
+
+        let config = SchemaGeneratorConfig::default().deduplicate_entity_types(true);
+        let mut schema_generator = get_schema_generator(config);
+        let description =
+            ServerDescription::from_json_str(tools_json).expect("Failed to parse tools JSON");
+        schema_generator
+            .add_actions_from_server_description(&description)
+            .expect("Failed to add server description");
+
+        let request_generator = schema_generator
+            .new_request_generator()
+            .expect("Failed to create request generator");
+
+        let input = Input::from_json_str(
+            r#"{
+            "params": {
+                "tool": "tool_a",
+                "args": { "opts": { "verbose": true, "limit": 10 } }
+            }
+        }"#,
+        )
+        .expect("Failed to parse input");
+
+        let principal = r#"Test::user::"""#.parse::<EntityUID>().unwrap();
+        let resource = r#"Test::resource::"""#.parse::<EntityUID>().unwrap();
+
+        let (request, entities) = request_generator
+            .generate_request(
+                principal,
+                resource,
+                Context::empty(),
+                Entities::new(),
+                &input,
+                None,
+            )
+            .expect("Failed to generate request");
+
+        // The entity should be typed to the LCA namespace (Test::opts)
+        let entity = entities
+            .iter()
+            .find(|e| e.uid().to_string().starts_with("Test::opts::\""));
+        assert!(
+            entity.is_some(),
+            "Expected entity with type Test::opts, got: {:?}",
+            entities
+                .iter()
+                .map(|e| e.uid().to_string())
+                .collect::<Vec<_>>()
+        );
+
+        // The context should reference the entity
+        assert_matches!(request.context(), Some(Context::Value(kvs)) if {
+            let map = &**kvs;
+            matches!(map.get("input").map(Value::value_kind), Some(ValueKind::Record(ikvs)) if {
+                let map = &**ikvs;
+                matches!(map.get("opts").map(Value::value_kind), Some(ValueKind::Lit(Literal::EntityUID(eid))) if {
+                    eid.to_string().starts_with("Test::opts::\"")
                 })
             })
         });

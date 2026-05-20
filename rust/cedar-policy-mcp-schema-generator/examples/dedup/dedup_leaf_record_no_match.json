@@ -1,0 +1,69 @@
+{
+  "result": {
+    "tools": [
+      {
+        "name": "tool_a",
+        "description": "Tool A: 'config' with fields (host: string, port: integer)",
+        "inputSchema": {
+          "json": {
+            "type": "object",
+            "properties": {
+              "config": {
+                "type": "object",
+                "properties": {
+                  "host": { "type": "string" },
+                  "port": { "type": "integer" }
+                },
+                "required": [ "host", "port" ]
+              },
+              "query": { "type": "string" }
+            },
+            "required": [ "query" ]
+          }
+        }
+      },
+      {
+        "name": "tool_b",
+        "description": "Tool B: 'config' with different field names (url: string, timeout: integer)",
+        "inputSchema": {
+          "json": {
+            "type": "object",
+            "properties": {
+              "config": {
+                "type": "object",
+                "properties": {
+                  "url": { "type": "string" },
+                  "timeout": { "type": "integer" }
+                },
+                "required": [ "url", "timeout" ]
+              },
+              "data": { "type": "string" }
+            },
+            "required": [ "data" ]
+          }
+        }
+      },
+      {
+        "name": "tool_c",
+        "description": "Tool C: 'config' with same field names as tool_a but different types (host: integer, port: string)",
+        "inputSchema": {
+          "json": {
+            "type": "object",
+            "properties": {
+              "config": {
+                "type": "object",
+                "properties": {
+                  "host": { "type": "integer" },
+                  "port": { "type": "string" }
+                },
+                "required": [ "host", "port" ]
+              },
+              "input": { "type": "string" }
+            },
+            "required": [ "input" ]
+          }
+        }
+      }
+    ]
+  }
+}

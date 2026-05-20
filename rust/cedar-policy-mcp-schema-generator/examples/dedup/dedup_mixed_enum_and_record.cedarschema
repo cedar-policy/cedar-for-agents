@@ -1,0 +1,55 @@
+// This example shows that we can de-duplicate both enums and normal entities with attributes.
+// The format enum and the options entities are the result of de-duplication.
+
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type tool_aInput = {
+    format?: MyMcpServer::format,
+    options?: MyMcpServer::options,
+    query: String
+  };
+
+  type tool_bInput = {
+    data: String,
+    format?: MyMcpServer::format,
+    options?: MyMcpServer::options
+  };
+
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  entity format enum ["markdown", "text"];
+
+  entity options = {
+    timeout?: Long,
+    verbose: Bool
+  };
+
+  action "call_tool";
+
+  action "tool_a" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      session: CommonContext
+    }
+  };
+
+  action "tool_b" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
+      session: CommonContext
+    }
+  };
+}

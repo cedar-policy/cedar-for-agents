@@ -27,7 +27,9 @@ use cedar_policy_core::validator::{
     },
     RawName,
 };
-use mcp_tools_sdk::description::{Parameters, PropertyType, ServerDescription, ToolDescription};
+use mcp_tools_sdk::description::{
+    Parameters, Property, PropertyType, ServerDescription, ToolDescription,
+};
 
 use nonempty::NonEmpty;
 
@@ -128,8 +130,8 @@ impl SchemaGeneratorConfig {
     /// equivalent definitions across multiple tools will be consolidated into
     /// a single entity type placed in the lowest common ancestor namespace.
     ///
-    /// Currently supports enum entity types (matched by name + variant values).
-    /// Future versions may extend to structural entity types.
+    /// Currently supports enum entity types (matched by name + variant values)
+    /// and structural entity types where all attributes are of base type.
     pub fn deduplicate_entity_types(self, val: bool) -> Self {
         Self {
             deduplicate_entity_types: val,
@@ -151,6 +153,40 @@ impl Default for SchemaGeneratorConfig {
     }
 }
 
+/// Returns `true` if the `PropertyType` is a primitive (leaf) type.
+fn is_primitive(pt: &PropertyType) -> bool {
+    matches!(
+        pt,
+        PropertyType::Bool
+            | PropertyType::Integer
+            | PropertyType::Float
+            | PropertyType::Number
+            | PropertyType::String
+            | PropertyType::Decimal
+            | PropertyType::Datetime
+            | PropertyType::Duration
+            | PropertyType::IpAddr
+            | PropertyType::Null
+            | PropertyType::Unknown
+    )
+}
+
+// Returns `true` if the record is a "leaf" record, i.e. all its properties are of
+// primitive type and it doesn't have any `additionalProperties`
+fn is_leaf_record(p: &PropertyType) -> bool {
+    match p {
+        PropertyType::Object {
+            properties,
+            additional_properties,
+        } => {
+            additional_properties.is_none()
+                && !properties.is_empty()
+                && properties.iter().all(|p| is_primitive(p.property_type()))
+        }
+        _ => false,
+    }
+}
+
 /// A fingerprint that uniquely identifies an entity type's definition.
 /// Two entity types are considered equivalent (and thus deduplication candidates)
 /// if and only if they produce the same fingerprint.
@@ -158,18 +194,47 @@ impl Default for SchemaGeneratorConfig {
 /// Designed as an enum to support future extension to other entity type kinds.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum EntityTypeFingerprint {
-    /// Fingerprint for enum entity types: matched by name + ordered variant values.
+    /// Fingerprint for enum entity types.
+    /// The order of variants in enums matters, i.e. ['foo', 'bar'] and
+    /// ['bar', 'foo'] are two different entity types.
+    /// Enum fingerprints are matched by name + variant values (in original order).
     Enum {
         base_name: UnreservedId,
         variants: Vec<SmolStr>,
+    },
+    /// Fingerprint for leaf record entity types: objects whose properties are all primitive.
+    /// The order of attributes in objects does not matter.
+    /// Record fingerprints are matched by name + sorted list of (property_name, type, required).
+    LeafRecord {
+        base_name: UnreservedId,
+        /// Sorted by property name for deterministic comparison.
+        fields: Vec<(SmolStr, PropertyType, bool)>,
     },
 }
 
 impl EntityTypeFingerprint {
     pub(crate) fn base_name(&self) -> &UnreservedId {
         match self {
-            Self::Enum { base_name, .. } => base_name,
+            Self::Enum { base_name, .. } | Self::LeafRecord { base_name, .. } => base_name,
         }
+    }
+
+    pub(crate) fn new_leaf_record(
+        base_name: UnreservedId,
+        props: &[Property],
+    ) -> EntityTypeFingerprint {
+        let mut fields: Vec<(SmolStr, PropertyType, bool)> = props
+            .iter()
+            .map(|prop| {
+                (
+                    prop.name().to_smolstr(),
+                    prop.property_type().clone(),
+                    prop.is_required(),
+                )
+            })
+            .collect();
+        fields.sort_by(|a, b| a.0.cmp(&b.0));
+        EntityTypeFingerprint::LeafRecord { base_name, fields }
     }
 }
 
@@ -482,6 +547,87 @@ impl SchemaGenerator {
                 }
                 _ => false,
             },
+            EntityTypeFingerprint::LeafRecord {
+                base_name: _,
+                fields,
+            } => match &entity.kind {
+                EntityTypeKind::Standard(std_entity) => {
+                    Self::record_matches_fields(&std_entity.shape.0, fields)
+                }
+                _ => false,
+            },
+        }
+    }
+
+    /// Check if a record type matches the expected leaf record fields.
+    fn record_matches_fields(ty: &Type<RawName>, fields: &[(SmolStr, PropertyType, bool)]) -> bool {
+        let Type::Type {
+            ty: TypeVariant::Record(record),
+            ..
+        } = ty
+        else {
+            return false;
+        };
+        if record.attributes.len() != fields.len() {
+            return false;
+        }
+        let mut existing: Vec<(&SmolStr, &TypeOfAttribute<RawName>)> =
+            record.attributes.iter().collect();
+        existing.sort_by_key(|(name, _)| *name);
+        existing
+            .iter()
+            .zip(fields.iter())
+            .all(|((name, attr), (f_name, f_type, f_required))| {
+                *name == f_name
+                    && attr.required == *f_required
+                    && Self::type_matches_primitive(&attr.ty, f_type)
+            })
+    }
+
+    /// Check if a Cedar type corresponds to the given primitive property type.
+    fn type_matches_primitive(ty: &Type<RawName>, prim: &PropertyType) -> bool {
+        let Type::Type { ty: variant, .. } = ty else {
+            return false;
+        };
+        match (variant, prim) {
+            (TypeVariant::EntityOrCommon { type_name }, prim) => {
+                let expected = match prim {
+                    PropertyType::Bool => &identifiers::BOOL_TYPE,
+                    PropertyType::Integer => &identifiers::LONG_TYPE,
+                    PropertyType::String => &identifiers::STRING_TYPE,
+                    PropertyType::Decimal => &identifiers::DECIMAL_TYPE,
+                    PropertyType::Datetime => &identifiers::DATETIME_TYPE,
+                    PropertyType::Duration => &identifiers::DURATION_TYPE,
+                    PropertyType::IpAddr => &identifiers::IPADDR_TYPE,
+                    _ => return false,
+                };
+                type_name == &**expected
+            }
+            (TypeVariant::Entity { name }, PropertyType::Float) => {
+                name == &RawName::from_name(
+                    RawName::new_from_unreserved(identifiers::FLOAT_TYPE.clone(), None)
+                        .qualify_with_name(None),
+                )
+            }
+            (TypeVariant::Entity { name }, PropertyType::Number) => {
+                name == &RawName::from_name(
+                    RawName::new_from_unreserved(identifiers::NUMBER_TYPE.clone(), None)
+                        .qualify_with_name(None),
+                )
+            }
+            (TypeVariant::Entity { name }, PropertyType::Null) => {
+                name == &RawName::from_name(
+                    RawName::new_from_unreserved(identifiers::NULL_TYPE.clone(), None)
+                        .qualify_with_name(None),
+                )
+            }
+            (TypeVariant::Entity { name }, PropertyType::Unknown) => {
+                name == &RawName::from_name(
+                    RawName::new_from_unreserved(identifiers::UNKNOWN_TYPE.clone(), None)
+                        .qualify_with_name(None),
+                )
+            }
+            _ => false,
         }
     }
 
@@ -570,6 +716,14 @@ impl SchemaGenerator {
                             &child_ns,
                             dedup_map,
                         );
+                    }
+
+                    if is_leaf_record(property_type) {
+                        if let Ok(base_name) = name.parse::<UnreservedId>() {
+                            let fingerprint =
+                                EntityTypeFingerprint::new_leaf_record(base_name, properties);
+                            dedup_map.record(fingerprint, namespace.clone());
+                        }
                     }
                 }
             }
@@ -734,7 +888,12 @@ impl SchemaGenerator {
             }
         }
 
-        let resolved = dedup_map.resolve_duplicates();
+        let mut resolved = dedup_map.resolve_duplicates();
+
+        // LeafRecord dedup only applies when objects are encoded as entity types
+        if self.config.objects_as_records {
+            resolved.retain(|fp, _| !matches!(fp, EntityTypeFingerprint::LeafRecord { .. }));
+        }
 
         // Determine which fingerprints to skip:
         // - Same base_name targeting the same LCA (different variants conflict)
@@ -801,6 +960,46 @@ impl SchemaGenerator {
                         let choices = NonEmpty::from_slice(variants).unwrap();
                         let ty = EntityType {
                             kind: EntityTypeKind::Enum { choices },
+                            annotations: Annotations::new(),
+                            loc: None,
+                        };
+                        self.add_entitytype(lca_ns, ty, base_name.clone(), true)?;
+                    }
+                    EntityTypeFingerprint::LeafRecord { base_name, fields } => {
+                        let empty_common_types = BTreeMap::new();
+                        let attributes = fields
+                            .iter()
+                            .map(|(name, prop_type, required)| {
+                                let ty_name: UnreservedId =
+                                    name.parse().map_err(SchemaGeneratorError::from)?;
+                                let ty = self.cedar_type_from_property_type(
+                                    lca_ns,
+                                    ty_name,
+                                    prop_type,
+                                    &empty_common_types,
+                                )?;
+                                Ok((
+                                    name.clone(),
+                                    TypeOfAttribute {
+                                        ty,
+                                        annotations: Annotations::new(),
+                                        required: *required,
+                                    },
+                                ))
+                            })
+                            .collect::<Result<_, SchemaGeneratorError>>()?;
+                        let ty = EntityType {
+                            kind: EntityTypeKind::Standard(StandardEntityType {
+                                member_of_types: Vec::new(),
+                                shape: AttributesOrContext(Type::Type {
+                                    ty: TypeVariant::Record(RecordType {
+                                        attributes,
+                                        additional_attributes: false,
+                                    }),
+                                    loc: None,
+                                }),
+                                tags: None,
+                            }),
                             annotations: Annotations::new(),
                             loc: None,
                         };
@@ -1434,6 +1633,22 @@ impl SchemaGenerator {
                 properties,
                 additional_properties,
             } => {
+                // Check if this is a leaf record and it was deduplicated (placed in LCA namespace during Pass 1)
+                if !self.config.objects_as_records && is_leaf_record(property_type) {
+                    let fingerprint =
+                        EntityTypeFingerprint::new_leaf_record(ty_name.clone(), properties);
+                    if let Some(lca_ns) = self.get_dedup_namespace(&fingerprint) {
+                        let name = RawName::new_from_unreserved(ty_name, None);
+                        let name = RawName::from_name(name.qualify_with_name(lca_ns.as_ref()));
+                        return Ok(Type::Type {
+                            ty: TypeVariant::Entity {
+                                name: self.flatten_rawname(name),
+                            },
+                            loc: None,
+                        });
+                    }
+                }
+
                 let ns: Name = ty_name.clone().into();
                 let ns = Some(ns.qualify_with_name(namespace.as_ref()));
                 self.add_namespace(ns.clone());
@@ -2088,7 +2303,7 @@ mod test {
         let schema = r#"namespace Test {
 }
 
-namespace Test2 {       
+namespace Test2 {
 }"#;
 
         let schema_stub = Fragment::from_cedarschema_str(schema, Extensions::all_available())
@@ -2452,6 +2667,396 @@ namespace Test2 {
         assert_eq!(
             str_output, display_output,
             "get_schema_as_str and Display should produce identical output"
+        );
+    }
+
+    #[test]
+    fn test_is_primitive() {
+        assert!(is_primitive(&PropertyType::Bool));
+        assert!(is_primitive(&PropertyType::Integer));
+        assert!(is_primitive(&PropertyType::Float));
+        assert!(is_primitive(&PropertyType::Number));
+        assert!(is_primitive(&PropertyType::String));
+        assert!(is_primitive(&PropertyType::Decimal));
+        assert!(is_primitive(&PropertyType::Datetime));
+        assert!(is_primitive(&PropertyType::Duration));
+        assert!(is_primitive(&PropertyType::IpAddr));
+        assert!(is_primitive(&PropertyType::Null));
+        assert!(is_primitive(&PropertyType::Unknown));
+
+        assert!(!is_primitive(&PropertyType::Enum {
+            variants: vec!["a".into()]
+        }));
+        assert!(!is_primitive(&PropertyType::Array {
+            element_ty: Box::new(PropertyType::String)
+        }));
+        assert!(!is_primitive(&PropertyType::Object {
+            properties: vec![],
+            additional_properties: None
+        }));
+        assert!(!is_primitive(&PropertyType::Ref { name: "Foo".into() }));
+        assert!(!is_primitive(&PropertyType::Tuple {
+            types: vec![PropertyType::String]
+        }));
+        assert!(!is_primitive(&PropertyType::Union {
+            types: vec![PropertyType::String]
+        }));
+    }
+
+    #[test]
+    fn test_leaf_record_fingerprint_equality() {
+        let fp1 = EntityTypeFingerprint::LeafRecord {
+            base_name: "config".parse().unwrap(),
+            fields: vec![
+                ("host".into(), PropertyType::String, true),
+                ("port".into(), PropertyType::Integer, true),
+            ],
+        };
+        let fp2 = EntityTypeFingerprint::LeafRecord {
+            base_name: "config".parse().unwrap(),
+            fields: vec![
+                ("host".into(), PropertyType::String, true),
+                ("port".into(), PropertyType::Integer, true),
+            ],
+        };
+        assert_eq!(fp1, fp2);
+    }
+
+    #[test]
+    fn test_leaf_record_fingerprint_different_name() {
+        let fp1 = EntityTypeFingerprint::LeafRecord {
+            base_name: "config".parse().unwrap(),
+            fields: vec![("host".into(), PropertyType::String, true)],
+        };
+        let fp2 = EntityTypeFingerprint::LeafRecord {
+            base_name: "settings".parse().unwrap(),
+            fields: vec![("host".into(), PropertyType::String, true)],
+        };
+        assert_ne!(fp1, fp2);
+    }
+
+    #[test]
+    fn test_leaf_record_fingerprint_different_field_names() {
+        let fp1 = EntityTypeFingerprint::LeafRecord {
+            base_name: "config".parse().unwrap(),
+            fields: vec![("host".into(), PropertyType::String, true)],
+        };
+        let fp2 = EntityTypeFingerprint::LeafRecord {
+            base_name: "config".parse().unwrap(),
+            fields: vec![("url".into(), PropertyType::String, true)],
+        };
+        assert_ne!(fp1, fp2);
+    }
+
+    #[test]
+    fn test_leaf_record_fingerprint_different_field_types() {
+        let fp1 = EntityTypeFingerprint::LeafRecord {
+            base_name: "config".parse().unwrap(),
+            fields: vec![("port".into(), PropertyType::Integer, true)],
+        };
+        let fp2 = EntityTypeFingerprint::LeafRecord {
+            base_name: "config".parse().unwrap(),
+            fields: vec![("port".into(), PropertyType::String, true)],
+        };
+        assert_ne!(fp1, fp2);
+    }
+
+    #[test]
+    fn test_leaf_record_fingerprint_different_required() {
+        let fp1 = EntityTypeFingerprint::LeafRecord {
+            base_name: "config".parse().unwrap(),
+            fields: vec![("host".into(), PropertyType::String, true)],
+        };
+        let fp2 = EntityTypeFingerprint::LeafRecord {
+            base_name: "config".parse().unwrap(),
+            fields: vec![("host".into(), PropertyType::String, false)],
+        };
+        assert_ne!(fp1, fp2);
+    }
+
+    #[test]
+    fn test_leaf_record_fingerprint_not_equal_to_enum() {
+        let fp_record = EntityTypeFingerprint::LeafRecord {
+            base_name: "status".parse().unwrap(),
+            fields: vec![("code".into(), PropertyType::Integer, true)],
+        };
+        let fp_enum = EntityTypeFingerprint::Enum {
+            base_name: "status".parse().unwrap(),
+            variants: vec!["active".into()],
+        };
+        assert_ne!(fp_record, fp_enum);
+    }
+
+    #[test]
+    fn test_leaf_record_fingerprint_hash_consistency() {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let fp1 = EntityTypeFingerprint::LeafRecord {
+            base_name: "config".parse().unwrap(),
+            fields: vec![
+                ("host".into(), PropertyType::String, true),
+                ("port".into(), PropertyType::Integer, false),
+            ],
+        };
+        let fp2 = fp1.clone();
+
+        let mut h1 = DefaultHasher::new();
+        let mut h2 = DefaultHasher::new();
+        fp1.hash(&mut h1);
+        fp2.hash(&mut h2);
+        assert_eq!(h1.finish(), h2.finish());
+    }
+
+    #[test]
+    fn test_dedup_leaf_record_schema_generation() {
+        let schema_stub = test_schema_stub();
+        let config = SchemaGeneratorConfig::default().deduplicate_entity_types(true);
+
+        let tools_json = r#"{
+            "result": {
+                "tools": [
+                    {
+                        "name": "tool_a",
+                        "description": "Tool A",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "opts": {
+                                        "type": "object",
+                                        "properties": {
+                                            "verbose": { "type": "boolean" },
+                                            "limit": { "type": "integer" }
+                                        },
+                                        "required": ["verbose"]
+                                    }
+                                },
+                                "required": ["opts"]
+                            }
+                        }
+                    },
+                    {
+                        "name": "tool_b",
+                        "description": "Tool B",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "opts": {
+                                        "type": "object",
+                                        "properties": {
+                                            "verbose": { "type": "boolean" },
+                                            "limit": { "type": "integer" }
+                                        },
+                                        "required": ["verbose"]
+                                    }
+                                },
+                                "required": ["opts"]
+                            }
+                        }
+                    }
+                ]
+            }
+        }"#;
+
+        let description =
+            ServerDescription::from_json_str(tools_json).expect("Failed to parse tools JSON");
+        let mut generator = SchemaGenerator::new_with_config(schema_stub, config)
+            .expect("Failed to create schema generator");
+        generator
+            .add_actions_from_server_description(&description)
+            .expect("Failed to add server description");
+
+        let schema = generator.get_schema();
+        let root_ns = Some("Test".parse::<Name>().unwrap());
+        let root_nsdef = schema.0.get(&root_ns).expect("Expected namespace Test");
+
+        // The deduplicated entity type should be in the root namespace
+        assert!(
+            root_nsdef
+                .entity_types
+                .contains_key(&"opts".parse().unwrap()),
+            "Expected deduplicated 'opts' entity type in root namespace"
+        );
+
+        // Tool-local namespaces should NOT have their own 'opts'
+        let tool_a_input_ns: Option<Name> = Some("Test::tool_a::Input".parse().unwrap());
+        let tool_a_nsdef = schema.0.get(&tool_a_input_ns);
+        assert!(
+            tool_a_nsdef.is_none()
+                || !tool_a_nsdef
+                    .unwrap()
+                    .entity_types
+                    .contains_key(&"opts".parse().unwrap()),
+            "tool_a::Input should not have local 'opts'"
+        );
+    }
+
+    #[test]
+    fn test_dedup_leaf_record_not_triggered_for_non_leaf() {
+        // An object with a nested object property should NOT be fingerprinted as a leaf record
+        let schema_stub = test_schema_stub();
+        let config = SchemaGeneratorConfig::default().deduplicate_entity_types(true);
+
+        let tools_json = r#"{
+            "result": {
+                "tools": [
+                    {
+                        "name": "tool_a",
+                        "description": "Tool A",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "nested": {
+                                        "type": "object",
+                                        "properties": {
+                                            "inner": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "val": { "type": "string" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "required": ["nested"]
+                            }
+                        }
+                    },
+                    {
+                        "name": "tool_b",
+                        "description": "Tool B",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "nested": {
+                                        "type": "object",
+                                        "properties": {
+                                            "inner": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "val": { "type": "string" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "required": ["nested"]
+                            }
+                        }
+                    }
+                ]
+            }
+        }"#;
+
+        let description =
+            ServerDescription::from_json_str(tools_json).expect("Failed to parse tools JSON");
+        let mut generator = SchemaGenerator::new_with_config(schema_stub, config)
+            .expect("Failed to create schema generator");
+        generator
+            .add_actions_from_server_description(&description)
+            .expect("Failed to add server description");
+
+        let schema = generator.get_schema();
+        let root_ns = Some("Test".parse::<Name>().unwrap());
+        let root_nsdef = schema.0.get(&root_ns).expect("Expected namespace Test");
+
+        // Non-leaf objects should NOT be deduplicated to root
+        assert!(
+            !root_nsdef
+                .entity_types
+                .contains_key(&"nested".parse().unwrap()),
+            "Non-leaf 'nested' should not be deduplicated to root namespace"
+        );
+    }
+
+    #[test]
+    fn test_dedup_leaf_record_skipped_with_objects_as_records() {
+        // With objects_as_records, leaf records become common types, not entity types.
+        // Dedup should not apply.
+        let schema_stub = test_schema_stub();
+        let config = SchemaGeneratorConfig::default()
+            .deduplicate_entity_types(true)
+            .objects_as_records(true);
+
+        let tools_json = r#"{
+            "result": {
+                "tools": [
+                    {
+                        "name": "tool_a",
+                        "description": "Tool A",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "meta": {
+                                        "type": "object",
+                                        "properties": {
+                                            "name": { "type": "string" }
+                                        },
+                                        "required": ["name"]
+                                    }
+                                },
+                                "required": ["meta"]
+                            }
+                        }
+                    },
+                    {
+                        "name": "tool_b",
+                        "description": "Tool B",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "meta": {
+                                        "type": "object",
+                                        "properties": {
+                                            "name": { "type": "string" }
+                                        },
+                                        "required": ["name"]
+                                    }
+                                },
+                                "required": ["meta"]
+                            }
+                        }
+                    }
+                ]
+            }
+        }"#;
+
+        let description =
+            ServerDescription::from_json_str(tools_json).expect("Failed to parse tools JSON");
+        let mut generator = SchemaGenerator::new_with_config(schema_stub, config)
+            .expect("Failed to create schema generator");
+        generator
+            .add_actions_from_server_description(&description)
+            .expect("Failed to add server description");
+
+        let schema = generator.get_schema();
+        let root_ns = Some("Test".parse::<Name>().unwrap());
+        let root_nsdef = schema.0.get(&root_ns).expect("Expected namespace Test");
+
+        // Should NOT have a deduplicated entity type in root
+        assert!(
+            !root_nsdef
+                .entity_types
+                .contains_key(&"meta".parse().unwrap()),
+            "'meta' should not be deduplicated as entity type when objects_as_records is true"
+        );
+        // Should have common types in tool-local namespaces instead
+        let tool_a_input_ns: Option<Name> = Some("Test::tool_a::Input".parse().unwrap());
+        let tool_a_nsdef = schema
+            .0
+            .get(&tool_a_input_ns)
+            .expect("Expected tool_a::Input namespace");
+        assert!(
+            tool_a_nsdef
+                .common_types
+                .contains_key(&CommonTypeId::new("meta".parse().unwrap()).unwrap()),
+            "tool_a::Input should have local 'meta' common type"
         );
     }
 }

@@ -1,0 +1,82 @@
+{
+  "result": {
+    "tools": [
+      {
+        "name": "tool_a",
+        "description": "Tool A with 'status' as an enum",
+        "inputSchema": {
+          "json": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [ "active", "inactive" ]
+              },
+              "query": { "type": "string" }
+            },
+            "required": [ "query" ]
+          }
+        }
+      },
+      {
+        "name": "tool_b",
+        "description": "Tool B with 'status' as a leaf record",
+        "inputSchema": {
+          "json": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "object",
+                "properties": {
+                  "code": { "type": "integer" },
+                  "message": { "type": "string" }
+                },
+                "required": [ "code", "message" ]
+              },
+              "data": { "type": "string" }
+            },
+            "required": [ "data" ]
+          }
+        }
+      },
+      {
+        "name": "tool_c",
+        "description": "Tool C with same 'status' enum as tool_a",
+        "inputSchema": {
+          "json": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [ "active", "inactive" ]
+              },
+              "input": { "type": "string" }
+            },
+            "required": [ "input" ]
+          }
+        }
+      },
+      {
+        "name": "tool_d",
+        "description": "Tool D with same 'status' record as tool_b",
+        "inputSchema": {
+          "json": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "object",
+                "properties": {
+                  "code": { "type": "integer" },
+                  "message": { "type": "string" }
+                },
+                "required": [ "code", "message" ]
+              },
+              "value": { "type": "string" }
+            },
+            "required": [ "value" ]
+          }
+        }
+      }
+    ]
+  }
+}

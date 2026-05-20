@@ -39,17 +39,25 @@ mod lib {
             .add_actions_from_server_description(&description)
             .expect("Failed to add tool actions to schema generator");
 
-        // Read expected schema file
+        // The expected files have comments in them to make it nicer to read the examples,
+        // but they need to be stripped before comparison.
         let mut schema_file =
             std::fs::File::open(schema_fname).expect("Failed to read expected output file");
-        let mut expected_schema = String::new();
+        let mut raw_schema = String::new();
         let _ = schema_file
-            .read_to_string(&mut expected_schema)
+            .read_to_string(&mut raw_schema)
             .expect("Failed to read expected schema file");
+        let expected_schema: String = raw_schema
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n")
+            .trim()
+            .to_string()
+            + "\n";
 
         let actual_schema = generator
             .get_schema()
-            .clone()
             .to_cedarschema()
             .expect("Failed to resolve generated schema");
         assert!(
@@ -155,6 +163,63 @@ mod lib {
             "examples/simple/tool_mixed_array.json",
             "examples/simple/tool_mixed_array.cedarschema",
             SchemaGeneratorConfig::default(),
+        );
+    }
+
+    #[test]
+    fn dedup_leaf_record_different_required() {
+        // Two tools have "metadata" with same field names and types, but different
+        // required status (version? vs version). They should NOT be deduplicated.
+        run_integration_test(
+            "examples/dedup/dedup_leaf_record_different_required.json",
+            "examples/dedup/dedup_leaf_record_different_required.cedarschema",
+            SchemaGeneratorConfig::default().deduplicate_entity_types(true),
+        );
+    }
+
+    #[test]
+    fn dedup_leaf_record() {
+        // tool_a and tool_b share the same "metadata" leaf record (author: String, version?: Long).
+        // tool_c has a different "metadata" (title: String, count: Long).
+        // The shared one should be deduplicated to the LCA namespace; tool_c keeps its own.
+        run_integration_test(
+            "examples/dedup/dedup_leaf_record.json",
+            "examples/dedup/dedup_leaf_record.cedarschema",
+            SchemaGeneratorConfig::default().deduplicate_entity_types(true),
+        );
+    }
+
+    #[test]
+    fn dedup_mixed_enum_and_record() {
+        // Both an enum ("format") and a leaf record ("options") are shared across two tools.
+        // Both should be deduplicated to the LCA namespace.
+        run_integration_test(
+            "examples/dedup/dedup_mixed_enum_and_record.json",
+            "examples/dedup/dedup_mixed_enum_and_record.cedarschema",
+            SchemaGeneratorConfig::default().deduplicate_entity_types(true),
+        );
+    }
+
+    #[test]
+    fn dedup_enum_record_name_conflict() {
+        // An enum and a leaf record both named "status" target the same LCA.
+        // Both should be skipped (no dedup) because of the name collision.
+        run_integration_test(
+            "examples/dedup/dedup_enum_record_name_conflict.json",
+            "examples/dedup/dedup_enum_record_name_conflict.cedarschema",
+            SchemaGeneratorConfig::default().deduplicate_entity_types(true),
+        );
+    }
+
+    #[test]
+    fn dedup_leaf_record_no_match() {
+        // Three tools have "config" with: different field names (tool_a vs tool_b),
+        // same field names but different types (tool_a vs tool_c).
+        // None should be deduplicated.
+        run_integration_test(
+            "examples/dedup/dedup_leaf_record_no_match.json",
+            "examples/dedup/dedup_leaf_record_no_match.cedarschema",
+            SchemaGeneratorConfig::default().deduplicate_entity_types(true),
         );
     }
 
@@ -1170,6 +1235,33 @@ namespace MyMcpServer {
             SchemaGeneratorConfig::default().deduplicate_entity_types(true),
         );
     }
+
+    #[test]
+    fn dedup_nested_record_not_deduplicated() {
+        // Two tools have the same nested structure: a wrapping object "config" containing
+        // a leaf object "settings". The innermost "settings" entity (all primitive fields)
+        // should be deduplicated to the LCA, but the wrapping "config" entity should NOT
+        // be deduplicated because it is not a leaf record (it references another entity type).
+        run_integration_test(
+            "examples/dedup/dedup_nested_record_not_deduplicated.json",
+            "examples/dedup/dedup_nested_record_not_deduplicated.cedarschema",
+            SchemaGeneratorConfig::default().deduplicate_entity_types(true),
+        );
+    }
+
+    #[test]
+    fn dedup_leaf_record_in_output() {
+        // Two tools share the same leaf record "metadata" in their outputSchema.
+        // With include_outputs + deduplicate_entity_types, the leaf record should be
+        // deduplicated to the LCA namespace.
+        run_integration_test(
+            "examples/dedup/dedup_leaf_record_in_output.json",
+            "examples/dedup/dedup_leaf_record_in_output.cedarschema",
+            SchemaGeneratorConfig::default()
+                .include_outputs(true)
+                .deduplicate_entity_types(true),
+        );
+    }
 }
 
 #[cfg(feature = "cli")]
@@ -1703,6 +1795,282 @@ mod cli {
             .arg("examples/stub.cedarschema")
             .arg("examples/simple/tool_tuple.json")
             .arg("--encode-numbers-as-decimal")
+            .arg("--request-json")
+            .arg(&request_fname)
+            .arg("--policies")
+            .arg(&policy_fname)
+            .arg("--entities")
+            .arg(&entities_fname)
+            .arg("--mcp-tool-input")
+            .arg(&input_fname);
+        cmd.unwrap().assert().success().stdout("DENY\n").stderr("");
+    }
+
+    #[test]
+    fn test_authorize_dedup_leaf_record_allow() {
+        // Two tools share a leaf record "metadata" {author: String, version?: Long}.
+        // With dedup, the entity type is placed in the LCA namespace.
+        // Policy checks the entity's attributes via has/access on the entity.
+        let temp_dir = TempDir::new().unwrap();
+        let entities_fname = temp_dir.path().join("entities.json");
+        std::fs::write(&entities_fname, "[]").unwrap();
+
+        let request_json = r#"{
+    "principal": "MyMcpServer::User::\"test_user\"",
+    "resource": "MyMcpServer::McpServer::\"test_server\"",
+    "context": {
+        "session": {
+            "currentTimestamp": {
+                "__extn": {
+                    "fn": "datetime",
+                    "arg": "2025-12-16"
+                }
+            },
+            "ipaddr": {
+                "__extn": {
+                    "fn": "ip",
+                    "arg": "10.0.0.1"
+                }
+            }
+        }
+    }
+}"#;
+        let request_fname = temp_dir.path().join("request.json");
+        std::fs::write(&request_fname, request_json).unwrap();
+
+        let policy_fname = temp_dir.path().join("policies.cedar");
+        std::fs::write(
+            &policy_fname,
+            r#"permit(principal, action, resource) when {
+    context.input.query == "hello"
+};"#,
+        )
+        .unwrap();
+
+        let input = r#"{
+    "params": {
+        "tool": "tool_a",
+        "args": {
+            "metadata": { "author": "alice", "version": 2 },
+            "query": "hello"
+        }
+    }
+}"#;
+        let input_fname = temp_dir.path().join("input.json");
+        std::fs::write(&input_fname, input).unwrap();
+
+        let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
+        let cmd = cmd
+            .arg("authorize")
+            .arg("examples/stub.cedarschema")
+            .arg("examples/dedup/dedup_leaf_record.json")
+            .arg("--deduplicate-entity-types")
+            .arg("--request-json")
+            .arg(&request_fname)
+            .arg("--policies")
+            .arg(&policy_fname)
+            .arg("--entities")
+            .arg(&entities_fname)
+            .arg("--mcp-tool-input")
+            .arg(&input_fname);
+        cmd.unwrap().assert().success().stdout("ALLOW\n").stderr("");
+    }
+
+    #[test]
+    fn test_authorize_dedup_leaf_record_deny() {
+        let temp_dir = TempDir::new().unwrap();
+        let entities_fname = temp_dir.path().join("entities.json");
+        std::fs::write(&entities_fname, "[]").unwrap();
+
+        let request_json = r#"{
+    "principal": "MyMcpServer::User::\"test_user\"",
+    "resource": "MyMcpServer::McpServer::\"test_server\"",
+    "context": {
+        "session": {
+            "currentTimestamp": {
+                "__extn": {
+                    "fn": "datetime",
+                    "arg": "2025-12-16"
+                }
+            },
+            "ipaddr": {
+                "__extn": {
+                    "fn": "ip",
+                    "arg": "10.0.0.1"
+                }
+            }
+        }
+    }
+}"#;
+        let request_fname = temp_dir.path().join("request.json");
+        std::fs::write(&request_fname, request_json).unwrap();
+
+        let policy_fname = temp_dir.path().join("policies.cedar");
+        std::fs::write(
+            &policy_fname,
+            r#"permit(principal, action, resource) when {
+    context.input.query == "world"
+};"#,
+        )
+        .unwrap();
+
+        let input = r#"{
+    "params": {
+        "tool": "tool_a",
+        "args": {
+            "metadata": { "author": "alice", "version": 2 },
+            "query": "hello"
+        }
+    }
+}"#;
+        let input_fname = temp_dir.path().join("input.json");
+        std::fs::write(&input_fname, input).unwrap();
+
+        let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
+        let cmd = cmd
+            .arg("authorize")
+            .arg("examples/stub.cedarschema")
+            .arg("examples/dedup/dedup_leaf_record.json")
+            .arg("--deduplicate-entity-types")
+            .arg("--request-json")
+            .arg(&request_fname)
+            .arg("--policies")
+            .arg(&policy_fname)
+            .arg("--entities")
+            .arg(&entities_fname)
+            .arg("--mcp-tool-input")
+            .arg(&input_fname);
+        cmd.unwrap().assert().success().stdout("DENY\n").stderr("");
+    }
+
+    #[test]
+    fn test_authorize_dedup_mixed_enum_and_record_allow() {
+        // Tests authorization with both a deduplicated enum and a deduplicated leaf record.
+        let temp_dir = TempDir::new().unwrap();
+        let entities_fname = temp_dir.path().join("entities.json");
+        std::fs::write(&entities_fname, "[]").unwrap();
+
+        let request_json = r#"{
+    "principal": "MyMcpServer::User::\"test_user\"",
+    "resource": "MyMcpServer::McpServer::\"test_server\"",
+    "context": {
+        "session": {
+            "currentTimestamp": {
+                "__extn": {
+                    "fn": "datetime",
+                    "arg": "2025-12-16"
+                }
+            },
+            "ipaddr": {
+                "__extn": {
+                    "fn": "ip",
+                    "arg": "10.0.0.1"
+                }
+            }
+        }
+    }
+}"#;
+        let request_fname = temp_dir.path().join("request.json");
+        std::fs::write(&request_fname, request_json).unwrap();
+
+        let policy_fname = temp_dir.path().join("policies.cedar");
+        std::fs::write(
+            &policy_fname,
+            r#"permit(principal, action, resource) when {
+    context.input has format &&
+    context.input.format == MyMcpServer::format::"markdown"
+};"#,
+        )
+        .unwrap();
+
+        let input = r#"{
+    "params": {
+        "tool": "tool_a",
+        "args": {
+            "format": "markdown",
+            "options": { "verbose": true, "timeout": 30 },
+            "query": "test"
+        }
+    }
+}"#;
+        let input_fname = temp_dir.path().join("input.json");
+        std::fs::write(&input_fname, input).unwrap();
+
+        let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
+        let cmd = cmd
+            .arg("authorize")
+            .arg("examples/stub.cedarschema")
+            .arg("examples/dedup/dedup_mixed_enum_and_record.json")
+            .arg("--deduplicate-entity-types")
+            .arg("--request-json")
+            .arg(&request_fname)
+            .arg("--policies")
+            .arg(&policy_fname)
+            .arg("--entities")
+            .arg(&entities_fname)
+            .arg("--mcp-tool-input")
+            .arg(&input_fname);
+        cmd.unwrap().assert().success().stdout("ALLOW\n").stderr("");
+    }
+
+    #[test]
+    fn test_authorize_dedup_mixed_enum_and_record_deny() {
+        let temp_dir = TempDir::new().unwrap();
+        let entities_fname = temp_dir.path().join("entities.json");
+        std::fs::write(&entities_fname, "[]").unwrap();
+
+        let request_json = r#"{
+    "principal": "MyMcpServer::User::\"test_user\"",
+    "resource": "MyMcpServer::McpServer::\"test_server\"",
+    "context": {
+        "session": {
+            "currentTimestamp": {
+                "__extn": {
+                    "fn": "datetime",
+                    "arg": "2025-12-16"
+                }
+            },
+            "ipaddr": {
+                "__extn": {
+                    "fn": "ip",
+                    "arg": "10.0.0.1"
+                }
+            }
+        }
+    }
+}"#;
+        let request_fname = temp_dir.path().join("request.json");
+        std::fs::write(&request_fname, request_json).unwrap();
+
+        let policy_fname = temp_dir.path().join("policies.cedar");
+        std::fs::write(
+            &policy_fname,
+            r#"permit(principal, action, resource) when {
+    context.input has format &&
+    context.input.format == MyMcpServer::format::"text"
+};"#,
+        )
+        .unwrap();
+
+        let input = r#"{
+    "params": {
+        "tool": "tool_b",
+        "args": {
+            "format": "markdown",
+            "options": { "verbose": false },
+            "data": "payload"
+        }
+    }
+}"#;
+        let input_fname = temp_dir.path().join("input.json");
+        std::fs::write(&input_fname, input).unwrap();
+
+        let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
+        let cmd = cmd
+            .arg("authorize")
+            .arg("examples/stub.cedarschema")
+            .arg("examples/dedup/dedup_mixed_enum_and_record.json")
+            .arg("--deduplicate-entity-types")
             .arg("--request-json")
             .arg(&request_fname)
             .arg("--policies")

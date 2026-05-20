@@ -1,0 +1,48 @@
+{
+  "result": {
+    "tools": [
+      {
+        "name": "tool_a",
+        "description": "Tool A: metadata with version optional",
+        "inputSchema": {
+          "json": {
+            "type": "object",
+            "properties": {
+              "metadata": {
+                "type": "object",
+                "properties": {
+                  "author": { "type": "string" },
+                  "version": { "type": "integer" }
+                },
+                "required": ["author"]
+              },
+              "query": { "type": "string" }
+            },
+            "required": ["query"]
+          }
+        }
+      },
+      {
+        "name": "tool_b",
+        "description": "Tool B: metadata with version required",
+        "inputSchema": {
+          "json": {
+            "type": "object",
+            "properties": {
+              "metadata": {
+                "type": "object",
+                "properties": {
+                  "author": { "type": "string" },
+                  "version": { "type": "integer" }
+                },
+                "required": ["author", "version"]
+              },
+              "data": { "type": "string" }
+            },
+            "required": ["data"]
+          }
+        }
+      }
+    ]
+  }
+}

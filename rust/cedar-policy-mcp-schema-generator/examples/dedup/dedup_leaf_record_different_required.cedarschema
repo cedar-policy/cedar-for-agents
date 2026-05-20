@@ -1,0 +1,60 @@
+// In this example tool_a::Input::metadata and tool_b::Input::metadata have the same attributes,
+// but in tool_a's input the version is optional, so we cannot de-duplicate the types.
+
+namespace MyMcpServer::tool_a::Input {
+  entity metadata = {
+    author: String,
+    version?: Long
+  };
+}
+
+namespace MyMcpServer::tool_b::Input {
+  entity metadata = {
+    author: String,
+    version: Long
+  };
+}
+
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type tool_aInput = {
+    metadata?: MyMcpServer::tool_a::Input::metadata,
+    query: String
+  };
+
+  type tool_bInput = {
+    data: String,
+    metadata?: MyMcpServer::tool_b::Input::metadata
+  };
+
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  action "call_tool";
+
+  action "tool_a" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      session: CommonContext
+    }
+  };
+
+  action "tool_b" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
+      session: CommonContext
+    }
+  };
+}

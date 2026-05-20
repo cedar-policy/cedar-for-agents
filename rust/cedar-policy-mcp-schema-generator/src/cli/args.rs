@@ -88,7 +88,9 @@ pub(crate) struct ConfigOptions {
     pub(crate) encode_numbers_as_decimal: bool,
     /// Whether to deduplicate entity types with equivalent definitions across tools, placing
     /// the shared type in the lowest common ancestor namespace (default: false). Currently
-    /// applies to enum entity types matched by name and variant values.
+    /// applies to enum entity types matched by name and variant values, and entity types where
+    /// all attributes are base types (i.e. no nested records or enums) matched by name, attribute
+    /// names and types.
     #[arg(long, default_value_t = false)]
     pub(crate) deduplicate_entity_types: bool,
 }

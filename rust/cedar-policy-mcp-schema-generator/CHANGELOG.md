@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Adds `deduplicate_entity_types` option to consolidate equivalent enum entity types (same name and variants) into a single definition at the lowest common ancestor namespace.
+- Adds `deduplicate_entity_types` option to consolidate equivalent enum entity types (same name and variants) and leaf entity types (entities where all attributes are of base type, i.e. no nested entity) into a single definition at the lowest common ancestor namespace.
 
 ## [0.5.0] - 2026-05-12
 
