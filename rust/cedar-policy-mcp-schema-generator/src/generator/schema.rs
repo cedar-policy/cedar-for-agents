@@ -27,7 +27,9 @@ use cedar_policy_core::validator::{
     },
     RawName,
 };
-use mcp_tools_sdk::description::{Parameters, PropertyType, ServerDescription, ToolDescription};
+use mcp_tools_sdk::description::{
+    Parameters, Property, PropertyType, ServerDescription, ToolDescription,
+};
 
 use nonempty::NonEmpty;
 
@@ -192,13 +194,17 @@ fn is_leaf_record(p: &PropertyType) -> bool {
 /// Designed as an enum to support future extension to other entity type kinds.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum EntityTypeFingerprint {
-    /// Fingerprint for enum entity types: matched by name + ordered variant values.
+    /// Fingerprint for enum entity types.
+    /// The order of variants in enums matters, i.e. ['foo', 'bar'] and
+    /// ['bar', 'foo'] are two different entity types.
+    /// Enum fingerprints are matched by name + variant values (in original order).
     Enum {
         base_name: UnreservedId,
         variants: Vec<SmolStr>,
     },
     /// Fingerprint for leaf record entity types: objects whose properties are all primitive.
-    /// Matched by name + sorted list of (property_name, type, required).
+    /// The order of attributes in objects does not matter.
+    /// Record fingerprints are matched by name + sorted list of (property_name, type, required).
     LeafRecord {
         base_name: UnreservedId,
         /// Sorted by property name for deterministic comparison.
@@ -211,6 +217,24 @@ impl EntityTypeFingerprint {
         match self {
             Self::Enum { base_name, .. } | Self::LeafRecord { base_name, .. } => base_name,
         }
+    }
+
+    pub(crate) fn new_leaf_record(
+        base_name: UnreservedId,
+        props: &[Property],
+    ) -> EntityTypeFingerprint {
+        let mut fields: Vec<(SmolStr, PropertyType, bool)> = props
+            .iter()
+            .map(|prop| {
+                (
+                    prop.name().to_smolstr(),
+                    prop.property_type().clone(),
+                    prop.is_required(),
+                )
+            })
+            .collect();
+        fields.sort_by(|a, b| a.0.cmp(&b.0));
+        EntityTypeFingerprint::LeafRecord { base_name, fields }
     }
 }
 
@@ -696,19 +720,8 @@ impl SchemaGenerator {
 
                     if is_leaf_record(property_type) {
                         if let Ok(base_name) = name.parse::<UnreservedId>() {
-                            let mut fields: Vec<(SmolStr, PropertyType, bool)> = properties
-                                .iter()
-                                .map(|prop| {
-                                    (
-                                        prop.name().to_smolstr(),
-                                        prop.property_type().clone(),
-                                        prop.is_required(),
-                                    )
-                                })
-                                .collect();
-                            fields.sort_by(|a, b| a.0.cmp(&b.0));
                             let fingerprint =
-                                EntityTypeFingerprint::LeafRecord { base_name, fields };
+                                EntityTypeFingerprint::new_leaf_record(base_name, properties);
                             dedup_map.record(fingerprint, namespace.clone());
                         }
                     }
@@ -1622,21 +1635,8 @@ impl SchemaGenerator {
             } => {
                 // Check if this is a leaf record and it was deduplicated (placed in LCA namespace during Pass 1)
                 if !self.config.objects_as_records && is_leaf_record(property_type) {
-                    let mut fields: Vec<(SmolStr, PropertyType, bool)> = properties
-                        .iter()
-                        .map(|prop| {
-                            (
-                                prop.name().to_smolstr(),
-                                prop.property_type().clone(),
-                                prop.is_required(),
-                            )
-                        })
-                        .collect();
-                    fields.sort_by(|a, b| a.0.cmp(&b.0));
-                    let fingerprint = EntityTypeFingerprint::LeafRecord {
-                        base_name: ty_name.clone(),
-                        fields,
-                    };
+                    let fingerprint =
+                        EntityTypeFingerprint::new_leaf_record(ty_name.clone(), properties);
                     if let Some(lca_ns) = self.get_dedup_namespace(&fingerprint) {
                         let name = RawName::new_from_unreserved(ty_name, None);
                         let name = RawName::from_name(name.qualify_with_name(lca_ns.as_ref()));
