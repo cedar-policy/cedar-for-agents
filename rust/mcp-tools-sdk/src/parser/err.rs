@@ -35,6 +35,11 @@ pub enum ParseError {
     #[error("Duplicate key found")]
     #[diagnostic(transparent)]
     DuplicateKey(DuplicateFound),
+
+    /// The parser encountered an invalid Unicode escape sequence (e.g., malformed surrogate pair)
+    #[error("Invalid Unicode escape sequence in string literal")]
+    #[diagnostic(transparent)]
+    InvalidUnicodeEscape(LocationFound),
 }
 
 impl ParseError {
@@ -58,6 +63,16 @@ impl ParseError {
             second,
             msg: "All keys should be unique.".to_string(),
             code: "parse::duplicate_key".to_string(),
+        })
+    }
+
+    /// Create a new `ParseError` representing an invalid Unicode escape sequence
+    pub(crate) fn invalid_unicode_escape(loc: Loc, msg: &str) -> Self {
+        Self::InvalidUnicodeEscape(LocationFound {
+            src: loc,
+            label: "Found".to_string(),
+            msg: msg.to_string(),
+            code: "parse::invalid_unicode_escape".to_string(),
         })
     }
 }

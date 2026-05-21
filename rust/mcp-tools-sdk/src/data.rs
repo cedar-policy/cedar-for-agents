@@ -967,4 +967,27 @@ mod test {
             Err(DeserializationError::UnexpectedType(..))
         )
     }
+
+    #[test]
+    fn test_input_string_escape_sequences_decoded() {
+        let input = r#"{
+            "method": "tools/call",
+            "params": {
+                "tool": "my_tool",
+                "args": {
+                    "path": "\/etc\/passwd",
+                    "message": "line1\nline2",
+                    "unicode": "\u0048ello"
+                }
+            }
+        }"#;
+        let parsed = Input::from_json_str(input).expect("Failed to parse input");
+        let args: Vec<_> = parsed.get_args().collect();
+        let path = &args.iter().find(|(k, _)| *k == "path").unwrap().1;
+        let message = &args.iter().find(|(k, _)| *k == "message").unwrap().1;
+        let unicode = &args.iter().find(|(k, _)| *k == "unicode").unwrap().1;
+        assert_eq!(path.get_str(), Some("/etc/passwd"));
+        assert_eq!(message.get_str(), Some("line1\nline2"));
+        assert_eq!(unicode.get_str(), Some("Hello"));
+    }
 }

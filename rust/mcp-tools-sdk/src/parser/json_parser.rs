@@ -43,7 +43,7 @@ impl JsonParser {
             match token.kind() {
                 TokenKind::String => {
                     maybe_empty = false;
-                    let key = LocatedString::new(token.into_loc());
+                    let key = LocatedString::new(token.into_loc())?;
                     let token = self.tokenizer.get_token()?;
                     if matches!(token.kind(), TokenKind::Colon) {
                         let value = self.get_value()?;
@@ -117,7 +117,7 @@ impl JsonParser {
                 TokenKind::Null => LocatedValue::new_null(token.into_loc()),
                 TokenKind::Bool(b) => LocatedValue::new_bool(b, token.into_loc()),
                 TokenKind::Number => LocatedValue::new_number(token.into_loc()),
-                TokenKind::String => LocatedValue::new_string(token.into_loc()),
+                TokenKind::String => LocatedValue::new_string(token.into_loc())?,
                 TokenKind::ArrayStart => self.get_array(token.as_loc())?,
                 TokenKind::ObjectStart => self.get_object(token.as_loc())?,
                 TokenKind::ArrayEnd if maybe_empty => {
@@ -169,7 +169,7 @@ impl JsonParser {
             TokenKind::Null => Ok(LocatedValue::new_null(token.into_loc())),
             TokenKind::Bool(b) => Ok(LocatedValue::new_bool(b, token.into_loc())),
             TokenKind::Number => Ok(LocatedValue::new_number(token.into_loc())),
-            TokenKind::String => Ok(LocatedValue::new_string(token.into_loc())),
+            TokenKind::String => LocatedValue::new_string(token.into_loc()),
             TokenKind::ArrayStart => self.get_array(token.as_loc()),
             TokenKind::ObjectStart => self.get_object(token.as_loc()),
             _ => Err(ParseError::unexpected_token(
@@ -305,7 +305,7 @@ mod tests {
         let value = parser
             .get_value()
             .expect("Failed to parse `    \"   \\t\\n\\r\\t  \"        `");
-        assert_matches!(value.get_str(), Some("   \\t\\n\\r\\t  "));
+        assert_matches!(value.get_str(), Some("   \t\n\r\t  "));
         assert_matches!(
             parser.get_value(),
             Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(..)))
@@ -316,11 +316,68 @@ mod tests {
     fn parse_unicode_escape_seq_string_literal() {
         let mut parser = JsonParser::new("\"\\u0912\"");
         let value = parser.get_value().expect("Failed to parse `\"\\u0912\"`");
-        assert_matches!(value.get_str(), Some("\\u0912"));
+        assert_matches!(value.get_str(), Some("\u{0912}"));
         assert_matches!(
             parser.get_value(),
             Err(ParseError::TokenizeError(TokenizeError::UnexpectedEof(..)))
         );
+    }
+
+    #[test]
+    fn parse_all_escape_sequences() {
+        let mut parser =
+            JsonParser::new(r#""quote:\" backslash:\\ slash:\/ bs:\b ff:\f nl:\n cr:\r tab:\t""#);
+        let value = parser
+            .get_value()
+            .expect("Failed to parse escape sequences");
+        assert_eq!(
+            value.get_str().unwrap(),
+            "quote:\" backslash:\\ slash:/ bs:\u{0008} ff:\u{000C} nl:\n cr:\r tab:\t"
+        );
+    }
+
+    #[test]
+    fn parse_unicode_surrogate_pair() {
+        // U+1F600 (😀) encoded as surrogate pair \uD83D\uDE00
+        let mut parser = JsonParser::new("\"\\uD83D\\uDE00\"");
+        let value = parser.get_value().expect("Failed to parse surrogate pair");
+        assert_eq!(value.get_str().unwrap(), "😀");
+    }
+
+    #[test]
+    fn parse_lone_high_surrogate_rejected() {
+        // High surrogate not followed by a low surrogate
+        let mut parser = JsonParser::new("\"\\uD83D\\u0041\"");
+        assert_matches!(
+            parser.get_value(),
+            Err(ParseError::InvalidUnicodeEscape(..))
+        );
+    }
+
+    #[test]
+    fn parse_lone_low_surrogate_rejected() {
+        // Low surrogate without preceding high surrogate
+        let mut parser = JsonParser::new("\"\\uDE00\"");
+        assert_matches!(
+            parser.get_value(),
+            Err(ParseError::InvalidUnicodeEscape(..))
+        );
+    }
+
+    #[test]
+    fn parse_object_key_with_escapes() {
+        let mut parser = JsonParser::new(r#"{"key\nname": "value"}"#);
+        let value = parser.get_value().expect("Failed to parse object");
+        let obj = value.get_object().expect("Expected object");
+        // The key should be decoded: "key\nname" (with actual newline)
+        assert!(obj.get("key\nname").is_some());
+    }
+
+    #[test]
+    fn parse_string_no_escapes_unchanged() {
+        let mut parser = JsonParser::new("\"hello world\"");
+        let value = parser.get_value().expect("Failed to parse");
+        assert_eq!(value.get_str().unwrap(), "hello world");
     }
 
     #[test]
