@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+//! This module defines representations for properties in MCP tools definitions.
+
 use smol_str::{SmolStr, ToSmolStr};
 use std::collections::HashMap;
 use std::path::Path;
@@ -24,7 +26,7 @@ use super::err::{DeserializationError, ValidationError};
 use super::parser;
 use super::validation::{validate_input, validate_output};
 
-/// The type a `Property` can take
+/// The type a `Property` can take: supported types in JSON Schema maps to PropertyTypes.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PropertyType {
     /// An unknown property type. Produced when the JSON Schema is a boolean or null,
@@ -56,30 +58,37 @@ pub enum PropertyType {
     Null,
     /// An enumeration: `{"type": "string", "enum": ["a", "b", ...]}` in JSON Schema.
     Enum {
+        /// The variants of the enum; an ordered list of strings
         variants: Vec<SmolStr>,
     },
     /// A homogeneous array: `{"type": "array", "items": <schema>}` in JSON Schema.
     Array {
+        /// The type of elements of the homogenous array
         element_ty: Box<PropertyType>,
     },
     /// A fixed-length tuple: `{"type": "array", "prefixItems": [...], "items": false}` in JSON Schema.
     /// Standard JSON Schema (2020-12 draft).
     Tuple {
+        /// The ordered list of types of each tuple element
         types: Vec<PropertyType>,
     },
     /// A union type: `{"anyOf": [...]}` or `{"oneOf": [...]}` in JSON Schema,
     /// or `{"type": ["string", "integer", ...]}` (type as array). Standard JSON Schema.
     Union {
+        /// The set of types in the union
         types: Vec<PropertyType>,
     },
     /// An object: `{"type": "object", "properties": {...}}` in JSON Schema.
     /// `additional_properties` corresponds to the `additionalProperties` keyword when it is a schema object.
     Object {
+        /// The properties defined in the object schema (both required and optional)
         properties: Vec<Property>,
+        /// The additional properties of this object
         additional_properties: Option<Box<PropertyType>>,
     },
     /// A reference to a reusable type definition: `{"$ref": "#/$defs/<name>"}` in JSON Schema.
     Ref {
+        /// The name of the type being referenced
         name: SmolStr,
     },
 }
@@ -125,6 +134,7 @@ impl Property {
         self.description.as_deref()
     }
 
+    /// Returns the [PropertyType] of this [Property]
     pub fn property_type(&self) -> &PropertyType {
         &self.prop_type
     }

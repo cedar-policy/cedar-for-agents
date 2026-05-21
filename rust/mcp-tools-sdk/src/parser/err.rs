@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+//! This module contains definitions for errors that can occur when parsing text into JSON.
+
 use super::loc::Loc;
 use miette::Diagnostic;
 use thiserror::Error;

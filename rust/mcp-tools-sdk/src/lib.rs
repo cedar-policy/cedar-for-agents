@@ -24,6 +24,8 @@
 //! This library also includes a `ServerDescription` struct that represents a collection of MCP tool descriptions
 //! (i.e., the output of `list_tools` from an MCP Server).
 
+#![deny(missing_docs)]
+
 pub mod data;
 pub mod description;
 mod deserializer;

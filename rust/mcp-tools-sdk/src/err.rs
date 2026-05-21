@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+//! This module contains definitions for errors that can occur when deserializing a MCP server's
+//! tool descriptions.
+
 use super::parser::{json_value::LocatedValue, loc::Loc};
 use miette::Diagnostic;
 use smol_str::SmolStr;
@@ -22,6 +25,7 @@ use thiserror::Error;
 
 /// The type of errors that may be encountered during deserialization of an MCP Server / Tool Description
 #[derive(Error, Debug, Diagnostic)]
+#[allow(private_interfaces)]
 pub enum DeserializationError {
     /// Deserializer encountered an error while parsing a JSON Value
     #[error(transparent)]
@@ -120,7 +124,7 @@ impl DeserializationError {
 
 #[derive(Error, Debug)]
 #[error("Missing expected attribute")]
-pub struct MissingExpectedAttributeError {
+pub(crate) struct MissingExpectedAttributeError {
     loc: Loc,
     expected_key: String,
     aliases: Vec<String>,
@@ -166,7 +170,7 @@ impl Diagnostic for MissingExpectedAttributeError {
 /// The source location of an error
 #[derive(Debug, Error)]
 #[error("Problem found.")]
-pub struct LocationFound {
+pub(crate) struct LocationFound {
     src: Loc,
     label: String,
     msg: String,
@@ -197,7 +201,7 @@ impl Diagnostic for LocationFound {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum ContentType {
+pub(crate) enum ContentType {
     ServerDescription,
     ToolDescription,
     ToolParameters,
@@ -222,7 +226,7 @@ impl std::fmt::Display for ContentType {
 }
 
 #[derive(Debug)]
-pub struct ReadError {
+pub(crate) struct ReadError {
     file_name: PathBuf,
     error: String,
 }
@@ -232,12 +236,15 @@ pub struct ReadError {
     reason = "The attribute `cycle` is used implicitly in error message."
 )]
 #[derive(Debug)]
-pub struct TypeDefinitionCycle {
+pub(crate) struct TypeDefinitionCycle {
     cycle: Vec<SmolStr>,
 }
 
+/// The type of errors that may be encountered during validation of an MCP tool input or output
 #[derive(Error, Debug, Diagnostic)]
+#[allow(private_interfaces)]
 pub enum ValidationError {
+    /// The tool name in the input does not match the tool being validated against
     #[error(transparent)]
     #[diagnostic(
         code = "validation_error::mismatched_names",
@@ -245,6 +252,7 @@ pub enum ValidationError {
     )]
     MismatchedToolNames(MismatchedNamesError),
 
+    /// The requested tool was not found in the server description
     #[error(transparent)]
     #[diagnostic(
         code = "validation_error::tool_not_found",
@@ -252,6 +260,7 @@ pub enum ValidationError {
     )]
     ToolNotFound(ToolNotFoundError),
 
+    /// A required property is missing from the input object
     #[error(transparent)]
     #[diagnostic(
         code = "validation_error::missing_required_property",
@@ -259,6 +268,7 @@ pub enum ValidationError {
     )]
     MissingRequiredProperty(MissingRequiredPropertyError),
 
+    /// A value could not be parsed as a valid 64-bit integer
     #[error("Invalid Integer Literal: {}", .0.literal)]
     #[diagnostic(
         code = "validation_error::invalid_integer_literal",
@@ -266,6 +276,7 @@ pub enum ValidationError {
     )]
     InvalidIntegerLiteral(InvalidLiteralError),
 
+    /// A value could not be parsed as a valid 64-bit float
     #[error("Invalid Float Literal: {}", .0.literal)]
     #[diagnostic(
         code = "validation_error::invalid_float_literal",
@@ -273,6 +284,7 @@ pub enum ValidationError {
     )]
     InvalidFloatLiteral(InvalidLiteralError),
 
+    /// A string value is not a valid decimal literal
     #[error("Invalid Decimal Literal: {}", .0.literal)]
     #[diagnostic(
         code = "validation_error::invalid_decimal_literal",
@@ -280,6 +292,7 @@ pub enum ValidationError {
     )]
     InvalidDecimalLiteral(InvalidLiteralError),
 
+    /// A string value is not a valid datetime literal
     #[error("Invalid Datetime Literal: {}", .0.literal)]
     #[diagnostic(
         code = "validation_error::invalid_datetime_literal",
@@ -287,6 +300,7 @@ pub enum ValidationError {
     )]
     InvalidDatetimeLiteral(InvalidLiteralError),
 
+    /// A string value is not a valid duration literal
     #[error("Invalid Duration Literal: {}", .0.literal)]
     #[diagnostic(
         code = "validation_error::invalid_duration_literal",
@@ -294,6 +308,7 @@ pub enum ValidationError {
     )]
     InvalidDurationLiteral(InvalidLiteralError),
 
+    /// A string value is not a valid IP address literal
     #[error("Invalid IpAddr Literal: {}", .0.literal)]
     #[diagnostic(
         code = "validation_error::invalid_ipaddr_literal",
@@ -301,6 +316,7 @@ pub enum ValidationError {
     )]
     InvalidIpAddrLiteral(InvalidLiteralError),
 
+    /// A string value is not a valid variant of the expected enum type
     #[error("Invalid Enum Variant: {}", .0.literal)]
     #[diagnostic(
         code = "validation_error::invalid_enum_variant",
@@ -308,6 +324,7 @@ pub enum ValidationError {
     )]
     InvalidEnumVariant(InvalidLiteralError),
 
+    /// An array has the wrong number of elements for the expected tuple type
     #[error("Wrong number of elements for tuple: expected {} elements, found {}", .0.expected, .0.found)]
     #[diagnostic(
         code = "validation_error::wrong_tuple_size",
@@ -315,6 +332,7 @@ pub enum ValidationError {
     )]
     WrongTupleSize(WrongTupleSizeError),
 
+    /// A value does not match any variant of a union type
     #[error("Could not match value to union type")]
     #[diagnostic(
         code = "validation_error::invalid_value_for_union_type",
@@ -322,6 +340,7 @@ pub enum ValidationError {
     )]
     InvalidValueForUnionType,
 
+    /// An object contains a property not defined in its schema
     #[error("Unexpected property on object: {}", .0.name)]
     #[diagnostic(
         code = "validation_error::unexpected_property",
@@ -329,6 +348,7 @@ pub enum ValidationError {
     )]
     UnexpectedProperty(UnexpectedPropertyError),
 
+    /// A `$ref` references a type name not found in the type definitions
     #[error("Type {} not found in type definitions", .0.name)]
     #[diagnostic(
         code = "validation_error::unrecognized_type_name",
@@ -336,6 +356,7 @@ pub enum ValidationError {
     )]
     UnexpectedTypeName(UnexpectedTypeNameError),
 
+    /// A value does not match the expected property type
     #[error("Value does not match expected type")]
     #[diagnostic(
         code = "validation_error::invalid_value_for_type",
@@ -421,40 +442,40 @@ impl ValidationError {
 
 #[derive(Debug, Error)]
 #[error("Validating input/output for {tool_name} but found input for {input_for}")]
-pub struct MismatchedNamesError {
+pub(crate) struct MismatchedNamesError {
     tool_name: SmolStr,
     input_for: SmolStr,
 }
 
 #[derive(Debug, Error)]
 #[error("Validation failed because no tool named {tool_name} was found.")]
-pub struct ToolNotFoundError {
+pub(crate) struct ToolNotFoundError {
     tool_name: SmolStr,
 }
 
 #[derive(Debug, Error)]
 #[error("Validation failed because required property {property_name} is missing.")]
-pub struct MissingRequiredPropertyError {
+pub(crate) struct MissingRequiredPropertyError {
     property_name: SmolStr,
 }
 
 #[derive(Debug)]
-pub struct InvalidLiteralError {
+pub(crate) struct InvalidLiteralError {
     literal: String,
 }
 
 #[derive(Debug)]
-pub struct WrongTupleSizeError {
+pub(crate) struct WrongTupleSizeError {
     expected: usize,
     found: usize,
 }
 
 #[derive(Debug)]
-pub struct UnexpectedPropertyError {
+pub(crate) struct UnexpectedPropertyError {
     name: String,
 }
 
 #[derive(Debug)]
-pub struct UnexpectedTypeNameError {
+pub(crate) struct UnexpectedTypeNameError {
     name: String,
 }
