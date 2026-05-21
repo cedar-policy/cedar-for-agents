@@ -25,7 +25,10 @@ use thiserror::Error;
 
 /// The type of errors that may be encountered during deserialization of an MCP Server / Tool Description
 #[derive(Error, Debug, Diagnostic)]
-#[allow(private_interfaces)]
+#[expect(
+    private_interfaces,
+    reason = "public error type not exposing inner error structs"
+)]
 pub enum DeserializationError {
     /// Deserializer encountered an error while parsing a JSON Value
     #[error(transparent)]
@@ -242,7 +245,10 @@ pub(crate) struct TypeDefinitionCycle {
 
 /// The type of errors that may be encountered during validation of an MCP tool input or output
 #[derive(Error, Debug, Diagnostic)]
-#[allow(private_interfaces)]
+#[expect(
+    private_interfaces,
+    reason = "public error type not exposing inner error structs"
+)]
 pub enum ValidationError {
     /// The tool name in the input does not match the tool being validated against
     #[error(transparent)]
