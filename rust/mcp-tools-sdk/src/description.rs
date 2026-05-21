@@ -27,33 +27,58 @@ use super::validation::{validate_input, validate_output};
 /// The type a `Property` can take
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PropertyType {
+    /// An unknown property type. Produced when the JSON Schema is a boolean or null,
+    /// or when no recognized schema pattern is found.
     Unknown,
+    /// A boolean property: `{"type": "boolean"}` in JSON Schema.
     Bool,
+    /// An integer property: `{"type": "integer"}` in JSON Schema.
     Integer,
+    /// A floating point property: `{"type": "float"}` in JSON Schema.
+    /// Non-standard extension — not part of the JSON Schema specification.
     Float,
+    /// A number: `{"type": "number"}` in JSON Schema.
     Number,
+    /// A string property: `{"type": "string"}` in JSON Schema (with no recognized `format`).
     String,
+    /// A decimal number: `{"type": "string", "format": "decimal"}` in JSON Schema.
+    /// Non-standard extension — the `"decimal"` format is not part of the JSON Schema specification.
     Decimal,
+    /// A datetime: `{"type": "string", "format": "date"}` or `{"type": "string", "format": "date-time"}`
+    /// in JSON Schema. Both standard formats map to this variant.
     Datetime,
+    /// A duration: `{"type": "string", "format": "duration"}` in JSON Schema.
     Duration,
+    /// An IP address: `{"type": "string", "format": "ipv4"}` or `{"type": "string", "format": "ipv6"}`
+    /// in JSON Schema. Both standard formats map to this variant.
     IpAddr,
+    /// A null value: `{"type": "null"}` in JSON Schema.
     Null,
+    /// An enumeration: `{"type": "string", "enum": ["a", "b", ...]}` in JSON Schema.
     Enum {
         variants: Vec<SmolStr>,
     },
+    /// A homogeneous array: `{"type": "array", "items": <schema>}` in JSON Schema.
     Array {
         element_ty: Box<PropertyType>,
     },
+    /// A fixed-length tuple: `{"type": "array", "prefixItems": [...], "items": false}` in JSON Schema.
+    /// Standard JSON Schema (2020-12 draft).
     Tuple {
         types: Vec<PropertyType>,
     },
+    /// A union type: `{"anyOf": [...]}` or `{"oneOf": [...]}` in JSON Schema,
+    /// or `{"type": ["string", "integer", ...]}` (type as array). Standard JSON Schema.
     Union {
         types: Vec<PropertyType>,
     },
+    /// An object: `{"type": "object", "properties": {...}}` in JSON Schema.
+    /// `additional_properties` corresponds to the `additionalProperties` keyword when it is a schema object.
     Object {
         properties: Vec<Property>,
         additional_properties: Option<Box<PropertyType>>,
     },
+    /// A reference to a reusable type definition: `{"$ref": "#/$defs/<name>"}` in JSON Schema.
     Ref {
         name: SmolStr,
     },
