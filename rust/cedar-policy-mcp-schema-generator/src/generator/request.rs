@@ -721,7 +721,9 @@ fn reformat_duration(str: &str) -> String {
             millisecond,
         } => {
             // APPROXIMATE year & month into number of days
-            let n_days = year * 365 + month * 30 + day;
+            // Using u64: duration is always positive and reformatting shouldn't overflow,
+            // independently of how a Cedar authorizer handles it downstream.
+            let n_days = u64::from(year) * 365 + u64::from(month) * 30 + u64::from(day);
             let mut ret = "".to_string();
             if n_days != 0 {
                 ret = format!("{}{}d", ret, n_days)
@@ -741,7 +743,7 @@ fn reformat_duration(str: &str) -> String {
             ret
         }
         iso8601::Duration::Weeks(weeks) => {
-            let n_days = 7 * weeks;
+            let n_days = 7 * u64::from(weeks);
             format!("{}d", n_days)
         }
     }
@@ -1110,6 +1112,9 @@ mod test {
         test_reformat_duration_passes_cedar("P1Y0M0DT0H0M0S", "365d");
         test_reformat_duration_passes_cedar("P0Y0M1DT0H0M0S", "1d");
         test_reformat_duration_passes_cedar("PT0.999999999S", "999ms");
+        // Large values that would overflow u32 arithmetic
+        assert_eq!(reformat_duration("P12000000Y"), "4380000000d");
+        assert_eq!(reformat_duration("P150000000M"), "4500000000d");
     }
 
     fn test_reformat_ipaddr_passes_cedar(input: &str, expected: &str) {
