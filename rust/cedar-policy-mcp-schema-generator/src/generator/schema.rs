@@ -698,8 +698,9 @@ impl SchemaGenerator {
                 properties,
                 additional_properties,
             } => {
-                if let Ok(obj_name) = name.parse::<Name>() {
-                    let child_ns = Some(obj_name.qualify_with_name(namespace.as_ref()));
+                if let Ok(obj_name) = name.parse::<UnreservedId>() {
+                    let child_ns: Name = obj_name.into();
+                    let child_ns = Some(child_ns.qualify_with_name(namespace.as_ref()));
                     for prop in properties {
                         Self::collect_enum_fingerprints_from_property_type(
                             prop.name(),
@@ -736,8 +737,9 @@ impl SchemaGenerator {
                 );
             }
             PropertyType::Union { types } => {
-                if let Ok(union_name) = name.parse::<Name>() {
-                    let child_ns = Some(union_name.qualify_with_name(namespace.as_ref()));
+                if let Ok(union_name) = name.parse::<UnreservedId>() {
+                    let child_ns: Name = union_name.into();
+                    let child_ns = Some(child_ns.qualify_with_name(namespace.as_ref()));
                     for (i, ty) in types.iter().enumerate() {
                         let variant_name = format!("TypeChoice{i}");
                         Self::collect_enum_fingerprints_from_property_type(
@@ -750,8 +752,9 @@ impl SchemaGenerator {
                 }
             }
             PropertyType::Tuple { types } => {
-                if let Ok(tuple_name) = name.parse::<Name>() {
-                    let child_ns = Some(tuple_name.qualify_with_name(namespace.as_ref()));
+                if let Ok(tuple_name) = name.parse::<UnreservedId>() {
+                    let child_ns: Name = tuple_name.into();
+                    let child_ns = Some(child_ns.qualify_with_name(namespace.as_ref()));
                     for (i, ty) in types.iter().enumerate() {
                         let proj_name = format!("Proj{i}");
                         Self::collect_enum_fingerprints_from_property_type(

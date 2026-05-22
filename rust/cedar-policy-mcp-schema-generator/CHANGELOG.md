@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Float entity IDs now use a canonical lossless representation, fixing whole-number floats missing a decimal point and extreme values producing excessively long EIDs.
+- In the request and schema generators, property names in MCP tool inputs that result in multi-namespace type names are rejected.
 
 ## [0.5.0] - 2026-05-12
 

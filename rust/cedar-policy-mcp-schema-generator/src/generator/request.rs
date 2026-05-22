@@ -19,6 +19,7 @@ use std::sync::Arc;
 
 use cedar_policy_core::ast::{
     Context, Eid, Entity, EntityType, EntityUID, InternalName, Name, Request, RestrictedExpr,
+    UnreservedId,
 };
 use cedar_policy_core::entities::Entities;
 use cedar_policy_core::parser::err::ParseErrors;
@@ -491,7 +492,7 @@ impl RequestGenerator {
                 for (i, val) in vals.iter().enumerate() {
                     let sub_ty_name = format!("Proj{i}");
                     let name = format!("proj{i}").to_smolstr();
-                    let sub_namespace: Name = ty_name.parse()?;
+                    let sub_namespace: Name = ty_name.parse::<UnreservedId>()?.into();
                     let sub_namespace = sub_namespace.qualify_with_name(namespace);
                     let (expr, new_entities) =
                         self.val_to_cedar(val, type_defs, Some(&sub_namespace), &sub_ty_name)?;
@@ -508,7 +509,7 @@ impl RequestGenerator {
             TypedValue::Union { index, value } => {
                 let sub_ty_name = format!("TypeChoice{}", index);
                 let name = format!("typeChoice{}", index).to_smolstr();
-                let sub_namespace: Name = ty_name.parse()?;
+                let sub_namespace: Name = ty_name.parse::<UnreservedId>()?.into();
                 let sub_namespace = sub_namespace.qualify_with_name(namespace);
                 let (expr, entities) =
                     self.val_to_cedar(value, type_defs, Some(&sub_namespace), &sub_ty_name)?;
@@ -518,7 +519,7 @@ impl RequestGenerator {
                 properties,
                 additional_properties,
             } => {
-                let sub_namespace: Name = ty_name.parse()?;
+                let sub_namespace: Name = ty_name.parse::<UnreservedId>()?.into();
                 let sub_namespace = sub_namespace.qualify_with_name(namespace);
 
                 let mut entities = Entities::new();
@@ -595,7 +596,10 @@ impl RequestGenerator {
         ty_name: &str,
         namespace: Option<&Name>,
     ) -> Result<EntityType, ParseErrors> {
-        let ty: EntityType = ty_name.parse()?;
+        // Parse as UnreservedId first to reject names containing `::`
+        // which could inject entity types into unintended namespaces.
+        let id: UnreservedId = ty_name.parse()?;
+        let ty = EntityType::from(Name::from(id));
 
         if let Some(ref resolved) = self.resolved_dedup {
             let dedup_info = resolved.iter().find(|(fp, info)| {
@@ -2835,5 +2839,48 @@ mod test {
                 })
             })
         });
+    }
+
+    /// Regression test: property names containing `::` must be rejected to prevent
+    /// namespace injection. Previously these parsed as multi-component Cedar Names.
+    #[test]
+    fn test_namespace_injection_rejected() {
+        let request_generator = get_schema_generator(SchemaGeneratorConfig::default())
+            .new_request_generator()
+            .expect("Failed to construct request generator");
+
+        let type_defs = TypeDefsInfo::new();
+        let namespace = Some("Test".parse().unwrap());
+
+        // Each variant exercises a different code path that parses ty_name into a namespace:
+        // - Tuple/Union/Object: parse ty_name as sub_namespace
+        // - Enum: parse ty_name in resolved_ty to construct an EntityType
+        let vals: &[(&str, TypedValue)] = &[
+            ("Tuple", TypedValue::Tuple(vec![TypedValue::Bool(true)])),
+            (
+                "Union",
+                TypedValue::Union {
+                    index: 0,
+                    value: Box::new(TypedValue::Bool(true)),
+                },
+            ),
+            (
+                "Object",
+                TypedValue::Object {
+                    properties: HashMap::new(),
+                    additional_properties: HashMap::new(),
+                },
+            ),
+            ("Enum", TypedValue::Enum("variant".into())),
+        ];
+
+        for (label, val) in vals {
+            let result =
+                request_generator.val_to_cedar(val, &type_defs, namespace.as_ref(), "foo::bar");
+            assert!(
+                result.is_err(),
+                "ty_name with `::` should be rejected in {label}"
+            );
+        }
     }
 }
