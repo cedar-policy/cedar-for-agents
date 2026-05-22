@@ -698,8 +698,9 @@ impl SchemaGenerator {
                 properties,
                 additional_properties,
             } => {
-                if let Ok(obj_name) = name.parse::<Name>() {
-                    let child_ns = Some(obj_name.qualify_with_name(namespace.as_ref()));
+                if let Ok(obj_name) = name.parse::<UnreservedId>() {
+                    let child_ns: Name = obj_name.into();
+                    let child_ns = Some(child_ns.qualify_with_name(namespace.as_ref()));
                     for prop in properties {
                         Self::collect_enum_fingerprints_from_property_type(
                             prop.name(),
@@ -736,8 +737,9 @@ impl SchemaGenerator {
                 );
             }
             PropertyType::Union { types } => {
-                if let Ok(union_name) = name.parse::<Name>() {
-                    let child_ns = Some(union_name.qualify_with_name(namespace.as_ref()));
+                if let Ok(union_name) = name.parse::<UnreservedId>() {
+                    let child_ns: Name = union_name.into();
+                    let child_ns = Some(child_ns.qualify_with_name(namespace.as_ref()));
                     for (i, ty) in types.iter().enumerate() {
                         let variant_name = format!("TypeChoice{i}");
                         Self::collect_enum_fingerprints_from_property_type(
@@ -750,8 +752,9 @@ impl SchemaGenerator {
                 }
             }
             PropertyType::Tuple { types } => {
-                if let Ok(tuple_name) = name.parse::<Name>() {
-                    let child_ns = Some(tuple_name.qualify_with_name(namespace.as_ref()));
+                if let Ok(tuple_name) = name.parse::<UnreservedId>() {
+                    let child_ns: Name = tuple_name.into();
+                    let child_ns = Some(child_ns.qualify_with_name(namespace.as_ref()));
                     for (i, ty) in types.iter().enumerate() {
                         let proj_name = format!("Proj{i}");
                         Self::collect_enum_fingerprints_from_property_type(
@@ -3057,6 +3060,100 @@ namespace Test2 {
                 .common_types
                 .contains_key(&CommonTypeId::new("meta".parse().unwrap()).unwrap()),
             "tool_a::Input should have local 'meta' common type"
+        );
+    }
+
+    /// Enum types nested inside Union and Tuple properties are deduplicated
+    /// across tools when they share the same name and variants.
+    #[test]
+    fn test_dedup_enum_inside_union_and_tuple() {
+        let schema_stub = test_schema_stub();
+        let config = SchemaGeneratorConfig::default().deduplicate_entity_types(true);
+
+        let tools_json = r#"{
+            "result": {
+                "tools": [
+                    {
+                        "name": "tool_a",
+                        "description": "Tool A",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "choice": {
+                                        "anyOf": [
+                                            { "type": "string", "enum": ["on", "off"] },
+                                            { "type": "integer" }
+                                        ]
+                                    },
+                                    "pair": {
+                                        "type": "array",
+                                        "prefixItems": [
+                                            { "type": "string", "enum": ["on", "off"] },
+                                            { "type": "integer" }
+                                        ],
+                                        "items": false
+                                    }
+                                },
+                                "required": ["choice", "pair"]
+                            }
+                        }
+                    },
+                    {
+                        "name": "tool_b",
+                        "description": "Tool B",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "choice": {
+                                        "anyOf": [
+                                            { "type": "string", "enum": ["on", "off"] },
+                                            { "type": "integer" }
+                                        ]
+                                    },
+                                    "pair": {
+                                        "type": "array",
+                                        "prefixItems": [
+                                            { "type": "string", "enum": ["on", "off"] },
+                                            { "type": "integer" }
+                                        ],
+                                        "items": false
+                                    }
+                                },
+                                "required": ["choice", "pair"]
+                            }
+                        }
+                    }
+                ]
+            }
+        }"#;
+
+        let description =
+            ServerDescription::from_json_str(tools_json).expect("Failed to parse tools JSON");
+        let mut generator = SchemaGenerator::new_with_config(schema_stub, config)
+            .expect("Failed to create schema generator");
+        generator
+            .add_actions_from_server_description(&description)
+            .expect("Failed to add server description");
+
+        let schema = generator.get_schema();
+        let root_ns = Some("Test".parse::<Name>().unwrap());
+        let root_nsdef = schema.0.get(&root_ns).expect("Expected namespace Test");
+
+        // The enum "on"/"off" appears identically in both tools (inside union and tuple),
+        // so dedup should hoist shared entity types to the root namespace.
+        assert!(
+            root_nsdef
+                .entity_types
+                .contains_key(&"TypeChoice0".parse().unwrap()),
+            "Expected deduplicated enum from union in root namespace"
+        );
+        assert!(
+            root_nsdef
+                .entity_types
+                .contains_key(&"Proj0".parse().unwrap()),
+            "Expected deduplicated enum from tuple in root namespace"
         );
     }
 }
