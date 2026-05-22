@@ -24,7 +24,18 @@
 //! This library also includes a `ServerDescription` struct that represents a collection of MCP tool descriptions
 //! (i.e., the output of `list_tools` from an MCP Server).
 
-#![deny(missing_docs)]
+#![deny(
+    missing_docs,
+    rustdoc::broken_intra_doc_links,
+    rustdoc::private_intra_doc_links,
+    rustdoc::invalid_codeblock_attributes,
+    rustdoc::invalid_html_tags,
+    rustdoc::invalid_rust_codeblocks,
+    rustdoc::bare_urls,
+    clippy::doc_markdown,
+    clippy::doc_lazy_continuation,
+    clippy::too_long_first_doc_paragraph
+)]
 
 pub mod data;
 pub mod description;

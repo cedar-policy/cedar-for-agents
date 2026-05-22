@@ -26,7 +26,7 @@ use super::err::{DeserializationError, ValidationError};
 use super::parser;
 use super::validation::{validate_input, validate_output};
 
-/// The type a `Property` can take: supported types in JSON Schema maps to PropertyTypes.
+/// The type a `Property` can take: supported types in JSON Schema maps to `PropertyTypes`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PropertyType {
     /// An unknown property type. Produced when the JSON Schema is a boolean or null,
@@ -134,13 +134,13 @@ impl Property {
         self.description.as_deref()
     }
 
-    /// Returns the [PropertyType] of this [Property]
+    /// Returns the [`PropertyType`] of this [`Property`]
     pub fn property_type(&self) -> &PropertyType {
         &self.prop_type
     }
 }
 
-/// Representation of a TypeDef used for defining `Property`s
+/// Representation of a `TypeDef` used for defining `Property`s
 #[derive(Debug, Clone)]
 pub struct PropertyTypeDef {
     pub(crate) name: SmolStr,
@@ -158,12 +158,12 @@ impl PropertyTypeDef {
         }
     }
 
-    /// Get the name of the TypeDef
+    /// Get the name of the `TypeDef`
     pub fn name(&self) -> &str {
         &self.name
     }
 
-    /// Get the definition of the TypeDef
+    /// Get the definition of the `TypeDef`
     pub fn property_type(&self) -> &PropertyType {
         &self.prop_type
     }
@@ -174,19 +174,19 @@ impl PropertyTypeDef {
     }
 }
 
-/// Container for convienently representing a collection of TypeDefs
+/// Container for convienently representing a collection of `TypeDefs`
 #[derive(Debug, Clone)]
 pub(crate) struct PropertyTypeDefs {
     pub(crate) type_defs: HashMap<SmolStr, PropertyTypeDef>,
 }
 
 impl PropertyTypeDefs {
-    /// Create a new collection of TypeDefs
+    /// Create a new collection of `TypeDefs`
     pub(crate) fn new(type_defs: HashMap<SmolStr, PropertyTypeDef>) -> Self {
         Self { type_defs }
     }
 
-    /// Get the collection of TypeDefs
+    /// Get the collection of `TypeDefs`
     pub(crate) fn values(&self) -> impl Iterator<Item = &PropertyTypeDef> {
         self.type_defs.values()
     }
@@ -215,7 +215,7 @@ impl Parameters {
         self.properties.iter()
     }
 
-    /// Iterate over the TypeDefs defined within this `Parameters`
+    /// Iterate over the `TypeDefs` defined within this `Parameters`
     pub fn type_definitions(&self) -> impl Iterator<Item = &PropertyTypeDef> {
         self.type_defs.values()
     }
@@ -269,8 +269,8 @@ impl ToolDescription {
         &self.outputs
     }
 
-    /// Get the TypeDefs defined within this tool (i.e., TypeDefs shared between Input and Output Parameters)
-    /// This does not return the TypeDefs specific to either Input or Output Parameters.
+    /// Get the `TypeDefs` defined within this tool (i.e., `TypeDefs` shared between Input and Output Parameters)
+    /// This does not return the `TypeDefs` specific to either Input or Output Parameters.
     pub fn type_definitions(&self) -> impl Iterator<Item = &PropertyTypeDef> {
         self.type_defs.values()
     }
@@ -333,7 +333,7 @@ impl ServerDescription {
         self.tools.values()
     }
 
-    /// Get any TypeDefs defined within this ServerDescription (i.e., TypeDefs shared between tools)
+    /// Get any `TypeDefs` defined within this `ServerDescription` (i.e., `TypeDefs` shared between tools)
     pub fn type_definitions(&self) -> impl Iterator<Item = &PropertyTypeDef> {
         self.type_defs.values()
     }
