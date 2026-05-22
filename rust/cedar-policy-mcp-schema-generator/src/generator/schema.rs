@@ -3062,6 +3062,93 @@ namespace Test2 {
             "tool_a::Input should have local 'meta' common type"
         );
     }
+
+    /// Enum types nested inside Union and Tuple properties are deduplicated
+    /// across tools when they share the same name and variants.
+    #[test]
+    fn test_dedup_enum_inside_union_and_tuple() {
+        let schema_stub = test_schema_stub();
+        let config = SchemaGeneratorConfig::default().deduplicate_entity_types(true);
+
+        let tools_json = r#"{
+            "result": {
+                "tools": [
+                    {
+                        "name": "tool_a",
+                        "description": "Tool A",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "choice": {
+                                        "anyOf": [
+                                            { "type": "string", "enum": ["on", "off"] },
+                                            { "type": "integer" }
+                                        ]
+                                    },
+                                    "pair": {
+                                        "type": "array",
+                                        "prefixItems": [
+                                            { "type": "string", "enum": ["on", "off"] },
+                                            { "type": "integer" }
+                                        ],
+                                        "items": false
+                                    }
+                                },
+                                "required": ["choice", "pair"]
+                            }
+                        }
+                    },
+                    {
+                        "name": "tool_b",
+                        "description": "Tool B",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "choice": {
+                                        "anyOf": [
+                                            { "type": "string", "enum": ["on", "off"] },
+                                            { "type": "integer" }
+                                        ]
+                                    },
+                                    "pair": {
+                                        "type": "array",
+                                        "prefixItems": [
+                                            { "type": "string", "enum": ["on", "off"] },
+                                            { "type": "integer" }
+                                        ],
+                                        "items": false
+                                    }
+                                },
+                                "required": ["choice", "pair"]
+                            }
+                        }
+                    }
+                ]
+            }
+        }"#;
+
+        let description =
+            ServerDescription::from_json_str(tools_json).expect("Failed to parse tools JSON");
+        let mut generator = SchemaGenerator::new_with_config(schema_stub, config)
+            .expect("Failed to create schema generator");
+        generator
+            .add_actions_from_server_description(&description)
+            .expect("Failed to add server description");
+
+        let schema = generator.get_schema();
+        let root_ns = Some("Test".parse::<Name>().unwrap());
+        let root_nsdef = schema.0.get(&root_ns).expect("Expected namespace Test");
+
+        // The enum "on"/"off" appears identically in both tools (inside union and tuple),
+        // so dedup should hoist a shared entity type to the root namespace.
+        assert!(
+            root_nsdef.entity_types.len() > 2,
+            "Expected deduplicated entity types in root namespace, got: {:?}",
+            root_nsdef.entity_types.keys().collect::<Vec<_>>()
+        );
+    }
 }
 
 #[cfg(test)]

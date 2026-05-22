@@ -2841,6 +2841,24 @@ mod test {
         });
     }
 
+    /// Tuple values are converted to a Cedar record with projection fields.
+    #[test]
+    fn test_tuple_val_to_cedar() {
+        let request_generator = get_schema_generator(SchemaGeneratorConfig::default())
+            .new_request_generator()
+            .expect("Failed to construct request generator");
+
+        let type_defs = TypeDefsInfo::new();
+        let namespace = Some("Test".parse().unwrap());
+
+        let val = TypedValue::Tuple(vec![TypedValue::Bool(true), TypedValue::Integer(42)]);
+        let (expr, _entities) = request_generator
+            .val_to_cedar(&val, &type_defs, namespace.as_ref(), "myTuple")
+            .expect("Failed to convert Tuple to Cedar");
+
+        assert_eq!(expr.to_string(), "{proj0: true, proj1: 42}");
+    }
+
     /// Regression test: property names containing `::` must be rejected to prevent
     /// namespace injection. Previously these parsed as multi-component Cedar Names.
     #[test]
