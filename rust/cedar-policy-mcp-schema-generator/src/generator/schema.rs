@@ -3142,11 +3142,18 @@ namespace Test2 {
         let root_nsdef = schema.0.get(&root_ns).expect("Expected namespace Test");
 
         // The enum "on"/"off" appears identically in both tools (inside union and tuple),
-        // so dedup should hoist a shared entity type to the root namespace.
+        // so dedup should hoist shared entity types to the root namespace.
         assert!(
-            root_nsdef.entity_types.len() > 2,
-            "Expected deduplicated entity types in root namespace, got: {:?}",
-            root_nsdef.entity_types.keys().collect::<Vec<_>>()
+            root_nsdef
+                .entity_types
+                .contains_key(&"TypeChoice0".parse().unwrap()),
+            "Expected deduplicated enum from union in root namespace"
+        );
+        assert!(
+            root_nsdef
+                .entity_types
+                .contains_key(&"Proj0".parse().unwrap()),
+            "Expected deduplicated enum from tuple in root namespace"
         );
     }
 }
