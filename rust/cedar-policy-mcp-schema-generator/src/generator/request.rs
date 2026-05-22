@@ -382,7 +382,7 @@ impl RequestGenerator {
                 } else {
                     let ty = EntityType::from(Name::from(identifiers::FLOAT_TYPE.clone()));
                     let ty = ty.qualify_with(self.root_namespace.as_ref());
-                    let eid = Eid::new(format!("{}", f));
+                    let eid = Eid::new(format!("{:?}", f));
                     let euid = EntityUID::from_components(ty, eid, None);
                     Ok((RestrictedExpr::val(euid), Entities::new()))
                 }
@@ -1314,7 +1314,7 @@ mod test {
 
         test_value_to_cedar_is_expr(
             &TypedValue::Float(0.0),
-            &RestrictedExpr::from_str("Test::Float::\"0\"").unwrap(),
+            &RestrictedExpr::from_str("Test::Float::\"0.0\"").unwrap(),
             &Entities::new(),
         );
 
@@ -1329,6 +1329,59 @@ mod test {
             &RestrictedExpr::from_str("Test::Float::\"-1.05\"").unwrap(),
             &Entities::new(),
         );
+
+        // Whole-number floats must include decimal point in EID
+        test_value_to_cedar_is_expr(
+            &TypedValue::Float(1.0),
+            &RestrictedExpr::from_str("Test::Float::\"1.0\"").unwrap(),
+            &Entities::new(),
+        );
+
+        test_value_to_cedar_is_expr(
+            &TypedValue::Float(-42.0),
+            &RestrictedExpr::from_str("Test::Float::\"-42.0\"").unwrap(),
+            &Entities::new(),
+        );
+
+        // Extreme values must use scientific notation (not hundreds of digits)
+        test_value_to_cedar_is_expr(
+            &TypedValue::Float(f64::MIN_POSITIVE),
+            &RestrictedExpr::from_str("Test::Float::\"2.2250738585072014e-308\"").unwrap(),
+            &Entities::new(),
+        );
+
+        test_value_to_cedar_is_expr(
+            &TypedValue::Float(f64::MAX),
+            &RestrictedExpr::from_str("Test::Float::\"1.7976931348623157e308\"").unwrap(),
+            &Entities::new(),
+        );
+
+        // Adjacent floats must produce distinct EIDs
+        {
+            let request_generator = get_schema_generator(SchemaGeneratorConfig::default())
+                .new_request_generator()
+                .expect("Failed to construct request generator");
+            let type_defs = TypeDefsInfo::new();
+            let namespace: Option<Name> = Some("Test".parse().unwrap());
+
+            let (expr_a, _) = request_generator
+                .val_to_cedar(
+                    &TypedValue::Float(1.0000000000000002),
+                    &type_defs,
+                    namespace.as_ref(),
+                    "test_type",
+                )
+                .unwrap();
+            let (expr_b, _) = request_generator
+                .val_to_cedar(
+                    &TypedValue::Float(1.0000000000000004),
+                    &type_defs,
+                    namespace.as_ref(),
+                    "test_type",
+                )
+                .unwrap();
+            assert_ne!(expr_a, expr_b, "Adjacent floats must produce distinct EIDs");
+        }
 
         test_value_to_cedar_is_expr(
             &TypedValue::Number(str_to_number("0.0")),
