@@ -343,7 +343,7 @@ impl LocatedValue {
     }
 
     /// Returns Some(str) if this `Located` value is of kind String
-    /// where str is the decoded string literal corresponding to this LocatedValue.
+    /// where str is the decoded string literal corresponding to this `LocatedValue`.
     /// Otherwise, return None if not of kind String.
     pub(crate) fn get_str(&self) -> Option<&str> {
         match &self.kind {
@@ -353,14 +353,14 @@ impl LocatedValue {
     }
 
     /// Returns Some(String) if this `Located` value is of kind String
-    /// where String is the string literal corresponding to this LocatedValue.
+    /// where String is the string literal corresponding to this `LocatedValue`.
     /// Otherwise, return None if not of kind String.
     pub(crate) fn get_string(&self) -> Option<String> {
         self.get_str().map(|s| s.to_string())
     }
 
-    /// Returns Some(SmolStr) if this `Located` value is of kind String
-    /// where SmolStr is the string literal corresponding to this LocatedValue.
+    /// Returns `Some(SmolStr)` if this [Located] value is of kind String
+    /// where [`SmolStr`] is the string literal corresponding to this [`LocatedValue`].
     /// Otherwise, return None if not of kind String.
     pub(crate) fn get_smolstr(&self) -> Option<SmolStr> {
         self.get_str().map(|s| s.into())
@@ -372,7 +372,7 @@ impl LocatedValue {
     }
 
     /// Returns Some(values) where values is an array of `LocatedValue`s
-    /// if this `LocatedValue` is of kind Array. Otherwise, returns None
+    /// if this `LocatedValue` is of kind Array. Otherwise, returns `None`
     pub(crate) fn get_array(&self) -> Option<&[LocatedValue]> {
         match &self.kind {
             ValueKind::Array(items) => Some(items),
@@ -385,8 +385,8 @@ impl LocatedValue {
         matches!(self.kind, ValueKind::Object(_))
     }
 
-    /// Returns Some(key_value_map) where key_value_map is a mapping from `LocatedString`s to
-    /// `LocatedValue`s if this `LocatedValue` is of kind Object. Otherwise, returns None
+    /// Returns `Some(key_value_map)` where `key_value_map` is a mapping from [`LocatedString`]s to
+    /// [`LocatedValue`]s if this [`LocatedValue`] is of kind Object. Otherwise, returns `None`
     pub(crate) fn get_object(&self) -> Option<&LinkedHashMap<LocatedString, LocatedValue>> {
         match &self.kind {
             ValueKind::Object(items) => Some(items),

@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+//! This is a custom parser for JSON.
+
 pub mod err;
 pub(crate) mod json_parser;
 pub(crate) mod json_value;

@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+//! This module defines representations for properties in MCP tools definitions.
+
 use smol_str::{SmolStr, ToSmolStr};
 use std::collections::HashMap;
 use std::path::Path;
@@ -24,37 +26,69 @@ use super::err::{DeserializationError, ValidationError};
 use super::parser;
 use super::validation::{validate_input, validate_output};
 
-/// The type a `Property` can take
+/// The type a `Property` can take: supported types in JSON Schema maps to `PropertyTypes`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PropertyType {
+    /// An unknown property type. Produced when the JSON Schema is a boolean or null,
+    /// or when no recognized schema pattern is found.
     Unknown,
+    /// A boolean property: `{"type": "boolean"}` in JSON Schema.
     Bool,
+    /// An integer property: `{"type": "integer"}` in JSON Schema.
     Integer,
+    /// A floating point property: `{"type": "float"}` in JSON Schema.
+    /// Non-standard extension — not part of the JSON Schema specification.
     Float,
+    /// A number: `{"type": "number"}` in JSON Schema.
     Number,
+    /// A string property: `{"type": "string"}` in JSON Schema (with no recognized `format`).
     String,
+    /// A decimal number: `{"type": "string", "format": "decimal"}` in JSON Schema.
+    /// Non-standard extension — the `"decimal"` format is not part of the JSON Schema specification.
     Decimal,
+    /// A datetime: `{"type": "string", "format": "date"}` or `{"type": "string", "format": "date-time"}`
+    /// in JSON Schema. Both standard formats map to this variant.
     Datetime,
+    /// A duration: `{"type": "string", "format": "duration"}` in JSON Schema.
     Duration,
+    /// An IP address: `{"type": "string", "format": "ipv4"}` or `{"type": "string", "format": "ipv6"}`
+    /// in JSON Schema. Both standard formats map to this variant.
     IpAddr,
+    /// A null value: `{"type": "null"}` in JSON Schema.
     Null,
+    /// An enumeration: `{"type": "string", "enum": ["a", "b", ...]}` in JSON Schema.
     Enum {
+        /// The variants of the enum; an ordered list of strings
         variants: Vec<SmolStr>,
     },
+    /// A homogeneous array: `{"type": "array", "items": <schema>}` in JSON Schema.
     Array {
+        /// The type of elements of the homogenous array
         element_ty: Box<PropertyType>,
     },
+    /// A fixed-length tuple: `{"type": "array", "prefixItems": [...], "items": false}` in JSON Schema.
+    /// Standard JSON Schema (2020-12 draft).
     Tuple {
+        /// The ordered list of types of each tuple element
         types: Vec<PropertyType>,
     },
+    /// A union type: `{"anyOf": [...]}` or `{"oneOf": [...]}` in JSON Schema,
+    /// or `{"type": ["string", "integer", ...]}` (type as array). Standard JSON Schema.
     Union {
+        /// The set of types in the union
         types: Vec<PropertyType>,
     },
+    /// An object: `{"type": "object", "properties": {...}}` in JSON Schema.
+    /// `additional_properties` corresponds to the `additionalProperties` keyword when it is a schema object.
     Object {
+        /// The properties defined in the object schema (both required and optional)
         properties: Vec<Property>,
+        /// The additional properties of this object
         additional_properties: Option<Box<PropertyType>>,
     },
+    /// A reference to a reusable type definition: `{"$ref": "#/$defs/<name>"}` in JSON Schema.
     Ref {
+        /// The name of the type being referenced
         name: SmolStr,
     },
 }
@@ -100,12 +134,13 @@ impl Property {
         self.description.as_deref()
     }
 
+    /// Returns the [`PropertyType`] of this [`Property`]
     pub fn property_type(&self) -> &PropertyType {
         &self.prop_type
     }
 }
 
-/// Representation of a TypeDef used for defining `Property`s
+/// Representation of a `TypeDef` used for defining `Property`s
 #[derive(Debug, Clone)]
 pub struct PropertyTypeDef {
     pub(crate) name: SmolStr,
@@ -123,12 +158,12 @@ impl PropertyTypeDef {
         }
     }
 
-    /// Get the name of the TypeDef
+    /// Get the name of the `TypeDef`
     pub fn name(&self) -> &str {
         &self.name
     }
 
-    /// Get the definition of the TypeDef
+    /// Get the definition of the `TypeDef`
     pub fn property_type(&self) -> &PropertyType {
         &self.prop_type
     }
@@ -139,19 +174,19 @@ impl PropertyTypeDef {
     }
 }
 
-/// Container for convienently representing a collection of TypeDefs
+/// Container for convienently representing a collection of `TypeDefs`
 #[derive(Debug, Clone)]
 pub(crate) struct PropertyTypeDefs {
     pub(crate) type_defs: HashMap<SmolStr, PropertyTypeDef>,
 }
 
 impl PropertyTypeDefs {
-    /// Create a new collection of TypeDefs
+    /// Create a new collection of `TypeDefs`
     pub(crate) fn new(type_defs: HashMap<SmolStr, PropertyTypeDef>) -> Self {
         Self { type_defs }
     }
 
-    /// Get the collection of TypeDefs
+    /// Get the collection of `TypeDefs`
     pub(crate) fn values(&self) -> impl Iterator<Item = &PropertyTypeDef> {
         self.type_defs.values()
     }
@@ -180,7 +215,7 @@ impl Parameters {
         self.properties.iter()
     }
 
-    /// Iterate over the TypeDefs defined within this `Parameters`
+    /// Iterate over the `TypeDefs` defined within this `Parameters`
     pub fn type_definitions(&self) -> impl Iterator<Item = &PropertyTypeDef> {
         self.type_defs.values()
     }
@@ -234,8 +269,8 @@ impl ToolDescription {
         &self.outputs
     }
 
-    /// Get the TypeDefs defined within this tool (i.e., TypeDefs shared between Input and Output Parameters)
-    /// This does not return the TypeDefs specific to either Input or Output Parameters.
+    /// Get the `TypeDefs` defined within this tool (i.e., `TypeDefs` shared between Input and Output Parameters)
+    /// This does not return the `TypeDefs` specific to either Input or Output Parameters.
     pub fn type_definitions(&self) -> impl Iterator<Item = &PropertyTypeDef> {
         self.type_defs.values()
     }
@@ -298,7 +333,7 @@ impl ServerDescription {
         self.tools.values()
     }
 
-    /// Get any TypeDefs defined within this ServerDescription (i.e., TypeDefs shared between tools)
+    /// Get any `TypeDefs` defined within this `ServerDescription` (i.e., `TypeDefs` shared between tools)
     pub fn type_definitions(&self) -> impl Iterator<Item = &PropertyTypeDef> {
         self.type_defs.values()
     }

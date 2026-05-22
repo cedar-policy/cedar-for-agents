@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+//! The `data` modules defines data representations for the values in MCP tool inputs.
+
 use smol_str::{SmolStr, ToSmolStr};
 use std::collections::HashMap;
 use std::path::Path;
@@ -50,38 +52,62 @@ impl Number {
 
 #[derive(Debug, Clone)]
 /// An enum represeting the possible `Value`s a MCP tool argument / result may take.
+/// Those values are generally JSON Values.
 pub enum Value {
+    /// A JSON `null`
     Null,
+    /// A JSON boolean
     Bool(bool),
+    /// A JSON number
     Number(Number),
+    /// A JSON string
     String(SmolStr),
+    /// A JSON array
     Array(Vec<Value>),
+    /// A JSON object
     Map(HashMap<SmolStr, Value>),
 }
 
 #[derive(Debug, Clone)]
 /// An enum representing the result of validating a MCP tool argument / result in which
-/// the `Value` is tagged with the `PropertyType the` `Value` was validated against.
-/// For exampel string `Values` can be validated as a String, Enum, Decimal, Datetime, Duration or IpAddr.
+/// the `Value` is tagged with the `PropertyType` the `Value` was validated against.
+///
+/// For example string `Values` can be validated as a String, Enum, Decimal, Datetime, Duration or `IpAddr`.
 pub enum TypedValue {
+    /// A `null` value
     Null,
+    /// A `true` or `false` value
     Bool(bool),
+    /// An integer value, representable as an `i64`
     Integer(i64),
+    /// A floating point value, representable as a finite `f64`
     Float(f64),
+    /// A numeric value validated against `{"type": "number"}`, preserved as its raw string representation
     Number(Number),
+    /// A string value
     String(SmolStr),
+    /// A decimal number string (non-standard extension)
     Decimal(SmolStr),
+    /// A datetime string validated against `date` or `date-time` format
     Datetime(SmolStr),
+    /// A duration string validated against `duration` format
     Duration(SmolStr),
+    /// An IP address string validated against `ipv4` or `ipv6` format
     IpAddr(SmolStr),
+    /// A variant of a enum, represented as the name of the variant
     Enum(SmolStr),
+    /// An array of typed values
     Array(Vec<TypedValue>),
+    /// A fixed-length tuple of typed values
     Tuple(Vec<TypedValue>),
+    /// A value matching one variant of a union type
     Union {
         /// index of which type within union type this validates against
         index: usize,
+        /// The validated value
         value: Box<TypedValue>,
     },
+    /// An object with typed properties
     Object {
         /// properties that were explicitly defined by object's type schema
         properties: HashMap<SmolStr, TypedValue>,
@@ -89,10 +115,14 @@ pub enum TypedValue {
         /// but matched the object's `additionalProperty` type
         additional_properties: HashMap<SmolStr, TypedValue>,
     },
+    /// A value validated against a named type definition (`$ref`)
     Ref {
+        /// The name of the referenced type definition
         name: SmolStr,
+        /// The validated value
         val: Box<TypedValue>,
     },
+    /// A value whose type is unknown or unrecognized
     Unknown(Value),
 }
 
@@ -279,6 +309,7 @@ impl Input {
 }
 
 #[derive(Debug, Clone)]
+/// A struct representing a validated MCP `call/tool` request with typed arguments
 pub struct TypedInput {
     pub(crate) name: SmolStr,
     pub(crate) args: HashMap<SmolStr, TypedValue>,

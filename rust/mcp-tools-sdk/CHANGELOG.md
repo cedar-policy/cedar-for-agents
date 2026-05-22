@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Moved some inner error types of the `err` out of the public API. Callers should only be able to differentiate top-level error kinds and display their representation.
+
 ### Fixed
 - `PropertyType::Decimal` validation properly rejects inputs such as `1-0.2` and `-01.2` (`-` in the numbers and negative number with leading zeroes).
 - JSON parser now decodes JSON escape sequences in JSON strings.
