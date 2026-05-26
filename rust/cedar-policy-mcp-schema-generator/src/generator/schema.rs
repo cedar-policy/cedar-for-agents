@@ -17,7 +17,7 @@
 use super::identifiers;
 use crate::{RequestGenerator, SchemaGeneratorError};
 
-use cedar_policy_core::ast::{Id, InternalName, Name, UnreservedId};
+use cedar_policy_core::ast::{Eid, Id, InternalName, Name, UnreservedId};
 use cedar_policy_core::est::Annotations;
 use cedar_policy_core::validator::{
     json_schema::{
@@ -200,7 +200,7 @@ pub(crate) enum EntityTypeFingerprint {
     /// Enum fingerprints are matched by name + variant values (in original order).
     Enum {
         base_name: UnreservedId,
-        variants: Vec<SmolStr>,
+        variants: Vec<Eid>,
     },
     /// Fingerprint for leaf record entity types: objects whose properties are all primitive.
     /// The order of attributes in objects does not matter.
@@ -541,8 +541,8 @@ impl SchemaGenerator {
                 variants,
             } => match &entity.kind {
                 EntityTypeKind::Enum { choices } => {
-                    let existing: Vec<&SmolStr> = choices.iter().collect();
-                    let candidate: Vec<&SmolStr> = variants.iter().collect();
+                    let existing: Vec<&Eid> = choices.iter().collect();
+                    let candidate: Vec<&Eid> = variants.iter().collect();
                     existing == candidate
                 }
                 _ => false,
@@ -688,7 +688,7 @@ impl SchemaGenerator {
                     if let Ok(base_name) = name.parse::<UnreservedId>() {
                         let fingerprint = EntityTypeFingerprint::Enum {
                             base_name,
-                            variants: variants.clone(),
+                            variants: variants.clone().into_iter().map(Eid::new).collect(),
                         };
                         dedup_map.record(fingerprint, namespace.clone());
                     }
@@ -882,7 +882,7 @@ impl SchemaGenerator {
                         if let Ok(base_name) = type_def.name().parse::<UnreservedId>() {
                             let fingerprint = EntityTypeFingerprint::Enum {
                                 base_name,
-                                variants: variants.clone(),
+                                variants: variants.clone().into_iter().map(Eid::new).collect(),
                             };
                             dedup_map.record(fingerprint, Some(tool_ns.clone()));
                         }
@@ -1522,12 +1522,13 @@ impl SchemaGenerator {
             }
             PropertyType::Enum { variants } => {
                 let choices = NonEmpty::from_slice(variants)
-                    .ok_or_else(|| SchemaGeneratorError::empty_enum_choice(ty_name.to_string()))?;
+                    .ok_or_else(|| SchemaGeneratorError::empty_enum_choice(ty_name.to_string()))?
+                    .map(Eid::new);
 
                 // Check if this enum was deduplicated (placed in LCA namespace during Pass 1)
                 let fingerprint = EntityTypeFingerprint::Enum {
                     base_name: ty_name.clone(),
-                    variants: variants.clone(),
+                    variants: variants.clone().into_iter().map(Eid::new).collect(),
                 };
                 if let Some(lca_ns) = self.get_dedup_namespace(&fingerprint) {
                     // Reference the shared type in the LCA namespace (already placed in Pass 1)
@@ -2785,7 +2786,7 @@ namespace Test2 {
         };
         let fp_enum = EntityTypeFingerprint::Enum {
             base_name: "status".parse().unwrap(),
-            variants: vec!["active".into()],
+            variants: vec![Eid::new("active")],
         };
         assert_ne!(fp_record, fp_enum);
     }
