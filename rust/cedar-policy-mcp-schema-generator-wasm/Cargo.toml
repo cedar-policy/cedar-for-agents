@@ -16,7 +16,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 cedar-policy-mcp-schema-generator = { path = "../cedar-policy-mcp-schema-generator" }
-mcp-tools-sdk = { path = "../mcp-tools-sdk" }
+mcp-tools-sdk = { version = "0.4.0" }
 wasm-bindgen = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
