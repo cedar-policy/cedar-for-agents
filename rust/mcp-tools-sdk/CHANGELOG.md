@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - Coming soon
+
 ### Changed
 - Moved some inner error types of the `err` out of the public API. Callers should only be able to differentiate top-level error kinds and display their representation.
 
