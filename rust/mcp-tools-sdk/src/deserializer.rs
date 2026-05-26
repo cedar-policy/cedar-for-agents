@@ -499,22 +499,7 @@ fn tuple_type_element_of_json_value_array_element(
             }).map(Box::new);
             Ok(PropertyType::Object { properties, additional_properties })
         }
-        Some("array") => {
-            top_typ.get("items").map(|items_json| {
-                if items_json.is_object() {
-                    let items_type = property_type_from_json_value(items_json)?;
-                    Ok(PropertyType::Array { element_ty: Box::new(items_type) })
-                } else if items_json.is_bool() || items_json.is_null() {
-                    Ok(PropertyType::Array { element_ty: Box::new(PropertyType::Unknown) })
-                } else {
-                    Err(DeserializationError::unexpected_type(
-                        items_json,
-                        "Expected `items` attribute to be a JSON Schema (object) describing the type of array items.",
-                        ContentType::PropertyType
-                    ))
-                }
-            }).unwrap_or_else(|| Ok(PropertyType::Array { element_ty: Box::new(PropertyType::Unknown) }))
-        }
+        Some("array") => property_type_from_json_array_def(top_typ),
         Some(_) => Err(DeserializationError::unexpected_value(
             ty_json,
             "Expected one of: `boolean`, `integer`, `float`, `number`, `string`, `null`, `array`, `object`.",
@@ -649,6 +634,7 @@ fn typedefs_are_well_founded(
 mod test {
     use super::*;
     use crate::parser::json_parser::JsonParser;
+    use cool_asserts::assert_matches;
 
     fn parse_property_type(json: &str) -> Result<PropertyType, DeserializationError> {
         let mut parser = JsonParser::new(json);
@@ -859,5 +845,19 @@ mod test {
         let value = parser.get_value().expect("JSON should parse");
         let result = property_type_from_json_value(&value);
         assert!(result.is_ok(), "Expected successful parse, got: {result:?}");
+    }
+
+    #[test]
+    fn test_type_array_union_with_tuple() {
+        // "type": ["null", "array"] with prefixItems should produce a Union containing a Tuple
+        let result = parse_property_type(
+            r#"{"type": ["null", "array"], "prefixItems": [{"type": "string"}, {"type": "integer"}], "items": false}"#,
+        );
+        assert_matches!(
+            result,
+            Ok(PropertyType::Union { types }) if types.len() == 2
+                && matches!(types[0], PropertyType::Null)
+                && matches!(types[1], PropertyType::Tuple { ref types } if types.len() == 2)
+        );
     }
 }
