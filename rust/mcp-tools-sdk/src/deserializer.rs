@@ -301,9 +301,7 @@ fn property_type_from_json_value(
             Some("object") => {
                 let required = required_from_json_value(ptype_obj.get("required"), ContentType::ToolParameters)?;
                 let properties = properties_from_json_value(ptype_obj.get("properties"), &required, ContentType::ToolParameters)?;
-                let additional_properties = ptype_obj.get("additionalProperties").and_then(|json| {
-                    property_type_from_json_value(json).ok()
-                }).map(Box::new);
+                let additional_properties = additional_properties_from_map(ptype_obj)?;
                 Ok(PropertyType::Object { properties, additional_properties })
             }
             Some(_) => Err(DeserializationError::unexpected_value(
@@ -345,6 +343,18 @@ fn property_type_from_json_value(
         Ok(PropertyType::Ref { name: s.into() })
     } else {
         Ok(PropertyType::Unknown)
+    }
+}
+
+/// Parse `additionalProperties` from a JSON Schema object map.
+/// Returns `None` for booleans/null (or absent), and propagates errors for malformed schemas.
+fn additional_properties_from_map(
+    map: &LinkedHashMap<LocatedString, LocatedValue>,
+) -> Result<Option<Box<PropertyType>>, DeserializationError> {
+    match map.get("additionalProperties") {
+        Some(json) if json.is_bool() || json.is_null() => Ok(None),
+        Some(json) => Ok(Some(Box::new(property_type_from_json_value(json)?))),
+        None => Ok(None),
     }
 }
 
@@ -494,9 +504,7 @@ fn tuple_type_element_of_json_value_array_element(
         Some("object") => {
             let required = required_from_json_value(top_typ.get("required"), ContentType::ToolParameters)?;
             let properties = properties_from_json_value(top_typ.get("properties"), &required, ContentType::ToolParameters)?;
-            let additional_properties = top_typ.get("additionalProperties").and_then(|json| {
-                property_type_from_json_value(json).ok()
-            }).map(Box::new);
+            let additional_properties = additional_properties_from_map(top_typ)?;
             Ok(PropertyType::Object { properties, additional_properties })
         }
         Some("array") => property_type_from_json_array_def(top_typ),
@@ -647,22 +655,22 @@ mod test {
         let result = parse_property_type(
             r#"{"type": "object", "properties": {"name": {"type": "string"}}}"#,
         );
-        assert!(matches!(result, Ok(PropertyType::Object { .. })));
+        assert_matches!(result, Ok(PropertyType::Object { .. }));
     }
 
     #[test]
     fn test_property_type_simple_array() {
         let result = parse_property_type(r#"{"type": "array", "items": {"type": "integer"}}"#);
-        assert!(matches!(
+        assert_matches!(
             result,
             Ok(PropertyType::Array { element_ty }) if matches!(*element_ty, PropertyType::Integer)
-        ));
+        );
     }
 
     #[test]
     fn test_property_type_primitive_type_array() {
         let result = parse_property_type(r#"{"type": ["null", "string"]}"#);
-        assert!(matches!(result, Ok(PropertyType::Union { types }) if types.len() == 2));
+        assert_matches!(result, Ok(PropertyType::Union { types }) if types.len() == 2);
     }
 
     #[test]
@@ -795,19 +803,19 @@ mod test {
     #[test]
     fn test_property_type_string_with_enum() {
         let result = parse_property_type(r#"{"type": "string", "enum": ["a", "b", "c"]}"#);
-        assert!(matches!(result, Ok(PropertyType::Enum { variants }) if variants.len() == 3));
+        assert_matches!(result, Ok(PropertyType::Enum { variants }) if variants.len() == 3);
     }
 
     #[test]
     fn test_property_type_anyof_union() {
         let result = parse_property_type(r#"{"anyOf": [{"type": "string"}, {"type": "integer"}]}"#);
-        assert!(matches!(result, Ok(PropertyType::Union { types }) if types.len() == 2));
+        assert_matches!(result, Ok(PropertyType::Union { types }) if types.len() == 2);
     }
 
     #[test]
     fn test_property_type_ref() {
         let result = parse_property_type(r##"{"$ref": "#/$defs/MyType"}"##);
-        assert!(matches!(result, Ok(PropertyType::Ref { name }) if name == "MyType"));
+        assert_matches!(result, Ok(PropertyType::Ref { name }) if name == "MyType");
     }
 
     #[test]
@@ -845,6 +853,66 @@ mod test {
         let value = parser.get_value().expect("JSON should parse");
         let result = property_type_from_json_value(&value);
         assert!(result.is_ok(), "Expected successful parse, got: {result:?}");
+    }
+
+    #[test]
+    fn test_additional_properties_boolean_false() {
+        let result = parse_property_type(
+            r#"{"type": "object", "properties": {"x": {"type": "string"}}, "additionalProperties": false}"#,
+        );
+        assert_matches!(
+            result,
+            Ok(PropertyType::Object {
+                additional_properties: None,
+                ..
+            })
+        );
+    }
+
+    #[test]
+    fn test_additional_properties_boolean_true() {
+        let result = parse_property_type(
+            r#"{"type": "object", "properties": {}, "additionalProperties": true}"#,
+        );
+        assert_matches!(
+            result,
+            Ok(PropertyType::Object {
+                additional_properties: None,
+                ..
+            })
+        );
+    }
+
+    #[test]
+    fn test_additional_properties_valid_schema() {
+        let result = parse_property_type(
+            r#"{"type": "object", "properties": {}, "additionalProperties": {"type": "integer"}}"#,
+        );
+        assert_matches!(
+            result,
+            Ok(PropertyType::Object { additional_properties: Some(ty), .. }) if matches!(*ty, PropertyType::Integer)
+        );
+    }
+
+    #[test]
+    fn test_additional_properties_malformed_schema_errors() {
+        let result = parse_property_type(
+            r#"{"type": "object", "properties": {}, "additionalProperties": {"type": "bogus"}}"#,
+        );
+        assert_matches!(result, Err(_));
+    }
+
+    #[test]
+    fn test_additional_properties_absent() {
+        let result =
+            parse_property_type(r#"{"type": "object", "properties": {"x": {"type": "string"}}}"#);
+        assert_matches!(
+            result,
+            Ok(PropertyType::Object {
+                additional_properties: None,
+                ..
+            })
+        );
     }
 
     #[test]
