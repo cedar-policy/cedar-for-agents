@@ -507,22 +507,7 @@ fn tuple_type_element_of_json_value_array_element(
             let additional_properties = additional_properties_from_map(top_typ)?;
             Ok(PropertyType::Object { properties, additional_properties })
         }
-        Some("array") => {
-            top_typ.get("items").map(|items_json| {
-                if items_json.is_object() {
-                    let items_type = property_type_from_json_value(items_json)?;
-                    Ok(PropertyType::Array { element_ty: Box::new(items_type) })
-                } else if items_json.is_bool() || items_json.is_null() {
-                    Ok(PropertyType::Array { element_ty: Box::new(PropertyType::Unknown) })
-                } else {
-                    Err(DeserializationError::unexpected_type(
-                        items_json,
-                        "Expected `items` attribute to be a JSON Schema (object) describing the type of array items.",
-                        ContentType::PropertyType
-                    ))
-                }
-            }).unwrap_or_else(|| Ok(PropertyType::Array { element_ty: Box::new(PropertyType::Unknown) }))
-        }
+        Some("array") => property_type_from_json_array_def(top_typ),
         Some(_) => Err(DeserializationError::unexpected_value(
             ty_json,
             "Expected one of: `boolean`, `integer`, `float`, `number`, `string`, `null`, `array`, `object`.",
@@ -927,6 +912,20 @@ mod test {
                 additional_properties: None,
                 ..
             })
+        );
+    }
+
+    #[test]
+    fn test_type_array_union_with_tuple() {
+        // "type": ["null", "array"] with prefixItems should produce a Union containing a Tuple
+        let result = parse_property_type(
+            r#"{"type": ["null", "array"], "prefixItems": [{"type": "string"}, {"type": "integer"}], "items": false}"#,
+        );
+        assert_matches!(
+            result,
+            Ok(PropertyType::Union { types }) if types.len() == 2
+                && matches!(types[0], PropertyType::Null)
+                && matches!(types[1], PropertyType::Tuple { ref types } if types.len() == 2)
         );
     }
 }
