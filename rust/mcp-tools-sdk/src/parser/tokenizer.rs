@@ -138,7 +138,7 @@ impl Tokenizer {
     // Consumes the the identifier `ident` from input str
     // Returns error if the next `ident.len()` characters
     // is not equal to `ident`.
-    // Assumes that `self.cur_pos` is on a character boundary.
+    // `ident` must be ASCII-only.
     fn consume_ident(&mut self, ident: &str) -> Result<(), TokenizeError> {
         if self.cur_pos + ident.len() > self.input.len() {
             let loc = Loc::new((self.input.len() - 1, 0), self.input.clone());
@@ -146,13 +146,10 @@ impl Tokenizer {
             return Err(TokenizeError::unexpected_eof(loc, msg.as_str()));
         }
         #[expect(
-            clippy::string_slice,
-            reason = "
-                By construction the indexes are guaranteed to satisfy 0 <= self.cur_pos < self.input.
-                This function assumes that `self.cur_pos` is aligned to character boundary.
-            "
+            clippy::indexing_slicing,
+            reason = "The bounds check above guarantees self.cur_pos <= self.input.len()."
         )]
-        if self.input[self.cur_pos..].starts_with(ident) {
+        if self.input.as_bytes()[self.cur_pos..].starts_with(ident.as_bytes()) {
             self.cur_pos += ident.len();
             Ok(())
         } else {
