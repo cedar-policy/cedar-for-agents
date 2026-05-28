@@ -785,6 +785,71 @@ mod test {
         )
     }
 
+    #[test]
+    fn test_input_mcp_standard_field_names() {
+        // MCP spec uses "name" and "arguments"
+        // https://modelcontextprotocol.io/specification/draft/server/tools#calling-tools
+        let input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "name": "test_tool",
+        "arguments": {
+            "arg1": 0
+        }
+    }
+}"#;
+        let input = Input::from_json_str(input).unwrap();
+        assert_eq!(input.name(), "test_tool");
+        assert!(input.get_args().count() == 1);
+        assert_matches!(
+            input.get_arg("arg1"),
+            Some(v)
+            if matches!(
+                v.to_owned(),
+                Value::Number(n)
+                if n.to_u64() == Some(0)
+            )
+        )
+    }
+
+    #[test]
+    fn test_input_mixed_name_with_args_errors() {
+        let input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "name": "test_tool",
+        "args": { "arg1": 0 }
+    }
+}"#;
+        assert_matches!(
+            Input::from_json_str(input),
+            Err(DeserializationError::UnexpectedValue(e))
+            if format!("{e:?}").contains("Cannot mix field name conventions")
+        )
+    }
+
+    #[test]
+    fn test_input_mixed_tool_with_arguments_errors() {
+        let input = r#"{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "tool": "test_tool",
+        "arguments": { "arg1": 0 }
+    }
+}"#;
+        assert_matches!(
+            Input::from_json_str(input),
+            Err(DeserializationError::UnexpectedValue(e))
+            if format!("{e:?}").contains("Cannot mix field name conventions")
+        )
+    }
+
     //------------------- test Output ----------------------------
     #[test]
     fn test_simple_output_from_file() {
