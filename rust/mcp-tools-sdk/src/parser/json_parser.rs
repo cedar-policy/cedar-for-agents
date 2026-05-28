@@ -532,4 +532,20 @@ mod tests {
         let mut parser = JsonParser::new("{\"hi\": true,");
         assert_matches!(parser.get_value(), Err(ParseError::TokenizeError(..)))
     }
+
+    #[test]
+    fn parse_fail_duplicate_keys_unicode_escape() {
+        // "a" and "\u0061" are the same decoded string
+        let mut parser = JsonParser::new(r#"{"\u0061": true, "a": false}"#);
+        assert_matches!(parser.get_value(), Err(ParseError::DuplicateKey(..)));
+    }
+
+    #[test]
+    fn parse_fail_duplicate_keys_backslash_escape() {
+        // JSON: {"\\": true, "\u005c": false}
+        // Both keys decode to a single backslash character
+        let input = "{\"\\\\\":true,\"\\u005c\":false}";
+        let mut parser = JsonParser::new(input);
+        assert_matches!(parser.get_value(), Err(ParseError::DuplicateKey(..)));
+    }
 }

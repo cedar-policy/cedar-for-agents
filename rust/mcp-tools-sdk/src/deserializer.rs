@@ -525,6 +525,11 @@ fn get_value_from_map<'a, T: AsRef<str>>(
 }
 
 /// Deserialize an MCP `tools/call` json request into an `Input`
+///
+/// Per the [MCP specification](https://modelcontextprotocol.io/specification/draft/server/tools#calling-tools),
+/// the standard field names are `params.name` and `params.arguments`.
+/// For backwards compatibility, the legacy aliases `params.tool` and `params.args` are also accepted.
+/// Mixing conventions (e.g. `name` with `args`) is rejected.
 pub(crate) fn mcp_tool_input_from_json_value(
     json_value: &LocatedValue,
 ) -> Result<Input, DeserializationError> {
@@ -545,23 +550,35 @@ pub(crate) fn mcp_tool_input_from_json_value(
             ContentType::ToolInputRequest,
         )
     })?;
-    let tool = params_obj
-        .get("tool")
-        .ok_or_else(|| DeserializationError::missing_attribute(params, "tool", vec![]))?;
+
+    // Reject mixed field name conventions
+    let has_name = params_obj.get("name").is_some();
+    let has_tool = params_obj.get("tool").is_some();
+    let has_arguments = params_obj.get("arguments").is_some();
+    let has_args = params_obj.get("args").is_some();
+    if (has_name && has_args) || (has_tool && has_arguments) {
+        return Err(DeserializationError::unexpected_value(
+            params,
+            "Cannot mix field name conventions: use either `name`/`arguments` (MCP standard) or `tool`/`args` (legacy), not a combination.",
+            ContentType::ToolInputRequest,
+        ));
+    }
+
+    let tool = get_value_from_map(params_obj, &["name", "tool"])
+        .ok_or_else(|| DeserializationError::missing_attribute(params, "name", vec![]))?;
     let tool = tool.get_smolstr().ok_or_else(|| {
         DeserializationError::unexpected_type(
             tool,
-            "Expected \"tool\" attribute to be a string",
+            "Expected \"name\" attribute to be a string",
             ContentType::ToolInputRequest,
         )
     })?;
-    let args = params_obj
-        .get("args")
-        .ok_or_else(|| DeserializationError::missing_attribute(params, "args", vec![]))?;
+    let args = get_value_from_map(params_obj, &["arguments", "args"])
+        .ok_or_else(|| DeserializationError::missing_attribute(params, "arguments", vec![]))?;
     let args = args.get_object().ok_or_else(|| {
         DeserializationError::unexpected_type(
             args,
-            "Expected \"args\" attribute to be an object",
+            "Expected \"arguments\" attribute to be an object",
             ContentType::ToolInputRequest,
         )
     })?;
