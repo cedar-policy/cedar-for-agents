@@ -128,10 +128,11 @@ Releases are performed manually through the
 4. runs `wasm-pack build --target nodejs --scope cedar-policy`;
 5. normalizes the generated npm package metadata;
 6. runs `npm pack --dry-run`; and
-7. publishes with `npm publish --access public --provenance`.
+7. computes the correct npm dist-tag; and
+8. publishes with `npm publish --access public --tag <tag> --provenance`.
 
-The workflow expects npm authentication to be provided by the repository's
-release environment via the `NPM_TOKEN` secret.
+The workflow expects npm authentication to use npm trusted publishing through
+the repository's release environment. It does not require an `NPM_TOKEN` secret.
 
 ## Relationship to the Rust Generator
 

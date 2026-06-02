@@ -41,8 +41,13 @@ if (!versionMatch) {
 
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
 const cargoVersion = versionMatch[1];
+const packageName = "@cedar-policy/mcp-schema-generator-wasm";
 
-packageJson.name = "@cedar-policy/mcp-schema-generator-wasm";
+// wasm-pack derives scoped package names from the Rust crate name. Since this
+// crate already carries the repository prefix, the derived scoped name would be
+// @cedar-policy/cedar-policy-mcp-schema-generator-wasm. Normalize it to the
+// shorter package name documented for JavaScript consumers.
+packageJson.name = packageName;
 packageJson.version = cargoVersion;
 packageJson.description =
   "WASM bindings for generating Cedar schemas and authorization requests from MCP tool descriptions.";
