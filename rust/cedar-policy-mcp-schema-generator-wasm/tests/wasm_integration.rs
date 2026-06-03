@@ -76,9 +76,7 @@ fn assert_schema_ok(result: &serde_json::Value) -> &str {
 fn assert_schema_err(result: &serde_json::Value) -> &str {
     assert_eq!(result["isOk"], false);
     assert!(result["schema"].is_null());
-    result["error"]
-        .as_str()
-        .expect("error should be a string")
+    result["error"].as_str().expect("error should be a string")
 }
 
 /// Assert a request result succeeded and return the parsed value.
@@ -98,9 +96,7 @@ fn assert_request_err(result: &serde_json::Value) -> &str {
     assert!(result["action"].is_null());
     assert!(result["resource"].is_null());
     assert!(result["entitiesJson"].is_null());
-    result["error"]
-        .as_str()
-        .expect("error should be a string")
+    result["error"].as_str().expect("error should be a string")
 }
 
 /// Build an MCP tool call input JSON string for a given tool name and args object.
@@ -304,11 +300,7 @@ fn test_empty_tools_produces_minimal_schema() {
 #[wasm_bindgen_test]
 fn test_optional_config_defaults() {
     let r1 = parse_result(&generate_schema(STUB, SINGLE_TOOL, None));
-    let r2 = parse_result(&generate_schema(
-        STUB,
-        SINGLE_TOOL,
-        Some("{}".to_string()),
-    ));
+    let r2 = parse_result(&generate_schema(STUB, SINGLE_TOOL, Some("{}".to_string())));
 
     assert_schema_ok(&r1);
     assert_schema_ok(&r2);
@@ -359,7 +351,14 @@ fn test_unknown_config_field_returns_error() {
 fn test_generate_request_basic() {
     let input = tool_input("read_file", r#"{"path": "/tmp/test.txt"}"#);
     let result = parse_result(&generate_request(
-        STUB, SINGLE_TOOL, &input, "User", "alice", "McpServer", "s1", None,
+        STUB,
+        SINGLE_TOOL,
+        &input,
+        "User",
+        "alice",
+        "McpServer",
+        "s1",
+        None,
     ));
 
     assert_request_ok(&result);
@@ -403,7 +402,14 @@ fn test_generate_request_multi_tool_selects_correct_action() {
 
     let input = tool_input("write_file", r#"{"path": "/out", "content": "hi"}"#);
     let result = parse_result(&generate_request(
-        STUB, tools, &input, "User", "bob", "McpServer", "prod", None,
+        STUB,
+        tools,
+        &input,
+        "User",
+        "bob",
+        "McpServer",
+        "prod",
+        None,
     ));
 
     assert_request_ok(&result);
@@ -433,17 +439,21 @@ fn test_generate_request_with_nested_object_produces_entities() {
 
     let input = tool_input("ingest", r#"{"metadata": {"source": "sensor-1"}}"#);
     let result = parse_result(&generate_request(
-        STUB, tools, &input, "User", "alice", "McpServer", "s1", None,
+        STUB,
+        tools,
+        &input,
+        "User",
+        "alice",
+        "McpServer",
+        "s1",
+        None,
     ));
 
     assert_request_ok(&result);
     let entities: serde_json::Value =
         serde_json::from_str(result["entitiesJson"].as_str().unwrap()).unwrap();
     let arr = entities.as_array().unwrap();
-    assert!(
-        !arr.is_empty(),
-        "Nested objects should produce entities"
-    );
+    assert!(!arr.is_empty(), "Nested objects should produce entities");
 }
 
 #[wasm_bindgen_test]
@@ -460,7 +470,13 @@ fn test_generate_request_with_config() {
 
     let input = tool_input("calc", r#"{"value": 3.14}"#);
     let result = parse_result(&generate_request(
-        STUB, tools, &input, "User", "alice", "McpServer", "s1",
+        STUB,
+        tools,
+        &input,
+        "User",
+        "alice",
+        "McpServer",
+        "s1",
         Some(r#"{"numbersAsDecimal": true}"#.to_string()),
     ));
     assert_request_ok(&result);
@@ -470,7 +486,14 @@ fn test_generate_request_with_config() {
 fn test_generate_request_empty_config_uses_defaults() {
     let input = tool_input("read_file", r#"{"path": "/tmp"}"#);
     let result = parse_result(&generate_request(
-        STUB, SINGLE_TOOL, &input, "User", "u", "McpServer", "s", Some(String::new()),
+        STUB,
+        SINGLE_TOOL,
+        &input,
+        "User",
+        "u",
+        "McpServer",
+        "s",
+        Some(String::new()),
     ));
     assert_request_ok(&result);
 }
@@ -480,7 +503,14 @@ fn test_generate_request_empty_config_uses_defaults() {
 #[wasm_bindgen_test]
 fn test_generate_request_invalid_input_returns_error() {
     let result = parse_result(&generate_request(
-        STUB, SINGLE_TOOL, "not json", "User", "u1", "McpServer", "s1", None,
+        STUB,
+        SINGLE_TOOL,
+        "not json",
+        "User",
+        "u1",
+        "McpServer",
+        "s1",
+        None,
     ));
     let error = assert_request_err(&result);
     assert!(error.contains("Invalid tool input"));
@@ -490,7 +520,14 @@ fn test_generate_request_invalid_input_returns_error() {
 fn test_generate_request_invalid_stub_returns_error() {
     let input = tool_input("read_file", r#"{"path": "/tmp"}"#);
     let result = parse_result(&generate_request(
-        "bad stub", SINGLE_TOOL, &input, "User", "u", "McpServer", "s", None,
+        "bad stub",
+        SINGLE_TOOL,
+        &input,
+        "User",
+        "u",
+        "McpServer",
+        "s",
+        None,
     ));
     let error = assert_request_err(&result);
     assert!(error.contains("Schema error"));
@@ -500,7 +537,14 @@ fn test_generate_request_invalid_stub_returns_error() {
 fn test_generate_request_invalid_tools_returns_error() {
     let input = tool_input("read_file", r#"{"path": "/tmp"}"#);
     let result = parse_result(&generate_request(
-        STUB, "bad json", &input, "User", "u", "McpServer", "s", None,
+        STUB,
+        "bad json",
+        &input,
+        "User",
+        "u",
+        "McpServer",
+        "s",
+        None,
     ));
     let error = assert_request_err(&result);
     assert!(error.contains("Invalid tool descriptions"));
@@ -510,7 +554,13 @@ fn test_generate_request_invalid_tools_returns_error() {
 fn test_generate_request_invalid_config_returns_error() {
     let input = tool_input("read_file", r#"{"path": "/tmp"}"#);
     let result = parse_result(&generate_request(
-        STUB, SINGLE_TOOL, &input, "User", "u", "McpServer", "s",
+        STUB,
+        SINGLE_TOOL,
+        &input,
+        "User",
+        "u",
+        "McpServer",
+        "s",
         Some("bad json".to_string()),
     ));
     let error = assert_request_err(&result);
@@ -521,7 +571,13 @@ fn test_generate_request_invalid_config_returns_error() {
 fn test_generate_request_unknown_config_field_returns_error() {
     let input = tool_input("read_file", r#"{"path": "/tmp"}"#);
     let result = parse_result(&generate_request(
-        STUB, SINGLE_TOOL, &input, "User", "u", "McpServer", "s",
+        STUB,
+        SINGLE_TOOL,
+        &input,
+        "User",
+        "u",
+        "McpServer",
+        "s",
         Some(r#"{"badField": true}"#.to_string()),
     ));
     let error = assert_request_err(&result);
@@ -538,7 +594,14 @@ fn test_schema_and_request_use_same_namespace() {
     let schema = assert_schema_ok(&schema_result);
 
     let req_result = parse_result(&generate_request(
-        STUB, SINGLE_TOOL, &input, "User", "alice", "McpServer", "s1", None,
+        STUB,
+        SINGLE_TOOL,
+        &input,
+        "User",
+        "alice",
+        "McpServer",
+        "s1",
+        None,
     ));
     assert_request_ok(&req_result);
 

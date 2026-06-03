@@ -923,12 +923,14 @@ mod coverage_tests {
         ]"#;
 
         // Without deduplication: both tool namespaces get their own entity type.
-        let result_no_dedup = generate_schema_inner(STUB, tools, Some(r#"{"deduplicateEntityTypes": false}"#));
+        let result_no_dedup =
+            generate_schema_inner(STUB, tools, Some(r#"{"deduplicateEntityTypes": false}"#));
         assert!(result_no_dedup.is_ok);
         let schema_no_dedup = result_no_dedup.schema.unwrap();
 
         // With deduplication: the enum should be deduplicated.
-        let result_dedup = generate_schema_inner(STUB, tools, Some(r#"{"deduplicateEntityTypes": true}"#));
+        let result_dedup =
+            generate_schema_inner(STUB, tools, Some(r#"{"deduplicateEntityTypes": true}"#));
         assert!(result_dedup.is_ok, "Error: {:?}", result_dedup.error);
         let schema_dedup = result_dedup.schema.unwrap();
 
