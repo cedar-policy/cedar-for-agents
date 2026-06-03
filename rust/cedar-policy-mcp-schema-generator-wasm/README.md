@@ -75,7 +75,8 @@ if (result.isOk) {
   "objectsAsRecords": false,
   "eraseAnnotations": true,
   "flattenNamespaces": false,
-  "numbersAsDecimal": false
+  "numbersAsDecimal": false,
+  "deduplicateEntityTypes": false
 }
 ```
 
@@ -86,6 +87,81 @@ if (result.isOk) {
 | `eraseAnnotations` | `true` | Remove `@mcp_*` annotations from output |
 | `flattenNamespaces` | `false` | Flatten all types into a single namespace |
 | `numbersAsDecimal` | `false` | Encode JSON `number` as Cedar `Decimal` instead of `Long` |
+| `deduplicateEntityTypes` | `false` | Consolidate identical entity types across tools into the lowest common ancestor namespace |
+
+### `generateRequest(schemaStub, toolsJson, inputJson, principalType, principalId, resourceType, resourceId, configJson?)`
+
+Generates Cedar authorization request components from an MCP tool call.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `schemaStub` | `string` | Cedar schema stub (same as `generateSchema`) |
+| `toolsJson` | `string` | MCP tool descriptions as JSON |
+| `inputJson` | `string` | MCP tool call input (`{"params": {"tool": "...", "args": {...}}}`) |
+| `principalType` | `string` | Cedar entity type for the principal (e.g., `"User"`) |
+| `principalId` | `string` | Principal identifier (e.g., `"alice"`) |
+| `resourceType` | `string` | Cedar entity type for the resource (e.g., `"McpServer"`) |
+| `resourceId` | `string` | Resource identifier (e.g., `"my-server"`) |
+| `configJson` | `string?` | Optional configuration as JSON |
+
+**Returns:** JSON string with fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `principal` | `string \| null` | Principal EntityUID (e.g., `MyServer::User::"alice"`) |
+| `action` | `string \| null` | Action EntityUID (e.g., `MyServer::Action::"read_file"`) |
+| `resource` | `string \| null` | Resource EntityUID (e.g., `MyServer::McpServer::"my-server"`) |
+| `entitiesJson` | `string \| null` | Entities as a JSON array string |
+| `error` | `string \| null` | Error message if generation failed |
+| `isOk` | `boolean` | Whether generation succeeded |
+
+**Example:**
+
+```javascript
+const { generateRequest } = require('@cedar-policy/mcp-schema-generator-wasm');
+
+const stub = `
+namespace MyServer {
+    @mcp_principal
+    entity User;
+    @mcp_resource
+    entity McpServer;
+    action "call_tool" appliesTo {
+        principal: [User],
+        resource: [McpServer]
+    };
+}
+`;
+
+const tools = JSON.stringify([
+  {
+    name: 'read_file',
+    description: 'Read a file from disk',
+    inputSchema: {
+      type: 'object',
+      properties: { path: { type: 'string' } },
+      required: ['path'],
+    },
+  },
+]);
+
+const input = JSON.stringify({
+  params: { tool: 'read_file', args: { path: '/etc/config.yaml' } },
+});
+
+const result = JSON.parse(
+  generateRequest(stub, tools, input, 'User', 'alice', 'McpServer', 'my-server')
+);
+
+if (result.isOk) {
+  console.log(result.principal);    // MyServer::User::"alice"
+  console.log(result.action);       // MyServer::Action::"read_file"
+  console.log(result.resource);     // MyServer::McpServer::"my-server"
+  console.log(result.entitiesJson); // JSON array of entities for isAuthorized()
+} else {
+  console.error(result.error);
+}
+```
 
 ## Building
 

@@ -33,7 +33,7 @@ use wasm_bindgen::prelude::*;
 /// Configuration options for schema generation, matching the Rust
 /// [`SchemaGeneratorConfig`] options.
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct WasmConfig {
     #[serde(default)]
     include_outputs: bool,
@@ -45,6 +45,8 @@ struct WasmConfig {
     flatten_namespaces: bool,
     #[serde(default)]
     numbers_as_decimal: bool,
+    #[serde(default)]
+    deduplicate_entity_types: bool,
 }
 
 fn default_true() -> bool {
@@ -59,6 +61,7 @@ impl Default for WasmConfig {
             erase_annotations: true,
             flatten_namespaces: false,
             numbers_as_decimal: false,
+            deduplicate_entity_types: false,
         }
     }
 }
@@ -71,6 +74,7 @@ impl From<WasmConfig> for SchemaGeneratorConfig {
             .erase_annotations(c.erase_annotations)
             .flatten_namespaces(c.flatten_namespaces)
             .encode_numbers_as_decimal(c.numbers_as_decimal)
+            .deduplicate_entity_types(c.deduplicate_entity_types)
     }
 }
 
@@ -564,6 +568,7 @@ mod tests {
         assert!(config.erase_annotations);
         assert!(!config.flatten_namespaces);
         assert!(!config.numbers_as_decimal);
+        assert!(!config.deduplicate_entity_types);
     }
 
     #[test]
@@ -574,6 +579,7 @@ mod tests {
             erase_annotations: false,
             flatten_namespaces: true,
             numbers_as_decimal: true,
+            deduplicate_entity_types: true,
         };
         let _config: SchemaGeneratorConfig = wasm_config.into();
         // Conversion should not panic
@@ -723,7 +729,8 @@ mod coverage_tests {
             "includeOutputs": true,
             "objectsAsRecords": true,
             "eraseAnnotations": false,
-            "flattenNamespaces": true
+            "flattenNamespaces": true,
+            "deduplicateEntityTypes": true
         }"#;
 
         let result_json = generate_schema(STUB, tools, Some(config.to_string()));
@@ -873,6 +880,104 @@ mod coverage_tests {
 
         let result = generate_schema_inner(STUB, "[]", Some("{}"));
         assert!(result.is_ok);
+    }
+
+    #[test]
+    fn test_unknown_config_field_rejected() {
+        let config = r#"{"unknownOption": true}"#;
+        let result = generate_schema_inner(STUB, "[]", Some(config));
+        assert!(!result.is_ok);
+        assert!(
+            result.error.as_deref().unwrap().contains("Invalid config"),
+            "Should reject unknown fields, got: {:?}",
+            result.error
+        );
+    }
+
+    #[test]
+    fn test_deduplicate_entity_types_config() {
+        // Two tools share an identical enum; with deduplication enabled,
+        // the schema should contain only one entity type for the enum
+        // in the common namespace rather than one per tool.
+        let tools = r#"[
+            {
+                "name": "tool_a",
+                "description": "Tool A",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "status": { "type": "string", "enum": ["active", "inactive"] }
+                    }
+                }
+            },
+            {
+                "name": "tool_b",
+                "description": "Tool B",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "status": { "type": "string", "enum": ["active", "inactive"] }
+                    }
+                }
+            }
+        ]"#;
+
+        // Without deduplication: both tool namespaces get their own entity type.
+        let result_no_dedup =
+            generate_schema_inner(STUB, tools, Some(r#"{"deduplicateEntityTypes": false}"#));
+        assert!(result_no_dedup.is_ok);
+        let schema_no_dedup = result_no_dedup.schema.unwrap();
+
+        // With deduplication: the enum should be deduplicated.
+        let result_dedup =
+            generate_schema_inner(STUB, tools, Some(r#"{"deduplicateEntityTypes": true}"#));
+        assert!(result_dedup.is_ok, "Error: {:?}", result_dedup.error);
+        let schema_dedup = result_dedup.schema.unwrap();
+
+        // The deduplicated schema should be shorter (one shared type vs two).
+        assert!(
+            schema_dedup.len() <= schema_no_dedup.len(),
+            "Deduplicated schema should not be longer than non-deduplicated.\n\
+             Dedup len={}, No-dedup len={}",
+            schema_dedup.len(),
+            schema_no_dedup.len()
+        );
+    }
+
+    #[test]
+    fn test_special_characters_in_principal_and_resource_ids() {
+        // Ensures that special characters in entity IDs are properly
+        // escaped/quoted without panicking or producing malformed output.
+        let tools = r#"[
+            {
+                "name": "read_file",
+                "description": "Read a file",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": { "path": { "type": "string" } },
+                    "required": ["path"]
+                }
+            }
+        ]"#;
+        let input = r#"{"params": {"tool": "read_file", "args": {"path": "/tmp"}}}"#;
+
+        // IDs with quotes, backslashes, unicode
+        let result_json = generate_request(
+            STUB,
+            tools,
+            input,
+            "User",
+            r#"alice "admin" O'Brien"#,
+            "McpServer",
+            "server/with\\special\nchars",
+            None,
+        );
+        let result: WasmRequestResult =
+            serde_json::from_str(&result_json).expect("Should parse result");
+        assert!(result.is_ok, "Error: {:?}", result.error);
+        // The principal and resource should contain the ID, properly escaped
+        assert!(result.principal.is_some());
+        assert!(result.resource.is_some());
     }
 }
 

@@ -315,9 +315,11 @@ name = "cedar-policy-mcp-schema-generator-wasm"
 version = "0.1.0"
 dependencies = [
  "cedar-policy-mcp-schema-generator",
+ "getrandom",
  "mcp-tools-sdk",
  "serde",
  "serde_json",
+ "uuid",
  "wasm-bindgen",
  "wasm-bindgen-test",
 ]
@@ -622,10 +624,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0de51e6874e94e7bf76d726fc5d13ba782deca734ff60d5bb2fb2607c7406555"
 dependencies = [
  "cfg-if",
+ "js-sys",
  "libc",
  "r-efi",
  "wasip2",
  "wasip3",
+ "wasm-bindgen",
 ]
 
 [[package]]
