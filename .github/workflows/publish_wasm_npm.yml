@@ -132,7 +132,6 @@ jobs:
         run: >-
           node .github/scripts/prepare_wasm_npm_package.mjs
           rust/cedar-policy-mcp-schema-generator-wasm/pkg
-          rust/cedar-policy-mcp-schema-generator-wasm/Cargo.toml
 
       - name: Validate npm package contents
         run: npm pack --dry-run
