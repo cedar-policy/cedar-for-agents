@@ -10,6 +10,12 @@ This enables Node.js and browser environments to generate Cedar authorization sc
 
 ## Usage
 
+Install the npm package:
+
+```bash
+npm install @cedar-policy/mcp-schema-generator-wasm
+```
+
 ```javascript
 const { generateSchema } = require('@cedar-policy/mcp-schema-generator-wasm');
 
@@ -175,6 +181,34 @@ wasm-pack build --target nodejs --scope cedar-policy
 # Build for browsers
 wasm-pack build --target web --scope cedar-policy
 ```
+
+## npm Release
+
+The npm package name is:
+
+```text
+@cedar-policy/mcp-schema-generator-wasm
+```
+
+The Rust crate name remains `cedar-policy-mcp-schema-generator-wasm`. During
+release, the generated `wasm-pack` package metadata is normalized so the npm
+package uses the shorter name above while preserving the `Cargo.toml` version.
+
+Releases are performed manually through the
+`Publish MCP schema generator WASM to npm` GitHub Actions workflow. The workflow:
+
+1. validates that it is triggered from `main`;
+2. validates a tag of the form
+   `cedar-policy-mcp-schema-generator-wasm-v<MAJOR>.<MINOR>.<PATCH>`;
+3. checks that the tag version matches this crate's `Cargo.toml`;
+4. runs `wasm-pack build --target nodejs --scope cedar-policy`;
+5. normalizes the generated npm package metadata;
+6. runs `npm pack --dry-run`; and
+7. computes the correct npm dist-tag; and
+8. publishes with `npm publish --access public --tag <tag> --provenance`.
+
+The workflow expects npm authentication to use npm trusted publishing through
+the repository's release environment. It does not require an `NPM_TOKEN` secret.
 
 ## Relationship to the Rust Generator
 

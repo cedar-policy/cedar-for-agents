@@ -1,0 +1,145 @@
+# This workflow publishes the WASM bindings for cedar-policy-mcp-schema-generator
+# to npm. It must be triggered from main and pointed at a pre-created release tag.
+name: Publish MCP schema generator WASM to npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        required: true
+        type: string
+        description: >
+          GitHub tag to release. Must be of the form
+          'cedar-policy-mcp-schema-generator-wasm-v<MAJOR>.<MINOR>.<PATCH>'.
+
+permissions: read-all
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate branch
+        if: github.ref != 'refs/heads/main'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: core.setFailed('This workflow must be triggered from the "main" branch.')
+
+      - name: Validate tag format
+        shell: bash
+        run: |
+          REGEX_PATTERN='^cedar-policy-mcp-schema-generator-wasm-v[0-9]+\.[0-9]+\.[0-9]+$'
+          if [[ ! "$TAG_NAME" =~ $REGEX_PATTERN ]]; then
+            echo "Specified tag must match $REGEX_PATTERN"
+            exit 1
+          fi
+        env:
+          TAG_NAME: ${{ inputs.tag }}
+
+      - name: Checkout tag
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+
+      - name: Validate package version
+        shell: bash
+        run: |
+          VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' rust/cedar-policy-mcp-schema-generator-wasm/Cargo.toml | head -1)
+          EXPECTED="cedar-policy-mcp-schema-generator-wasm-v${VERSION}"
+          if [[ "$EXPECTED" != "$TAG_NAME" ]]; then
+            echo "Tag $TAG_NAME does not match Cargo.toml version $VERSION"
+            echo "Expected $EXPECTED"
+            exit 1
+          fi
+        env:
+          TAG_NAME: ${{ inputs.tag }}
+
+  compute-values:
+    runs-on: ubuntu-latest
+    outputs:
+      npm_tag: ${{ steps.compute_npm_tag.outputs.npm_tag }}
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "latest"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install NPM dependencies
+        run: npm install compare-versions@6.1.1
+
+      - name: Get latest NPM version
+        id: latest_npm_version
+        shell: bash
+        run: |
+          LATEST_VERSION=$(npm view @cedar-policy/mcp-schema-generator-wasm version 2>/dev/null || echo "0.0.0")
+          echo "latest_npm_version=${LATEST_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Compute NPM tag
+        id: compute_npm_tag
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const compareVersions = require('compare-versions');
+            const tag = '${{ inputs.tag }}';
+            const version = tag.replace('cedar-policy-mcp-schema-generator-wasm-v', '');
+            const [major, minor] = version.split('.');
+            const latestRelease = '${{ steps.latest_npm_version.outputs.latest_npm_version }}';
+            console.log(`Latest version found on NPM: ${latestRelease}`);
+            let npmTag;
+            if (compareVersions.compare(version, latestRelease, '<=')) {
+              npmTag = `v${major}.${minor}-x`;
+            } else {
+              npmTag = 'latest';
+            }
+            console.log(`Using NPM tag: ${npmTag}`);
+            core.setOutput('npm_tag', npmTag);
+
+  publish-npm:
+    needs: [validate, compute-values]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+
+      - name: Configure Rust toolchain
+        run: rustup update stable && rustup default stable
+
+      - name: Configure Node.js registry
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "latest"
+          registry-url: "https://registry.npmjs.org"
+          scope: "@cedar-policy"
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked
+
+      - name: Build WASM npm package
+        run: >-
+          wasm-pack build .
+          --target nodejs
+          --scope cedar-policy
+          --out-dir pkg
+        working-directory: rust/cedar-policy-mcp-schema-generator-wasm
+
+      - name: Normalize npm package metadata
+        run: >-
+          node .github/scripts/prepare_wasm_npm_package.mjs
+          rust/cedar-policy-mcp-schema-generator-wasm/pkg
+          rust/cedar-policy-mcp-schema-generator-wasm/Cargo.toml
+
+      - name: Validate npm package contents
+        run: npm pack --dry-run
+        working-directory: rust/cedar-policy-mcp-schema-generator-wasm/pkg
+
+      - name: Publish to npm
+        run: npm publish --access public --tag "$NPM_TAG" --provenance
+        working-directory: rust/cedar-policy-mcp-schema-generator-wasm/pkg
+        env:
+          NPM_TAG: ${{ needs.compute-values.outputs.npm_tag }}
