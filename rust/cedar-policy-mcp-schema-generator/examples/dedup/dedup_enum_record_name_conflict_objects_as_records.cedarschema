@@ -1,0 +1,98 @@
+// An enum and a leaf record both named "status" target the same LCA.
+// Both should be skipped (no dedup) because of the name collision,
+// even with objects_as_records enabled.
+// Records become common types (type status = {...}) while enums remain entity types.
+
+namespace MyMcpServer::tool_a::Input {
+  entity status enum ["active", "inactive"];
+}
+
+namespace MyMcpServer::tool_b::Input {
+  type status = {
+    code: Long,
+    message: String
+  };
+}
+
+namespace MyMcpServer::tool_c::Input {
+  entity status enum ["active", "inactive"];
+}
+
+namespace MyMcpServer::tool_d::Input {
+  type status = {
+    code: Long,
+    message: String
+  };
+}
+
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type tool_aInput = {
+    query: String,
+    status?: MyMcpServer::tool_a::Input::status
+  };
+
+  type tool_bInput = {
+    data: String,
+    status?: MyMcpServer::tool_b::Input::status
+  };
+
+  type tool_cInput = {
+    input: String,
+    status?: MyMcpServer::tool_c::Input::status
+  };
+
+  type tool_dInput = {
+    status?: MyMcpServer::tool_d::Input::status,
+    value: String
+  };
+
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  action "call_tool";
+
+  action "tool_a" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      session: CommonContext
+    }
+  };
+
+  action "tool_b" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
+      session: CommonContext
+    }
+  };
+
+  action "tool_c" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_cInput,
+      session: CommonContext
+    }
+  };
+
+  action "tool_d" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_dInput,
+      session: CommonContext
+    }
+  };
+}
