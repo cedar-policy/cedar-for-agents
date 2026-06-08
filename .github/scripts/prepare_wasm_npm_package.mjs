@@ -18,48 +18,25 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const [pkgDirArg, cargoTomlArg] = process.argv.slice(2);
+const [pkgDirArg] = process.argv.slice(2);
 
-if (!pkgDirArg || !cargoTomlArg) {
+if (!pkgDirArg) {
   console.error(
-    "Usage: node .github/scripts/prepare_wasm_npm_package.mjs <pkg-dir> <Cargo.toml>",
+    "Usage: node .github/scripts/prepare_wasm_npm_package.mjs <pkg-dir>",
   );
   process.exit(1);
 }
 
 const pkgDir = path.resolve(pkgDirArg);
-const cargoTomlPath = path.resolve(cargoTomlArg);
 const packageJsonPath = path.join(pkgDir, "package.json");
 
-const cargoToml = fs.readFileSync(cargoTomlPath, "utf8");
-const versionMatch = cargoToml.match(/^version\s*=\s*"([^"]+)"/m);
-
-if (!versionMatch) {
-  console.error(`Could not find package.version in ${cargoTomlPath}`);
-  process.exit(1);
-}
-
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
-const cargoVersion = versionMatch[1];
-const packageName = "@cedar-policy/mcp-schema-generator-wasm";
 
 // wasm-pack derives scoped package names from the Rust crate name. Since this
 // crate already carries the repository prefix, the derived scoped name would be
 // @cedar-policy/cedar-policy-mcp-schema-generator-wasm. Normalize it to the
 // shorter package name documented for JavaScript consumers.
-packageJson.name = packageName;
-packageJson.version = cargoVersion;
-packageJson.description =
-  "WASM bindings for generating Cedar schemas and authorization requests from MCP tool descriptions.";
-packageJson.license = "Apache-2.0";
-packageJson.repository = {
-  type: "git",
-  url: "https://github.com/cedar-policy/cedar-for-agents.git",
-  directory: "rust/cedar-policy-mcp-schema-generator-wasm",
-};
-packageJson.homepage =
-  "https://github.com/cedar-policy/cedar-for-agents/tree/main/rust/cedar-policy-mcp-schema-generator-wasm";
-packageJson.keywords = ["cedar", "authorization", "agents", "mcp", "wasm"];
+packageJson.name = "@cedar-policy/mcp-schema-generator-wasm";
 packageJson.sideEffects = false;
 
 fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
