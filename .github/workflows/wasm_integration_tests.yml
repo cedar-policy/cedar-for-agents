@@ -18,8 +18,19 @@ jobs:
         run: cargo install wasm-pack --locked
 
       - name: Build WASM package
-        run: wasm-pack build . --target nodejs --out-dir pkg
+        # Keep flags in sync with publish_wasm_npm.yml
+        run: >-
+          wasm-pack build .
+          --target nodejs
+          --scope cedar-policy
+          --out-dir pkg
         working-directory: rust/cedar-policy-mcp-schema-generator-wasm
+
+      - name: Normalize npm package metadata
+        # We test the package naming in CI, it needs to mirror publish_wasm_npm.yml
+        run: >-
+          node .github/scripts/prepare_wasm_npm_package.mjs
+          rust/cedar-policy-mcp-schema-generator-wasm/pkg
 
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0

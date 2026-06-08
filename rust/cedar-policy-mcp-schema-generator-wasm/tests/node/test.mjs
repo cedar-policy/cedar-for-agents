@@ -19,6 +19,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { generateSchema, generateRequest } from "../../pkg/cedar_policy_mcp_schema_generator_wasm.js";
 
 const STUB = `
@@ -88,5 +89,13 @@ describe("generateRequest", () => {
     );
     assert.equal(result.isOk, false);
     assert.ok(result.error.length > 0);
+  });
+});
+
+describe("package metadata", () => {
+  it("has the correct normalized package name and sideEffects flag", () => {
+    const pkg = JSON.parse(readFileSync(new URL("../../pkg/package.json", import.meta.url), "utf8"));
+    assert.equal(pkg.name, "@cedar-policy/mcp-schema-generator-wasm");
+    assert.equal(pkg.sideEffects, false);
   });
 });
