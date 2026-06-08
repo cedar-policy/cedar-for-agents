@@ -3044,6 +3044,13 @@ namespace Test2 {
                                             "name": { "type": "string" }
                                         },
                                         "required": ["name"]
+                                    },
+                                    "local": {
+                                        "type": "object",
+                                        "properties": {
+                                            "flag": { "type": "string" }
+                                        },
+                                        "required": ["flag"]
                                     }
                                 },
                                 "required": ["meta"]
@@ -3102,14 +3109,204 @@ namespace Test2 {
         // Tool-local namespaces should NOT have their own 'meta' common type
         let tool_a_input_ns: Option<Name> = Some("Test::tool_a::Input".parse().unwrap());
         let tool_a_nsdef = schema.0.get(&tool_a_input_ns);
-        if let Some(nsdef) = tool_a_nsdef {
-            assert!(
-                !nsdef
-                    .common_types
-                    .contains_key(&CommonTypeId::new("meta".parse().unwrap()).unwrap()),
-                "tool_a::Input should NOT have local 'meta' common type (it should be deduplicated)"
-            );
-        }
+        let tool_a_nsdef =
+            tool_a_nsdef.expect("tool_a::Input should exist due to tool-local 'local' record");
+        assert!(
+            !tool_a_nsdef
+                .common_types
+                .contains_key(&CommonTypeId::new("meta".parse().unwrap()).unwrap()),
+            "tool_a::Input should NOT have local 'meta' common type (it should be deduplicated)"
+        );
+    }
+
+    #[test]
+    fn test_dedup_leaf_record_reuses_existing_common_type_in_lca() {
+        let schema = r#"namespace Test {
+    @mcp_principal("User")
+    entity user;
+
+    @mcp_resource("McpServer")
+    entity resource;
+
+    @mcp_context("foo")
+    entity Foo;
+
+    type meta = {
+        name: String,
+    };
+}"#;
+        let schema_stub = Fragment::from_cedarschema_str(schema, Extensions::all_available())
+            .expect("Failed to parse schema")
+            .0;
+        let config = SchemaGeneratorConfig::default()
+            .deduplicate_entity_types(true)
+            .objects_as_records(true);
+
+        let tools_json = r#"{
+            "result": {
+                "tools": [
+                    {
+                        "name": "tool_a",
+                        "description": "Tool A",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "meta": {
+                                        "type": "object",
+                                        "properties": {
+                                            "name": { "type": "string" }
+                                        },
+                                        "required": ["name"]
+                                    }
+                                },
+                                "required": ["meta"]
+                            }
+                        }
+                    },
+                    {
+                        "name": "tool_b",
+                        "description": "Tool B",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "meta": {
+                                        "type": "object",
+                                        "properties": {
+                                            "name": { "type": "string" }
+                                        },
+                                        "required": ["name"]
+                                    }
+                                },
+                                "required": ["meta"]
+                            }
+                        }
+                    }
+                ]
+            }
+        }"#;
+
+        let description =
+            ServerDescription::from_json_str(tools_json).expect("Failed to parse tools JSON");
+        let mut generator = SchemaGenerator::new_with_config(schema_stub, config)
+            .expect("Failed to create schema generator");
+        generator
+            .add_actions_from_server_description(&description)
+            .expect("Failed to add server description");
+
+        let schema = generator.get_schema();
+        let root_ns = Some("Test".parse::<Name>().unwrap());
+        let root_nsdef = schema.0.get(&root_ns).expect("Expected namespace Test");
+
+        assert_eq!(
+            root_nsdef.common_types.len(),
+            3,
+            "Expected stub meta plus two tool input types"
+        );
+        assert!(
+            root_nsdef
+                .common_types
+                .contains_key(&CommonTypeId::new("meta".parse().unwrap()).unwrap()),
+            "Pre-existing 'meta' common type should be reused"
+        );
+        assert!(
+            !schema
+                .0
+                .contains_key(&Some("Test::tool_a::Input".parse().unwrap())),
+            "tool_a::Input should not have a local 'meta' copy"
+        );
+    }
+
+    #[test]
+    fn test_dedup_leaf_record_skips_mismatched_common_type_in_lca() {
+        let schema = r#"namespace Test {
+    @mcp_principal("User")
+    entity user;
+
+    @mcp_resource("McpServer")
+    entity resource;
+
+    @mcp_context("foo")
+    entity Foo;
+
+    type meta = {
+        count: Long,
+        name: String,
+    };
+}"#;
+        let schema_stub = Fragment::from_cedarschema_str(schema, Extensions::all_available())
+            .expect("Failed to parse schema")
+            .0;
+        let config = SchemaGeneratorConfig::default()
+            .deduplicate_entity_types(true)
+            .objects_as_records(true);
+
+        let tools_json = r#"{
+            "result": {
+                "tools": [
+                    {
+                        "name": "tool_a",
+                        "description": "Tool A",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "meta": {
+                                        "type": "object",
+                                        "properties": {
+                                            "name": { "type": "string" }
+                                        },
+                                        "required": ["name"]
+                                    }
+                                },
+                                "required": ["meta"]
+                            }
+                        }
+                    },
+                    {
+                        "name": "tool_b",
+                        "description": "Tool B",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "meta": {
+                                        "type": "object",
+                                        "properties": {
+                                            "name": { "type": "string" }
+                                        },
+                                        "required": ["name"]
+                                    }
+                                },
+                                "required": ["meta"]
+                            }
+                        }
+                    }
+                ]
+            }
+        }"#;
+
+        let description =
+            ServerDescription::from_json_str(tools_json).expect("Failed to parse tools JSON");
+        let mut generator = SchemaGenerator::new_with_config(schema_stub, config)
+            .expect("Failed to create schema generator");
+        generator
+            .add_actions_from_server_description(&description)
+            .expect("Failed to add server description");
+
+        let schema = generator.get_schema();
+        let tool_a_input_ns: Option<Name> = Some("Test::tool_a::Input".parse().unwrap());
+        let tool_a_nsdef = schema
+            .0
+            .get(&tool_a_input_ns)
+            .expect("Expected tool_a::Input namespace");
+        assert!(
+            tool_a_nsdef
+                .common_types
+                .contains_key(&CommonTypeId::new("meta".parse().unwrap()).unwrap()),
+            "Mismatched pre-existing 'meta' should force a local copy"
+        );
     }
 
     /// Enum types nested inside Union and Tuple properties are deduplicated
