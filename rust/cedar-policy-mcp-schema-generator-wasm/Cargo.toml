@@ -1,7 +1,7 @@
 [package]
 name = "cedar-policy-mcp-schema-generator-wasm"
 description = "WASM bindings for cedar-policy-mcp-schema-generator, exposing SchemaGenerator to JavaScript/TypeScript."
-version = "0.1.0"
+version = "0.6.0"
 
 edition.workspace = true
 rust-version.workspace = true
