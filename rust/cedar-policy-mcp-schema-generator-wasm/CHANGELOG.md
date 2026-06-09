@@ -7,6 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.6.0] - Coming soon
+## [0.6.0] - 2026-06-09
 
-Initial release of `@cedar-policy/mcp-schema-generator`, the WASM bindings for crate `cedar-policy-mcp-schema-generator` v0.6.0.
+Initial release of `@cedar-policy/mcp-schema-generator-wasm`, the WASM bindings for crate `cedar-policy-mcp-schema-generator` v0.6.0.
