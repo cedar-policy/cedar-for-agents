@@ -20,7 +20,7 @@ mcp-tools-sdk = { path = "../mcp-tools-sdk" }
 wasm-bindgen = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-uuid = { version = "1.23.2", features = ["js"] }
+uuid = { version = "1.23.3", features = ["js"] }
 getrandom = { version = "0.4", features = ["wasm_js"] }
 
 [dev-dependencies]
