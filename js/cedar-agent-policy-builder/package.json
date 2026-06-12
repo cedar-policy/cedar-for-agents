@@ -1,0 +1,36 @@
+{
+  "name": "cedar-agent-policy-builder",
+  "version": "0.1.0",
+  "description": "Generate Cedar policies and entities for agent authorization from declarative configuration",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepare": "npm run build"
+  },
+  "dependencies": {
+    "@cedar-policy/cedar-wasm": "4.11.0",
+    "@cedar-policy/mcp-schema-generator-wasm": "0.6.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "Apache-2.0"
+}
