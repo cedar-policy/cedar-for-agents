@@ -1,0 +1,52 @@
+// A tool with both `address.geo` (nested object) and `address_geo` (flat property).
+// Without flattening, these live in distinct namespaces and don't collide.
+namespace MyMcpServer::create_user::Input {
+  entity address = {
+    geo?: MyMcpServer::create_user::Input::address::geo,
+    street?: String
+  };
+
+  entity address_geo = {
+    lat?: String,
+    lng?: String
+  };
+}
+
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type create_userInput = {
+    address?: MyMcpServer::create_user::Input::address,
+    address_geo?: MyMcpServer::create_user::Input::address_geo
+  };
+
+  entity McpServer;
+
+  entity Number;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  action "call_tool";
+
+  action "create_user" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: create_userInput,
+      session: CommonContext
+    }
+  };
+}
+
+namespace MyMcpServer::create_user::Input::address {
+  entity geo = {
+    lat?: MyMcpServer::Number,
+    lng?: MyMcpServer::Number
+  };
+}

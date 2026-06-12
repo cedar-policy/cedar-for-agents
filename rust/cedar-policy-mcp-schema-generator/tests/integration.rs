@@ -1262,6 +1262,43 @@ namespace MyMcpServer {
                 .deduplicate_entity_types(true),
         );
     }
+
+    #[test]
+    fn flatten_namespaces_nested_objects_different_tools() {
+        // A tool with both `address.geo` (nested) and `address_geo` (flat property).
+        // Without flattening, these live in distinct namespaces and don't collide.
+        run_integration_test(
+            "examples/simple/tool_nested_objects_flat.json",
+            "examples/simple/tool_nested_objects_flat.cedarschema",
+            SchemaGeneratorConfig::default(),
+        );
+    }
+
+    #[test]
+    fn flatten_namespaces_nested_objects_collision() {
+        // Same input as above but with flatten_namespaces: `address.geo` and `address_geo`
+        // both flatten to `create_user_Input_address_geo`, causing a name collision error.
+        let description = ServerDescription::from_json_file(
+            "examples/simple/tool_nested_objects_flat.json",
+        )
+        .expect("Failed to read tools file");
+        let stub_file =
+            std::fs::File::open("examples/stub.cedarschema").expect("Failed to read schema file");
+        let input_schema = Fragment::from_cedarschema_file(stub_file, Extensions::all_available())
+            .expect("Failed to parse input schema")
+            .0;
+
+        let config = SchemaGeneratorConfig::default().flatten_namespaces(true);
+        let mut generator =
+            SchemaGenerator::new_with_config(input_schema, config).expect("schema is valid");
+        let err = generator
+            .add_actions_from_server_description(&description)
+            .expect_err("should fail with conflicting name");
+        assert!(
+            err.to_string().contains("Conflicting type definitions"),
+            "unexpected error: {err}"
+        );
+    }
 }
 
 #[cfg(feature = "cli")]
