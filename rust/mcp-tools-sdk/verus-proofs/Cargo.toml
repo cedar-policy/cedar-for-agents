@@ -1,0 +1,10 @@
+[package]
+name = "mcp-tools-sdk-verus-proofs"
+version = "0.1.0"
+edition = "2021"
+
+[package.metadata.verus]
+verify = true
+
+[dependencies]
+vstd = "=0.0.0-2026-05-17-0151"

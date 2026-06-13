@@ -17,165 +17,201 @@
 use super::err::ParseError;
 use super::json_value::{LocatedString, LocatedValue};
 use super::loc::Loc;
-use super::tokenizer::{TokenKind, Tokenizer};
-use linked_hash_map::{Entry, LinkedHashMap};
+use linked_hash_map::LinkedHashMap;
+use mcp_tools_sdk_verus_proofs::parser as verified_parser;
+use mcp_tools_sdk_verus_proofs::tokenizer as verified_tok;
+use smol_str::SmolStr;
+use std::sync::Arc;
 
-/// A Parser for JSON that lazily parses a stream of `LocatedValue`s
+/// A Parser for JSON that parses input into `LocatedValue`s.
+///
+/// Internally uses the formally verified tokenizer and parser from
+/// the `mcp-tools-sdk-verus-proofs` crate. The verified parser produces
+/// a `JsonValue` tree with byte-span indices, which is then converted
+/// to `LocatedValue` with escape decoding and duplicate key detection.
 #[derive(Debug)]
 pub(crate) struct JsonParser {
-    tokenizer: Tokenizer,
+    input: Arc<str>,
+    consumed: bool,
 }
 
 impl JsonParser {
     /// Create a new JSON Parser to parse the input string
     pub(crate) fn new(input: &str) -> Self {
         Self {
-            tokenizer: Tokenizer::new(input),
-        }
-    }
-
-    fn get_object(&mut self, loc: &Loc) -> Result<LocatedValue, ParseError> {
-        let mut items = LinkedHashMap::new();
-        let mut maybe_empty = true;
-
-        loop {
-            let token = self.tokenizer.get_token()?;
-            match token.kind() {
-                TokenKind::String => {
-                    maybe_empty = false;
-                    let key = LocatedString::new(token.into_loc())?;
-                    let token = self.tokenizer.get_token()?;
-                    if matches!(token.kind(), TokenKind::Colon) {
-                        let value = self.get_value()?;
-                        // Check if duplicate value
-                        match items.entry(key.clone()) {
-                            Entry::Occupied(occ) => {
-                                return Err(ParseError::duplicate_key(
-                                    occ.key().as_loc().into(),
-                                    key.into_loc(),
-                                ))
-                            }
-                            Entry::Vacant(vac) => {
-                                vac.insert(value);
-                            }
-                        }
-                    } else {
-                        return Err(ParseError::unexpected_token(
-                            token.into_loc(),
-                            "Expected `:`",
-                        ));
-                    }
-                    // Finished parsing key-value pair. Check for end or prepare for next key-value pair
-                    let token = self.tokenizer.get_token()?;
-                    match token.kind() {
-                        TokenKind::ObjectEnd => {
-                            let start = loc.start();
-                            let end = token.as_loc().end();
-                            return Ok(LocatedValue::new_object(
-                                items,
-                                loc.span((start, end - start)),
-                            ));
-                        }
-                        TokenKind::Comma => (),
-                        _ => {
-                            return Err(ParseError::unexpected_token(
-                                token.into_loc(),
-                                "Expected: `,` or `}`.",
-                            ))
-                        }
-                    }
-                }
-                // Allow for an empty object
-                TokenKind::ObjectEnd if maybe_empty => {
-                    let start = loc.start();
-                    let end = token.as_loc().end();
-                    return Ok(LocatedValue::new_object(
-                        items,
-                        loc.span((start, end - start)),
-                    ));
-                }
-                _ => {
-                    let msg = if maybe_empty {
-                        "Expected: String or `}`."
-                    } else {
-                        "Expected: String."
-                    };
-                    return Err(ParseError::unexpected_token(token.into_loc(), msg));
-                }
-            }
-        }
-    }
-
-    fn get_array(&mut self, loc: &Loc) -> Result<LocatedValue, ParseError> {
-        let mut items = Vec::new();
-        let mut maybe_empty = true;
-
-        loop {
-            let token = self.tokenizer.get_token()?;
-
-            let item = match token.kind() {
-                TokenKind::Null => LocatedValue::new_null(token.into_loc()),
-                TokenKind::Bool(b) => LocatedValue::new_bool(b, token.into_loc()),
-                TokenKind::Number => LocatedValue::new_number(token.into_loc()),
-                TokenKind::String => LocatedValue::new_string(token.into_loc())?,
-                TokenKind::ArrayStart => self.get_array(token.as_loc())?,
-                TokenKind::ObjectStart => self.get_object(token.as_loc())?,
-                TokenKind::ArrayEnd if maybe_empty => {
-                    let start = loc.start();
-                    let end = token.as_loc().end();
-                    return Ok(LocatedValue::new_array(
-                        items,
-                        loc.span((start, end - start)),
-                    ));
-                }
-                _ => {
-                    let msg = if maybe_empty {
-                        "Expected: `]` or value (i.e., null, Bool, Number, String, Array, or Object)."
-                    } else {
-                        "Expected: value (i.e., null, Bool, Number, String, Array, or Object)."
-                    };
-                    return Err(ParseError::unexpected_token(token.into_loc(), msg));
-                }
-            };
-            maybe_empty = false;
-
-            items.push(item);
-
-            let token = self.tokenizer.get_token()?;
-            match token.kind() {
-                TokenKind::Comma => (),
-                TokenKind::ArrayEnd => {
-                    let start = loc.start();
-                    let end = token.as_loc().end();
-                    return Ok(LocatedValue::new_array(
-                        items,
-                        loc.span((start, end - start)),
-                    ));
-                }
-                _ => {
-                    return Err(ParseError::unexpected_token(
-                        token.into_loc(),
-                        "Expected: `]` or `,`.",
-                    ))
-                }
-            }
+            input: Arc::from(input),
+            consumed: false,
         }
     }
 
     /// Get a single JSON Value (as a `LocatedValue`) from the Parser's input.
     pub(crate) fn get_value(&mut self) -> Result<LocatedValue, ParseError> {
-        let token = self.tokenizer.get_token()?;
-        match token.kind() {
-            TokenKind::Null => Ok(LocatedValue::new_null(token.into_loc())),
-            TokenKind::Bool(b) => Ok(LocatedValue::new_bool(b, token.into_loc())),
-            TokenKind::Number => Ok(LocatedValue::new_number(token.into_loc())),
-            TokenKind::String => LocatedValue::new_string(token.into_loc()),
-            TokenKind::ArrayStart => self.get_array(token.as_loc()),
-            TokenKind::ObjectStart => self.get_object(token.as_loc()),
-            _ => Err(ParseError::unexpected_token(
-                token.into_loc(),
-                "Expected: value (i.e., null, Bool, Number, String, Array, or Object).",
-            )),
+        if self.consumed {
+            let p = if self.input.is_empty() { 0 } else { self.input.len() - 1 };
+            let loc = Loc::new((p, 0), self.input.clone());
+            return Err(ParseError::from(super::err::TokenizeError::unexpected_eof(
+                loc,
+                "Expected more input.",
+            )));
+        }
+
+        let bytes = self.input.as_bytes();
+
+        // Tokenize using the verified tokenizer
+        let tokens = tokenize(bytes, &self.input)?;
+
+        // Parse using the verified parser (includes key decoding + duplicate detection)
+        let gas = tokens.len();
+        let (value, next) = match verified_parser::parse_value(bytes, &tokens, 0, gas) {
+            verified_parser::ParseResult::Ok { value, next } => (value, next),
+            verified_parser::ParseResult::Err { err } => {
+                return Err(convert_parse_error(&err, bytes, &self.input));
+            }
+        };
+
+        // Reject trailing tokens
+        if next < tokens.len() {
+            let loc = Loc::new(
+                (tokens[next].start, tokens[next].end - tokens[next].start),
+                self.input.clone(),
+            );
+            return Err(ParseError::unexpected_token(
+                loc,
+                "Unexpected trailing token after value.",
+            ));
+        }
+
+        // Convert verified JsonValue tree to LocatedValue
+        self.consumed = true;
+        convert_value(&value, &self.input)
+    }
+}
+
+/// Tokenize using the verified tokenizer, mapping errors to ParseError.
+fn tokenize(bytes: &[u8], src: &Arc<str>) -> Result<Vec<verified_tok::Token>, ParseError> {
+    verified_tok::tokenize_all(bytes).map_err(|e| convert_tokenize_error(&e, bytes, src))
+}
+
+/// Map a verified tokenizer error to the main crate's error type.
+fn convert_tokenize_error(
+    err: &verified_tok::TokenizeError,
+    bytes: &[u8],
+    src: &Arc<str>,
+) -> ParseError {
+    match err {
+        verified_tok::TokenizeError::UnexpectedEof { pos } => {
+            let loc = Loc::new((*pos, 0), src.clone());
+            ParseError::from(super::err::TokenizeError::unexpected_eof(loc, "Expected more input."))
+        }
+        verified_tok::TokenizeError::InvalidNumber { pos } => {
+            let loc = Loc::new((*pos, 1), src.clone());
+            ParseError::from(super::err::TokenizeError::invalid_number(loc, "Invalid number literal"))
+        }
+        verified_tok::TokenizeError::InvalidEscape { pos } => {
+            let is_eof = *pos >= bytes.len()
+                || (*pos + 4 > bytes.len() && *pos >= 1 && bytes.get(*pos - 1) == Some(&0x75));
+            if is_eof {
+                let loc = Loc::new((*pos, 0), src.clone());
+                ParseError::from(super::err::TokenizeError::unexpected_eof(loc, "Expected more input."))
+            } else {
+                let loc = Loc::new((*pos, 1), src.clone());
+                ParseError::from(super::err::TokenizeError::unknown_escape_sequence(
+                    loc,
+                    "Expected valid escape sequence",
+                ))
+            }
+        }
+        verified_tok::TokenizeError::UnexpectedToken { pos } => {
+            let loc = Loc::new((*pos, 1), src.clone());
+            ParseError::from(super::err::TokenizeError::unexpected_token(loc, "Unexpected token"))
+        }
+    }
+}
+
+/// Convert a verified `JsonValue` tree into a `LocatedValue`.
+/// Escape decoding and duplicate key detection have already been done
+/// by the verified parser — this is purely structural conversion.
+fn convert_value(
+    value: &verified_parser::JsonValue,
+    src: &Arc<str>,
+) -> Result<LocatedValue, ParseError> {
+    match value {
+        verified_parser::JsonValue::Null { start, end } => {
+            let loc = Loc::new((*start, end - start), src.clone());
+            Ok(LocatedValue::new_null(loc))
+        }
+        verified_parser::JsonValue::Bool { val, start, end } => {
+            let loc = Loc::new((*start, end - start), src.clone());
+            Ok(LocatedValue::new_bool(*val, loc))
+        }
+        verified_parser::JsonValue::Number { start, end } => {
+            let loc = Loc::new((*start, end - start), src.clone());
+            Ok(LocatedValue::new_number(loc))
+        }
+        verified_parser::JsonValue::String { start, end, decoded } => {
+            let loc = Loc::new((*start, end - start), src.clone());
+            let decoded_str = std::str::from_utf8(decoded)
+                .map_err(|_| ParseError::invalid_unicode_escape(
+                    loc.clone(),
+                    "Invalid UTF-8 in decoded string",
+                ))?;
+            Ok(LocatedValue::new_string(loc, SmolStr::from(decoded_str)))
+        }
+        verified_parser::JsonValue::Array { elements, start, end } => {
+            let loc = Loc::new((*start, end - start), src.clone());
+            let mut items = Vec::with_capacity(elements.len());
+            for elem in elements.iter() {
+                items.push(convert_value(elem, src)?);
+            }
+            Ok(LocatedValue::new_array(items, loc))
+        }
+        verified_parser::JsonValue::Object { entries, start, end } => {
+            let loc = Loc::new((*start, end - start), src.clone());
+            let mut items: LinkedHashMap<LocatedString, LocatedValue> = LinkedHashMap::new();
+            for entry in entries.iter() {
+                let key_loc = Loc::new((entry.key_start, entry.key_end - entry.key_start), src.clone());
+                // Use the already-decoded key bytes from the verified parser
+                let decoded_str = std::str::from_utf8(&entry.decoded_key)
+                    .map_err(|_| ParseError::invalid_unicode_escape(
+                        key_loc.clone(),
+                        "Invalid UTF-8 in decoded key",
+                    ))?;
+                let key = LocatedString::new(key_loc, SmolStr::from(decoded_str));
+                let value = convert_value(&entry.value, src)?;
+                items.insert(key, value);
+            }
+            Ok(LocatedValue::new_object(items, loc))
+        }
+    }
+}
+
+/// Convert a verified parser error into the main crate's ParseError.
+fn convert_parse_error(err: &verified_parser::ParseError, bytes: &[u8], src: &Arc<str>) -> ParseError {
+    match err {
+        verified_parser::ParseError::UnexpectedToken { pos } => {
+            if *pos > 0 && *pos < bytes.len() {
+                let loc = Loc::new((*pos, 1), src.clone());
+                ParseError::unexpected_token(
+                    loc,
+                    "Expected: value (i.e., null, Bool, Number, String, Array, or Object).",
+                )
+            } else {
+                let p = if bytes.is_empty() { 0 } else { bytes.len() - 1 };
+                let loc = Loc::new((p, 0), src.clone());
+                ParseError::from(super::err::TokenizeError::unexpected_eof(
+                    loc,
+                    "Expected more input.",
+                ))
+            }
+        }
+        verified_parser::ParseError::InvalidEscape { pos } => {
+            let loc = Loc::new((*pos, 1), src.clone());
+            ParseError::invalid_unicode_escape(loc, "Invalid Unicode escape sequence")
+        }
+        verified_parser::ParseError::DuplicateKey { first_pos, second_pos } => {
+            let first_loc = Loc::new((*first_pos, 1), src.clone());
+            let second_loc = Loc::new((*second_pos, 1), src.clone());
+            ParseError::duplicate_key(first_loc.into(), second_loc)
         }
     }
 }
