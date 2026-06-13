@@ -20,5 +20,3 @@ pub mod err;
 pub(crate) mod json_parser;
 pub(crate) mod json_value;
 pub(crate) mod loc;
-
-mod tokenizer;
