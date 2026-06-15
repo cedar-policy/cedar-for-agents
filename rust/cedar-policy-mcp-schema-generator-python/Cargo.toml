@@ -1,0 +1,26 @@
+[package]
+name = "cedar-policy-mcp-schema-generator-python"
+description = "Python bindings for cedar-policy-mcp-schema-generator, exposing SchemaGenerator via PyO3."
+version = "0.6.0"
+
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+categories.workspace = true
+keywords.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[lib]
+name = "cedar_mcp_schema_generator"
+crate-type = ["cdylib"]
+
+[dependencies]
+cedar-policy-mcp-schema-generator = { path = "../cedar-policy-mcp-schema-generator" }
+mcp-tools-sdk = { path = "../mcp-tools-sdk" }
+pyo3 = { version = "0.29", features = ["extension-module"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[lints]
+workspace = true
