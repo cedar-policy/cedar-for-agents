@@ -21,3 +21,6 @@ jobs:
 
   wasm_integration_tests:
     uses: ./.github/workflows/wasm_integration_tests.yml
+
+  build_and_test_python:
+    uses: ./.github/workflows/build_and_test_python.yml
