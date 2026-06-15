@@ -624,3 +624,73 @@ describe('adversarial: empty and degenerate configs', () => {
     expect(result.decision).toBe('deny')
   })
 })
+
+describe('consent enforcement: consent cannot be bypassed by role permits', () => {
+  it('role permit does not bypass consent (auto-exclude)', () => {
+    const { policies, entities } = new CedarAgentPolicyBuilder()
+      .role('analyst', ['search', 'send_email'])
+      .consent(['send_email'])
+      .build()
+
+    const allEntities = [...entities, { uid: { type: 'User', id: 'bob' }, attrs: { role: 'analyst' }, parents: [] }]
+
+    // search: allowed (unconditional permit)
+    const r1 = authorize({ policies, entities: allEntities, principal: { type: 'User', id: 'bob' }, action: 'search', resource: { type: 'McpServer', id: 'default' }, context: { input: {}, session: {} } })
+    expect(r1.decision).toBe('allow')
+
+    // send_email without consent: denied
+    const r2 = authorize({ policies, entities: allEntities, principal: { type: 'User', id: 'bob' }, action: 'send_email', resource: { type: 'McpServer', id: 'default' }, context: { input: {}, session: {} } })
+    expect(r2.decision).toBe('deny')
+
+    // send_email with consent: allowed
+    const r3 = authorize({ policies, entities: allEntities, principal: { type: 'User', id: 'bob' }, action: 'send_email', resource: { type: 'McpServer', id: 'default' }, context: { input: {}, session: { user_consent: true } } })
+    expect(r3.decision).toBe('allow')
+  })
+
+  it('wildcard role does not bypass consent', () => {
+    const { policies, entities } = new CedarAgentPolicyBuilder()
+      .role('admin', ['*'])
+      .consent(['send_email'])
+      .build()
+
+    const allEntities = [...entities, { uid: { type: 'User', id: 'alice' }, attrs: { role: 'admin' }, parents: [] }]
+
+    // other tools: allowed (wildcard minus exclusion)
+    const r1 = authorize({ policies, entities: allEntities, principal: { type: 'User', id: 'alice' }, action: 'delete_record', resource: { type: 'McpServer', id: 'default' }, context: { input: {}, session: {} } })
+    expect(r1.decision).toBe('allow')
+
+    // send_email without consent: denied even for admin
+    const r2 = authorize({ policies, entities: allEntities, principal: { type: 'User', id: 'alice' }, action: 'send_email', resource: { type: 'McpServer', id: 'default' }, context: { input: {}, session: {} } })
+    expect(r2.decision).toBe('deny')
+
+    // send_email with consent: allowed
+    const r3 = authorize({ policies, entities: allEntities, principal: { type: 'User', id: 'alice' }, action: 'send_email', resource: { type: 'McpServer', id: 'default' }, context: { input: {}, session: { user_consent: true } } })
+    expect(r3.decision).toBe('allow')
+  })
+
+  it('role-scoped consent only applies to that role', () => {
+    const { policies, entities } = new CedarAgentPolicyBuilder()
+      .role('admin', ['*'])
+      .role('analyst', ['search', 'send_email'])
+      .consent(['send_email'], 'analyst')
+      .build()
+
+    const allEntities = [
+      ...entities,
+      { uid: { type: 'User', id: 'alice' }, attrs: { role: 'admin' }, parents: [] },
+      { uid: { type: 'User', id: 'bob' }, attrs: { role: 'analyst' }, parents: [] },
+    ]
+
+    // admin: send_email allowed without consent (no consent gate for admin)
+    const r1 = authorize({ policies, entities: allEntities, principal: { type: 'User', id: 'alice' }, action: 'send_email', resource: { type: 'McpServer', id: 'default' }, context: { input: {}, session: {} } })
+    expect(r1.decision).toBe('allow')
+
+    // analyst: send_email denied without consent
+    const r2 = authorize({ policies, entities: allEntities, principal: { type: 'User', id: 'bob' }, action: 'send_email', resource: { type: 'McpServer', id: 'default' }, context: { input: {}, session: {} } })
+    expect(r2.decision).toBe('deny')
+
+    // analyst: send_email allowed with consent
+    const r3 = authorize({ policies, entities: allEntities, principal: { type: 'User', id: 'bob' }, action: 'send_email', resource: { type: 'McpServer', id: 'default' }, context: { input: {}, session: { user_consent: true } } })
+    expect(r3.decision).toBe('allow')
+  })
+})

@@ -4,18 +4,44 @@ export function escapeCedarString(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 }
 
+function getConsentToolsForRole(config: CedarAgentConfig, roleName: string): Set<string> {
+  if (!config.consent) return new Set()
+  const tools = new Set<string>()
+  for (const [tool, roles] of Object.entries(config.consent)) {
+    // Global consent ('*') applies to all roles; role-specific consent only applies to that role
+    if (roles.includes('*') || roles.includes(roleName)) {
+      tools.add(tool)
+    }
+  }
+  return tools
+}
+
 function generateRolePolicies(config: CedarAgentConfig): string[] {
   if (!config.roles) return []
   const principalType = config.principal.type ?? 'User'
   const policies: string[] = []
 
   for (const [roleName, tools] of Object.entries(config.roles)) {
+    const consentToolsForRole = getConsentToolsForRole(config, roleName)
+
     if (tools.includes('*')) {
-      policies.push(
-        `permit(\n  principal is ${principalType},\n  action,\n  resource\n) when { principal.role == "${escapeCedarString(roleName)}" };`
-      )
+      if (consentToolsForRole.size > 0) {
+        // Wildcard with consent exclusions: permit all actions EXCEPT consent-gated tools for this role
+        const exclusions = [...consentToolsForRole]
+          .map((t) => `action == Action::"${escapeCedarString(t)}"`)
+          .join(' || ')
+        policies.push(
+          `permit(\n  principal is ${principalType},\n  action,\n  resource\n) when { principal.role == "${escapeCedarString(roleName)}" && !(${exclusions}) };`
+        )
+      } else {
+        policies.push(
+          `permit(\n  principal is ${principalType},\n  action,\n  resource\n) when { principal.role == "${escapeCedarString(roleName)}" };`
+        )
+      }
     } else {
-      for (const tool of tools) {
+      // Filter out consent-gated tools for this role — they get their own consent permits
+      const filteredTools = tools.filter((t) => !consentToolsForRole.has(t))
+      for (const tool of filteredTools) {
         policies.push(
           `permit(\n  principal is ${principalType},\n  action == Action::"${escapeCedarString(tool)}",\n  resource\n) when { principal.role == "${escapeCedarString(roleName)}" };`
         )

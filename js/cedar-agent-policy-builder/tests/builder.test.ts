@@ -96,4 +96,40 @@ describe('CedarAgentPolicyBuilder', () => {
 
     expect(result.schema).toContain('namespace MyService')
   })
+
+  describe('consent + role interaction (default-deny)', () => {
+    it('auto-excludes consent tools from role permit', () => {
+      const result = new CedarAgentPolicyBuilder()
+        .role('analyst', ['search', 'send_email'])
+        .consent(['send_email'])
+        .build()
+
+      // search gets an unconditional permit
+      expect(result.policies).toContain('Action::"search"')
+      // send_email does NOT get an unconditional permit — only a consent-gated one
+      expect(result.policies).not.toMatch(/action == Action::"send_email".*\n.*\) when \{ principal\.role/)
+      expect(result.policies).toContain('context.session has "user_consent" && context.session.user_consent == true')
+    })
+
+    it('wildcard role excludes consent tools', () => {
+      const result = new CedarAgentPolicyBuilder()
+        .role('admin', ['*'])
+        .consent(['send_email'])
+        .build()
+
+      // Wildcard permit should exclude send_email
+      expect(result.policies).toContain('!(action == Action::"send_email")')
+      // Consent permit should exist
+      expect(result.policies).toContain('context.session has "user_consent" && context.session.user_consent == true')
+    })
+
+    it('wildcard without consent has no exclusion', () => {
+      const result = new CedarAgentPolicyBuilder()
+        .role('admin', ['*'])
+        .build()
+
+      // No exclusion clause
+      expect(result.policies).not.toContain('!(')
+    })
+  })
 })
