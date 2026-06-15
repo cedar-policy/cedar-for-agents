@@ -64,9 +64,9 @@ def generate_schema(
             - schemaJson (str | None): Generated schema as JSON.
             - error (str | None): Error message if generation failed.
 
-    Raises:
-        SchemaGeneratorError: If generation fails and you prefer exceptions
-            over checking isOk. Use generate_schema_or_raise() for this.
+    Note:
+        This function returns an error dict on failure (check the isOk field).
+        Use generate_schema_or_raise() if you prefer exceptions.
     """
     tools_json = json.dumps(tools) if isinstance(tools, list) else tools
     config_json = json.dumps(config) if config else None
