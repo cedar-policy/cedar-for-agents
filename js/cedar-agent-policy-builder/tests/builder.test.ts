@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest'
 import { CedarAgentPolicyBuilder } from '../src/builder.js'
 
 describe('CedarAgentPolicyBuilder', () => {
-  it('supports fluent chaining', () => {
-    const builder = new CedarAgentPolicyBuilder()
-    const result = builder
-      .principal({ key: 'user_id', type: 'User' })
+  it('supports fluent chaining with schema config in constructor', () => {
+    const result = new CedarAgentPolicyBuilder({
+      principal: { key: 'user_id', type: 'User' },
+    })
       .role('admin', ['*'])
       .role('analyst', ['search', 'query_database'])
       .restrict('query_database', { allowedValues: { database: ['analytics', 'reporting'] } })
@@ -23,7 +23,7 @@ describe('CedarAgentPolicyBuilder', () => {
     expect(result.entities).toHaveLength(3) // 2 roles + McpServer
   })
 
-  it('defaults principal type to User', () => {
+  it('defaults principal type to User when no constructor arg', () => {
     const result = new CedarAgentPolicyBuilder()
       .role('viewer', ['read'])
       .build()
@@ -51,23 +51,24 @@ describe('CedarAgentPolicyBuilder', () => {
     expect(result.policies).toContain('principal.role == "developer"')
   })
 
-  it('supports custom resource entity', () => {
-    const result = new CedarAgentPolicyBuilder()
-      .resource({ type: 'AgentServer', id: 'my-agent' })
-      .build()
+  it('supports custom resource entity via constructor', () => {
+    const result = new CedarAgentPolicyBuilder({
+      resource: { type: 'AgentServer', id: 'my-agent' },
+    }).build()
 
     expect(result.entities).toContainEqual(
       { uid: { type: 'AgentServer', id: 'my-agent' }, attrs: {}, parents: [] },
     )
   })
 
-  it('generates Cedar schema when tools are provided', () => {
-    const result = new CedarAgentPolicyBuilder()
-      .principal({ key: 'user_id', type: 'User' })
-      .role('analyst', ['search'])
-      .tools([
+  it('generates Cedar schema when tools are provided in constructor', () => {
+    const result = new CedarAgentPolicyBuilder({
+      principal: { key: 'user_id', type: 'User' },
+      tools: [
         { name: 'search', inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
-      ])
+      ],
+    })
+      .role('analyst', ['search'])
       .build()
 
     expect(result.schema).toBeDefined()
@@ -85,13 +86,13 @@ describe('CedarAgentPolicyBuilder', () => {
     expect(result.schema).toBeUndefined()
   })
 
-  it('uses custom namespace for schema generation', () => {
-    const result = new CedarAgentPolicyBuilder()
-      .namespace('MyService')
-      .tools([
+  it('uses custom namespace from constructor for schema generation', () => {
+    const result = new CedarAgentPolicyBuilder({
+      namespace: 'MyService',
+      tools: [
         { name: 'ping', inputSchema: { type: 'object', properties: {}, required: [] } },
-      ])
-      .build()
+      ],
+    }).build()
 
     expect(result.schema).toContain('namespace MyService')
   })

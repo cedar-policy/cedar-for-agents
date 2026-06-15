@@ -14,6 +14,13 @@ export interface McpToolDefinition {
   outputSchema?: Record<string, unknown>
 }
 
+export interface SchemaConfig {
+  principal?: PrincipalConfig
+  resource?: { type: string; id: string }
+  tools?: McpToolDefinition[]
+  namespace?: string
+}
+
 export interface CedarAgentConfig {
   principal: PrincipalConfig
   roles?: Record<string, string[]>

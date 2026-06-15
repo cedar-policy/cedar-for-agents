@@ -1,4 +1,4 @@
-import type { BuildResult, CedarAgentConfig, McpToolDefinition, PrincipalConfig } from './types.js'
+import type { BuildResult, CedarAgentConfig, McpToolDefinition, PrincipalConfig, SchemaConfig } from './types.js'
 import { generatePolicies } from './policy-generators.js'
 import { generateEntities } from './entities.js'
 import { generateSchema } from './schema.js'
@@ -15,11 +15,15 @@ export function fromConfig(config: CedarAgentConfig): BuildResult {
 }
 
 export class CedarAgentPolicyBuilder {
-  private _config: CedarAgentConfig = { principal: { key: 'user_id' } }
+  private _config: CedarAgentConfig
 
-  principal(config: PrincipalConfig): this {
-    this._config.principal = config
-    return this
+  constructor(schema?: SchemaConfig) {
+    this._config = {
+      principal: schema?.principal ?? { key: 'user_id' },
+      resource: schema?.resource,
+      tools: schema?.tools,
+      namespace: schema?.namespace,
+    }
   }
 
   role(name: string, tools: string[]): this {
@@ -66,21 +70,6 @@ export class CedarAgentPolicyBuilder {
         this._config.consent[tool] = ['*']
       }
     }
-    return this
-  }
-
-  resource(config: { type: string; id: string }): this {
-    this._config.resource = config
-    return this
-  }
-
-  tools(definitions: McpToolDefinition[]): this {
-    this._config.tools = definitions
-    return this
-  }
-
-  namespace(ns: string): this {
-    this._config.namespace = ns
     return this
   }
 

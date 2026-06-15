@@ -14,24 +14,19 @@ Integrates with [`@cedar-policy/mcp-schema-generator-wasm`](https://www.npmjs.co
 import { CedarAgentPolicyBuilder } from 'cedar-agent-policy-builder'
 import { allTools } from './tools' // your tool definitions
 
-const { policies, entities, schema } = new CedarAgentPolicyBuilder()
-  // Identity: resolve principal from invocationState.user_id as type "User"
-  .principal({ key: 'user_id', type: 'User' })
-  // Roles: admins can use all tools, analysts can only use search and query_database
+const { policies, entities, schema } = new CedarAgentPolicyBuilder({
+  // Schema configuration — defines types and structure
+  principal: { key: 'user_id', type: 'User' },
+  tools: allTools.map(t => t.spec), // MCP tool definitions for schema generation
+})
+  // Policy configuration — defines who can do what
   .role('admin', ['*'])
   .role('analyst', ['search', 'query_database'])
-  // Restriction: analysts can only query the analytics or reporting databases
   .restrict('query_database', { allowedValues: { database: ['analytics', 'reporting'] } })
-  // Rate limit: max 3 send_email calls per session
   .rateLimit('send_email', 3)
-  // Time window: tools only allowed between 9am-5pm UTC
   .timeWindow({ hourStart: 9, hourEnd: 17 })
-  // Environment denial: deny delete_record in production
   .denyToolsInEnv('production', ['delete_record'])
-  // Consent: send_email and delete_file require human approval before executing
   .consent(['send_email', 'delete_file'])
-  // Tools: pass tool specs for Cedar schema generation (enables build-time validation)
-  .tools(allTools.map(t => t.spec))
   .build()
 ```
 
@@ -142,37 +137,36 @@ namespace Agent {
 
 </details>
 
-### `.tools()` — framework-agnostic
+### `tools` — framework-agnostic
 
-The `.tools()` method accepts any array of `{ name, inputSchema }` objects — the standard MCP tool definition format:
+The `tools` constructor option accepts any array of `{ name, inputSchema }` objects — the standard MCP tool definition format:
 
 ```typescript
-// From Strands tool specs (shown above):
-.tools(allTools.map(t => t.spec))
+// From Strands tool specs:
+new CedarAgentPolicyBuilder({ tools: allTools.map(t => t.spec) })
 
 // From any MCP server's list_tools response:
-.tools(mcpServer.listTools().tools)
+new CedarAgentPolicyBuilder({ tools: mcpServer.listTools().tools })
 
 // From OpenAI Agents:
-.tools(myTools.map(t => ({ name: t.name, inputSchema: t.parameters })))
+new CedarAgentPolicyBuilder({ tools: myTools.map(t => ({ name: t.name, inputSchema: t.parameters })) })
 
 // Or defined manually:
-.tools([
-  { name: 'search', inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
-])
+new CedarAgentPolicyBuilder({ tools: [{ name: 'search', inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } }] })
 ```
 
 ### Schema generation and validation
 
-When `.tools()` is provided, `build()` generates a Cedar schema from the tool input schemas via `@cedar-policy/mcp-schema-generator-wasm`. This schema can be used to validate policies at build time:
+When `tools` is provided, `build()` generates a Cedar schema from the tool input schemas via `@cedar-policy/mcp-schema-generator-wasm`. This schema can be used to validate policies at build time:
 
 ```typescript
 import { CedarAgentPolicyBuilder } from 'cedar-agent-policy-builder'
 import { validate } from '@cedar-policy/cedar-wasm'
 
-const { policies, schema } = new CedarAgentPolicyBuilder()
+const { policies, schema } = new CedarAgentPolicyBuilder({
+  tools: [{ name: 'search', inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } }],
+})
   .role('analyst', ['search'])
-  .tools([{ name: 'search', inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } }])
   .build()
 
 const result = validate(policies, schema)
@@ -180,9 +174,9 @@ const result = validate(policies, schema)
 ```
 
 ```
-.tools() definitions ──────────┐
+constructor { tools } ─────────┐
                                ├──► @cedar-policy/mcp-schema-generator-wasm ──► Cedar schema
-.principal()/.resource() ──────┘                                                     │
+constructor { principal } ─────┘                                                     │
                                                                                      ▼
 .role()/.restrict()/.consent() ──► Policy generator ──► Cedar policies ──► validate(policies, schema)
                                                                             catches typos/type errors
@@ -191,20 +185,25 @@ const result = validate(policies, schema)
 
 ## API Reference
 
-### Builder methods
+### Constructor (schema configuration)
+
+| Option | Description |
+|--------|-------------|
+| `principal` | Identity resolution. Default: `{ key: 'user_id', type: 'User' }` |
+| `resource` | Custom resource entity. Default: `McpServer::"default"`. |
+| `tools` | MCP tool definitions for schema generation. |
+| `namespace` | Cedar namespace. Default: `"Agent"`. |
+
+### Policy methods
 
 | Method | Description |
 |--------|-------------|
-| `.principal({ key, type? })` | Set identity resolution. Default: `{ key: 'user_id', type: 'User' }` |
 | `.role(name, tools)` | Grant a role access to tools. `['*']` = all tools. |
 | `.restrict(tool, { allowedValues })` | Restrict tool arguments to specific values. Empty `{}` = deny tool entirely. |
 | `.rateLimit(tool, max)` | Max calls per session. `0` = always denied. |
 | `.timeWindow({ hourStart, hourEnd })` | Allow tools only during UTC hours. `start == end` = deny all. |
 | `.denyToolsInEnv(env, tools?)` | Deny tools in an environment. No `tools` arg = deny all tools. |
 | `.consent(tools, forRole?)` | Require human consent. No `forRole` = all roles need consent. |
-| `.resource({ type, id })` | Custom resource entity. Default: `McpServer::"default"`. |
-| `.tools(definitions)` | MCP tool definitions for schema generation. |
-| `.namespace(ns)` | Cedar namespace. Default: `"Agent"`. |
 | `.build()` | Generate `{ policies, entities, schema? }`. |
 
 ### `fromConfig(config)`
