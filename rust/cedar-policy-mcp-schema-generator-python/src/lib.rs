@@ -141,6 +141,10 @@ fn generate_schema(schema_stub: &str, tools_json: &str, config_json: Option<&str
 /// `error`, and `isOk` fields.
 #[pyfunction]
 #[pyo3(signature = (schema_stub, tools_json, input_json, principal_type, principal_id, resource_type, resource_id, config_json=None))]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "wasm-bindgen/pyo3 requires flat parameter lists; cannot use struct across FFI boundary"
+)]
 fn generate_request(
     schema_stub: &str,
     tools_json: &str,

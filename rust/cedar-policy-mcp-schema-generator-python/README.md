@@ -5,11 +5,11 @@ enabling Python environments to generate Cedar authorization schemas from MCP to
 
 ## Installation
 
-Requires a Rust toolchain (1.90+) and [maturin](https://www.maturin.rs/):
+Requires Python 3.9+, a Rust toolchain (1.90+), and [maturin](https://www.maturin.rs/):
 
 ```bash
 pip install maturin
-cd python/cedar-policy-mcp-schema-generator
+cd rust/cedar-policy-mcp-schema-generator-python
 maturin develop
 ```
 
