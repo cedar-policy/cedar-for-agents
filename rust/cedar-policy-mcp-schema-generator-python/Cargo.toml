@@ -16,8 +16,8 @@ name = "cedar_mcp_schema_generator"
 crate-type = ["cdylib"]
 
 [dependencies]
-cedar-policy-mcp-schema-generator = { path = "../cedar-policy-mcp-schema-generator" }
-mcp-tools-sdk = { path = "../mcp-tools-sdk" }
+cedar-policy-mcp-schema-generator = { version = "0.6.0" }
+mcp-tools-sdk = { version = "0.4.0" }
 pyo3 = { version = "0.29", features = ["extension-module"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
