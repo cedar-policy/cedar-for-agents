@@ -108,31 +108,32 @@ permit(
 **`schema`** — Cedar schema (generated from `.tools()` via the MCP schema generator):
 
 ```cedarschema
-namespace Agent {
-  type searchInput = {
-    query: String
-  };
+type searchInput = {
+  query: String
+};
 
-  type query_databaseInput = {
-    database: String,
-    query: String
-  };
+type query_databaseInput = {
+  database: String,
+  query: String
+};
 
-  entity McpServer;
-  entity User;
+entity McpServer;
 
-  action "search" appliesTo {
-    principal: [User],
-    resource: [McpServer],
-    context: { input: searchInput }
-  };
+entity User = {
+  role: String,
+};
 
-  action "query_database" appliesTo {
-    principal: [User],
-    resource: [McpServer],
-    context: { input: query_databaseInput }
-  };
-}
+action "search" appliesTo {
+  principal: [User],
+  resource: [McpServer],
+  context: { input: searchInput }
+};
+
+action "query_database" appliesTo {
+  principal: [User],
+  resource: [McpServer],
+  context: { input: query_databaseInput }
+};
 ```
 
 </details>
@@ -220,7 +221,7 @@ const { policies, entities } = fromConfig({
   rateLimits: { send_email: 3 },
   timeWindow: { hourStart: 9, hourEnd: 17 },
   denyInEnv: { production: ['delete_record'] },
-  consent: { send_email: ['*'], delete_file: ['*'] },
+  consent: { send_email: true, delete_file: true },
 })
 ```
 

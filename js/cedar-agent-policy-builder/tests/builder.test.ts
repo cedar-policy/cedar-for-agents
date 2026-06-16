@@ -94,7 +94,45 @@ describe('CedarAgentPolicyBuilder', () => {
       ],
     }).build()
 
-    expect(result.schema).toContain('namespace MyService')
+    // Namespace is stripped for validation compatibility, but schema content is generated
+    expect(result.schema).toBeDefined()
+    expect(result.schema).toContain('action "ping"')
+  })
+
+  describe('validate()', () => {
+    it('returns valid for well-formed policies with schema', () => {
+      const result = new CedarAgentPolicyBuilder({
+        tools: [{ name: 'search', inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } }],
+      })
+        .role('analyst', ['search'])
+        .build()
+
+      const validation = result.validate()
+      expect(validation.valid).toBe(true)
+      expect(validation.errors).toHaveLength(0)
+    })
+
+    it('returns valid when no schema (no tools provided)', () => {
+      const result = new CedarAgentPolicyBuilder()
+        .role('admin', ['*'])
+        .build()
+
+      const validation = result.validate()
+      expect(validation.valid).toBe(true)
+    })
+
+    it('detects unknown action names', () => {
+      const result = new CedarAgentPolicyBuilder({
+        tools: [{ name: 'search', inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } }],
+      })
+        .role('analyst', ['search', 'nonexistent_tool'])
+        .build()
+
+      const validation = result.validate()
+      expect(validation.valid).toBe(false)
+      expect(validation.errors.length).toBeGreaterThan(0)
+      expect(validation.errors[0].message).toContain('nonexistent_tool')
+    })
   })
 
   describe('consent + role interaction (default-deny)', () => {

@@ -36,8 +36,21 @@ export interface CedarAgentConfig {
   namespace?: string
 }
 
+export interface ValidationError {
+  policyId: string
+  message: string
+  help?: string
+}
+
+export interface ValidationResult {
+  valid: boolean
+  errors: ValidationError[]
+  warnings: ValidationError[]
+}
+
 export interface BuildResult {
   policies: string
   entities: EntityJson[]
   schema?: string
+  validate(): ValidationResult
 }

@@ -8,7 +8,9 @@ function buildSchemaStub(config: CedarAgentConfig): string {
 
   return `namespace ${ns} {
   @mcp_principal("${principalType}")
-  entity ${principalType};
+  entity ${principalType} = {
+    role: String,
+  };
 
   @mcp_resource("${resourceType}")
   entity ${resourceType};
@@ -37,5 +39,9 @@ export function generateSchema(config: CedarAgentConfig): string | undefined {
     throw new Error(`Schema generation failed: ${result.error}`)
   }
 
-  return result.schema
+  // Strip the namespace wrapper so policies don't need namespace-qualified action names.
+  // The schema generator outputs `namespace Agent { ... }` but our policies use `Action::"search"`,
+  // not `Agent::Action::"search"`. Stripping the namespace makes validation work.
+  const schema: string = result.schema
+  return schema.replace(/^namespace\s+[\w:]+\s*\{/, '').replace(/\}\s*$/, '').trim()
 }

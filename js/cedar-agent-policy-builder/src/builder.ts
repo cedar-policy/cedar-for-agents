@@ -1,17 +1,45 @@
-import type { BuildResult, CedarAgentConfig, SchemaConfig } from './types.js'
+import type { ValidationAnswer } from '@cedar-policy/cedar-wasm'
+import type { BuildResult, CedarAgentConfig, SchemaConfig, ValidationResult } from './types.js'
 import { generatePolicies } from './policy-generators.js'
 import { generateEntities } from './entities.js'
 import { generateSchema } from './schema.js'
+import { validate as cedarValidate } from '@cedar-policy/cedar-wasm/nodejs'
 
 export function fromConfig(config: CedarAgentConfig): BuildResult {
-  const result: BuildResult = {
-    policies: generatePolicies(config),
-    entities: generateEntities(config),
+  const policies = generatePolicies(config)
+  const entities = generateEntities(config)
+  const schema = config.tools ? generateSchema(config) : undefined
+
+  return {
+    policies,
+    entities,
+    schema,
+    validate(): ValidationResult {
+      if (!schema) {
+        return { valid: true, errors: [], warnings: [] }
+      }
+      const result: ValidationAnswer = cedarValidate({
+        policies: { staticPolicies: policies, templates: {} },
+        schema,
+        validationSettings: { mode: 'strict' },
+      })
+      if (result.type !== 'success') {
+        const messages = result.errors.map((e) => e.message).join('; ')
+        return { valid: false, errors: [{ policyId: '', message: messages || 'validation failed' }], warnings: [] }
+      }
+      const errors = result.validationErrors.map((e) => ({
+        policyId: e.policyId,
+        message: e.error.message,
+        help: e.error.help ?? undefined,
+      }))
+      const warnings = result.validationWarnings.map((e) => ({
+        policyId: e.policyId,
+        message: e.error.message,
+        help: e.error.help ?? undefined,
+      }))
+      return { valid: errors.length === 0, errors, warnings }
+    },
   }
-  if (config.tools) {
-    result.schema = generateSchema(config)
-  }
-  return result
 }
 
 export class CedarAgentPolicyBuilder {
@@ -80,6 +108,17 @@ export class CedarAgentPolicyBuilder {
   build(): BuildResult {
     this._warnUnknownTools()
     return fromConfig(this._config)
+  }
+
+  /** Build and validate in one step. Throws if policies fail schema validation. */
+  buildAndValidate(): BuildResult {
+    const result = this.build()
+    const validation = result.validate()
+    if (!validation.valid) {
+      const messages = validation.errors.map((e) => e.message).join('; ')
+      throw new Error(`Cedar policy validation failed: ${messages}`)
+    }
+    return result
   }
 
   private _warnUnknownTools(): void {
