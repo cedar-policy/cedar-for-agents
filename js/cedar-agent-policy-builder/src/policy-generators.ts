@@ -4,11 +4,16 @@ export function escapeCedarString(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 }
 
+function normalizeConsentRoles(value: true | string[]): string[] {
+  return value === true ? ['*'] : value
+}
+
 function getConsentToolsForRole(config: CedarAgentConfig, roleName: string): Set<string> {
   if (!config.consent) return new Set()
   const tools = new Set<string>()
-  for (const [tool, roles] of Object.entries(config.consent)) {
-    // Global consent ('*') applies to all roles; role-specific consent only applies to that role
+  for (const [tool, value] of Object.entries(config.consent)) {
+    const roles = normalizeConsentRoles(value)
+    // Global consent ('*' or true) applies to all roles; role-specific consent only applies to that role
     if (roles.includes('*') || roles.includes(roleName)) {
       tools.add(tool)
     }
@@ -126,7 +131,8 @@ function generateConsentPolicies(config: CedarAgentConfig): string[] {
   const principalType = config.principal.type ?? 'User'
   const policies: string[] = []
 
-  for (const [tool, roles] of Object.entries(config.consent)) {
+  for (const [tool, value] of Object.entries(config.consent)) {
+    const roles = normalizeConsentRoles(value)
     if (roles.includes('*')) {
       // All roles need consent — no role check in the policy
       policies.push(

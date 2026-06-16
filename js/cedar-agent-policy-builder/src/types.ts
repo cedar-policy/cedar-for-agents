@@ -30,7 +30,7 @@ export interface CedarAgentConfig {
   rateLimits?: Record<string, number>
   timeWindow?: { hourStart: number; hourEnd: number }
   denyInEnv?: Record<string, string[]>
-  consent?: Record<string, string[]>
+  consent?: Record<string, true | string[]>
   resource?: { type: string; id: string }
   tools?: McpToolDefinition[]
   namespace?: string

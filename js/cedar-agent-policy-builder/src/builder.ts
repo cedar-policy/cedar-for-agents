@@ -1,4 +1,4 @@
-import type { BuildResult, CedarAgentConfig, McpToolDefinition, PrincipalConfig, SchemaConfig } from './types.js'
+import type { BuildResult, CedarAgentConfig, SchemaConfig } from './types.js'
 import { generatePolicies } from './policy-generators.js'
 import { generateEntities } from './entities.js'
 import { generateSchema } from './schema.js'
@@ -63,11 +63,15 @@ export class CedarAgentPolicyBuilder {
   consent(tools: string[], forRole?: string): this {
     this._config.consent ??= {}
     for (const tool of tools) {
-      this._config.consent[tool] ??= []
       if (forRole) {
-        this._config.consent[tool].push(forRole)
+        const current = this._config.consent[tool]
+        if (!current || current === true) {
+          this._config.consent[tool] = [forRole]
+        } else {
+          current.push(forRole)
+        }
       } else {
-        this._config.consent[tool] = ['*']
+        this._config.consent[tool] = true
       }
     }
     return this
