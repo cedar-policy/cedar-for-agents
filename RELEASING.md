@@ -190,7 +190,8 @@ Do not proceed to publishing if tests are failing.
 
 ## Phase 2: Publish Rust crate to crates.io
 
-If you need to publish a Rust crates, follow these steps. If you are publishing bindings, follow the steps described in the appropriate sections (we do not publish the bindings as an independent crate).
+If you need to publish a Rust crates, follow these steps. If you are publishing only bindings, follow the steps described in the appropriate sections (we do not publish the bindings as an independent crate).
+Typically, you will publish `mcp-tools-sdk`, then `cedar-policy-mcp-schema-generator` and then the bindings for `cedar-policy-mcp-schema-generator`.
 
 ### Create a GitHub release
 
@@ -260,9 +261,7 @@ Verify the release exists at `https://github.com/cedar-policy/cedar-for-agents/r
 
 ## Phase 4: Publish Python bindings to PyPI
 
-> ⚠️ **The publish workflow for PyPI (`publish_python_pypi.yml`) does not exist yet.** This phase documents the expected process once the workflow is added. Do not attempt these steps until it is in place.
-
-Skip this phase for `mcp-tools-sdk` releases.
+> Skip this phase for `mcp-tools-sdk` releases.
 
 ### Create a GitHub release for the Python package
 
@@ -274,7 +273,7 @@ Skip this phase for `mcp-tools-sdk` releases.
 
 ### Run the PyPI publish workflow
 
-1. Go to ["Publish Python bindings to PyPI"](https://github.com/cedar-policy/cedar-for-agents/actions/workflows/publish_python_pypi.yml).
+1. Go to ["Publish Python bindings to PyPI"](https://github.com/cedar-policy/cedar-for-agents/actions/workflows/publish_python.yml).
 2. Click "Run workflow" (branch selector must be `main`).
 3. Enter the tag: `cedar-policy-mcp-schema-generator-python-v<MAJOR>.<MINOR>.<PATCH>`.
 4. Click "Run workflow".
@@ -282,11 +281,11 @@ Skip this phase for `mcp-tools-sdk` releases.
 
 ### Validate the PyPI release
 
-1. Check `https://pypi.org/project/cedar-mcp-schema-generator/<MAJOR>.<MINOR>.<PATCH>/`.
+1. Check `https://pypi.org/project/cedar-policy-mcp-schema-generator/<MAJOR>.<MINOR>.<PATCH>/`.
 2. Test installation:
    ```bash
-   pip install cedar-mcp-schema-generator==<MAJOR>.<MINOR>.<PATCH>
-   python -c "from cedar_mcp_schema_generator import generate_schema; print('OK')"
+   pip install cedar-policy-mcp-schema-generator==<MAJOR>.<MINOR>.<PATCH>
+   python -c "from cedar_policy_mcp_schema_generator import generate_schema; print('OK')"
    ```
 
 ---
