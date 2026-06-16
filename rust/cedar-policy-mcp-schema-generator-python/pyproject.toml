@@ -3,9 +3,9 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "cedar-mcp-schema-generator"
+name = "cedar-policy-mcp-schema-generator"
 version = "0.6.0"
-description = "Python bindings for the Cedar MCP Schema Generator"
+description = "Python bindings for the Cedar Policy MCP Schema Generator"
 requires-python = ">=3.9"
 license = "Apache-2.0"
 keywords = ["cedar", "authorization", "mcp", "schema", "agents"]

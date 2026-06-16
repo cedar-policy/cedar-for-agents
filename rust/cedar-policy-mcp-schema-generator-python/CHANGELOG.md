@@ -9,4 +9,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.6.0] - 2026-06-15
 
-Initial release of `cedar-mcp-schema-generator`, the Python bindings for crate `cedar-policy-mcp-schema-generator` v0.6.0.
+Initial release of `cedar-policy-mcp-schema-generator`, the Python bindings for crate `cedar-policy-mcp-schema-generator` v0.6.0.
