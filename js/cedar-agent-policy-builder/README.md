@@ -39,26 +39,26 @@ The above produces:
 
 ```cedar
 permit(
-  principal is User,
+  principal is Agent::User,
   action,
   resource
 ) when { principal.role == "admin" };
 
 permit(
-  principal is User,
-  action == Action::"search",
+  principal is Agent::User,
+  action == Agent::Action::"search",
   resource
 ) when { principal.role == "analyst" };
 
 permit(
-  principal is User,
-  action == Action::"query_database",
+  principal is Agent::User,
+  action == Agent::Action::"query_database",
   resource
 ) when { principal.role == "analyst" };
 
 forbid(
   principal,
-  action == Action::"query_database",
+  action == Agent::Action::"query_database",
   resource
 ) when {
   !(context.input has "database" && (context.input.database == "analytics" || context.input.database == "reporting"))
@@ -66,7 +66,7 @@ forbid(
 
 forbid(
   principal,
-  action == Action::"send_email",
+  action == Agent::Action::"send_email",
   resource
 ) when { context.session has "call_count" && context.session.call_count >= 3 };
 
@@ -78,19 +78,19 @@ forbid(
 
 forbid(
   principal,
-  action == Action::"delete_record",
+  action == Agent::Action::"delete_record",
   resource
 ) when { context.session has "environment" && context.session.environment == "production" };
 
 permit(
-  principal is User,
-  action == Action::"send_email",
+  principal is Agent::User,
+  action == Agent::Action::"send_email",
   resource
 ) when { context.session has "user_consent" && context.session.user_consent == true };
 
 permit(
-  principal is User,
-  action == Action::"delete_file",
+  principal is Agent::User,
+  action == Agent::Action::"delete_file",
   resource
 ) when { context.session has "user_consent" && context.session.user_consent == true };
 ```
@@ -108,32 +108,34 @@ permit(
 **`schema`** — Cedar schema (generated from `.tools()` via the MCP schema generator):
 
 ```cedarschema
-type searchInput = {
-  query: String
-};
+namespace Agent {
+  type searchInput = {
+    query: String
+  };
 
-type query_databaseInput = {
-  database: String,
-  query: String
-};
+  type query_databaseInput = {
+    database: String,
+    query: String
+  };
 
-entity McpServer;
+  entity McpServer;
 
-entity User = {
-  role: String,
-};
+  entity User = {
+    role: String,
+  };
 
-action "search" appliesTo {
-  principal: [User],
-  resource: [McpServer],
-  context: { input: searchInput }
-};
+  action "search" appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: { input: searchInput }
+  };
 
-action "query_database" appliesTo {
-  principal: [User],
-  resource: [McpServer],
-  context: { input: query_databaseInput }
-};
+  action "query_database" appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: { input: query_databaseInput }
+  };
+}
 ```
 
 </details>
@@ -231,7 +233,7 @@ See `CedarAgentConfig` type for the full shape.
 
 The builder generates Cedar policies following the [cedar-for-agents](https://github.com/cedar-policy/cedar-for-agents) MCP schema generator conventions:
 
-- **Actions** are named directly after tools (e.g. `Action::"search"`)
+- **Actions** are named directly after tools (e.g. `Agent::Action::"search"`)
 - **Context** is nested: `context.input.*` for tool arguments, `context.session.*` for runtime state
 - **Principals** are entity types with a `role` attribute
 - **Resource** defaults to `McpServer::"default"`

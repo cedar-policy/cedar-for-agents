@@ -16,7 +16,7 @@ describe('CedarAgentPolicyBuilder', () => {
 
     expect(result.policies).toContain('principal.role == "admin"')
     expect(result.policies).toContain('principal.role == "analyst"')
-    expect(result.policies).toContain('Action::"query_database"')
+    expect(result.policies).toContain('Agent::Action::"query_database"')
     expect(result.policies).toContain('context.session has "call_count" && context.session.call_count >= 3')
     expect(result.policies).toContain('context.session has "hour_utc"')
     expect(result.policies).toContain('context.session has "environment" && context.session.environment == "production"')
@@ -28,7 +28,7 @@ describe('CedarAgentPolicyBuilder', () => {
       .role('viewer', ['read'])
       .build()
 
-    expect(result.policies).toContain('principal is User')
+    expect(result.policies).toContain('principal is Agent::User')
   })
 
   it('generates McpServer entity even with no roles', () => {
@@ -46,8 +46,8 @@ describe('CedarAgentPolicyBuilder', () => {
       .build()
 
     expect(result.policies).toContain('context.session has "user_consent" && context.session.user_consent == true')
-    expect(result.policies).toContain('Action::"send_email"')
-    expect(result.policies).toContain('Action::"delete_file"')
+    expect(result.policies).toContain('Agent::Action::"send_email"')
+    expect(result.policies).toContain('Agent::Action::"delete_file"')
     expect(result.policies).toContain('principal.role == "developer"')
   })
 
@@ -143,9 +143,9 @@ describe('CedarAgentPolicyBuilder', () => {
         .build()
 
       // search gets an unconditional permit
-      expect(result.policies).toContain('Action::"search"')
+      expect(result.policies).toContain('Agent::Action::"search"')
       // send_email does NOT get an unconditional permit — only a consent-gated one
-      expect(result.policies).not.toMatch(/action == Action::"send_email".*\n.*\) when \{ principal\.role/)
+      expect(result.policies).not.toMatch(/action == Agent::Action::"send_email".*\n.*\) when \{ principal\.role/)
       expect(result.policies).toContain('context.session has "user_consent" && context.session.user_consent == true')
     })
 
@@ -156,7 +156,7 @@ describe('CedarAgentPolicyBuilder', () => {
         .build()
 
       // Wildcard permit should exclude send_email
-      expect(result.policies).toContain('!(action == Action::"send_email")')
+      expect(result.policies).toContain('!(action == Agent::Action::"send_email")')
       // Consent permit should exist
       expect(result.policies).toContain('context.session has "user_consent" && context.session.user_consent == true')
     })

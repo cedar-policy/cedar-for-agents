@@ -23,6 +23,7 @@ function getConsentToolsForRole(config: CedarAgentConfig, roleName: string): Set
 
 function generateRolePolicies(config: CedarAgentConfig): string[] {
   if (!config.roles) return []
+  const ns = config.namespace ?? 'Agent'
   const principalType = config.principal.type ?? 'User'
   const policies: string[] = []
 
@@ -33,14 +34,14 @@ function generateRolePolicies(config: CedarAgentConfig): string[] {
       if (consentToolsForRole.size > 0) {
         // Wildcard with consent exclusions: permit all actions EXCEPT consent-gated tools for this role
         const exclusions = [...consentToolsForRole]
-          .map((t) => `action == Action::"${escapeCedarString(t)}"`)
+          .map((t) => `action == ${ns}::Action::"${escapeCedarString(t)}"`)
           .join(' || ')
         policies.push(
-          `permit(\n  principal is ${principalType},\n  action,\n  resource\n) when { principal.role == "${escapeCedarString(roleName)}" && !(${exclusions}) };`
+          `permit(\n  principal is ${ns}::${principalType},\n  action,\n  resource\n) when { principal.role == "${escapeCedarString(roleName)}" && !(${exclusions}) };`
         )
       } else {
         policies.push(
-          `permit(\n  principal is ${principalType},\n  action,\n  resource\n) when { principal.role == "${escapeCedarString(roleName)}" };`
+          `permit(\n  principal is ${ns}::${principalType},\n  action,\n  resource\n) when { principal.role == "${escapeCedarString(roleName)}" };`
         )
       }
     } else {
@@ -48,7 +49,7 @@ function generateRolePolicies(config: CedarAgentConfig): string[] {
       const filteredTools = tools.filter((t) => !consentToolsForRole.has(t))
       for (const tool of filteredTools) {
         policies.push(
-          `permit(\n  principal is ${principalType},\n  action == Action::"${escapeCedarString(tool)}",\n  resource\n) when { principal.role == "${escapeCedarString(roleName)}" };`
+          `permit(\n  principal is ${ns}::${principalType},\n  action == ${ns}::Action::"${escapeCedarString(tool)}",\n  resource\n) when { principal.role == "${escapeCedarString(roleName)}" };`
         )
       }
     }
@@ -59,6 +60,7 @@ function generateRolePolicies(config: CedarAgentConfig): string[] {
 
 function generateRestrictionPolicies(config: CedarAgentConfig): string[] {
   if (!config.restrictions) return []
+  const ns = config.namespace ?? 'Agent'
   const policies: string[] = []
 
   for (const [tool, restriction] of Object.entries(config.restrictions)) {
@@ -66,7 +68,7 @@ function generateRestrictionPolicies(config: CedarAgentConfig): string[] {
     if (fields.length === 0) {
       // Empty allowedValues = no values are allowed, deny the tool entirely
       policies.push(
-        `forbid(\n  principal,\n  action == Action::"${escapeCedarString(tool)}",\n  resource\n);`
+        `forbid(\n  principal,\n  action == ${ns}::Action::"${escapeCedarString(tool)}",\n  resource\n);`
       )
       continue
     }
@@ -75,7 +77,7 @@ function generateRestrictionPolicies(config: CedarAgentConfig): string[] {
         .map((v) => `context.input.${field} == ${JSON.stringify(v)}`)
         .join(' || ')
       policies.push(
-        `forbid(\n  principal,\n  action == Action::"${escapeCedarString(tool)}",\n  resource\n) when {\n  !(context.input has "${escapeCedarString(field)}" && (${valueChecks}))\n};`
+        `forbid(\n  principal,\n  action == ${ns}::Action::"${escapeCedarString(tool)}",\n  resource\n) when {\n  !(context.input has "${escapeCedarString(field)}" && (${valueChecks}))\n};`
       )
     }
   }
@@ -85,11 +87,12 @@ function generateRestrictionPolicies(config: CedarAgentConfig): string[] {
 
 function generateRateLimitPolicies(config: CedarAgentConfig): string[] {
   if (!config.rateLimits) return []
+  const ns = config.namespace ?? 'Agent'
   const policies: string[] = []
 
   for (const [tool, max] of Object.entries(config.rateLimits)) {
     policies.push(
-      `forbid(\n  principal,\n  action == Action::"${escapeCedarString(tool)}",\n  resource\n) when { context.session has "call_count" && context.session.call_count >= ${max} };`
+      `forbid(\n  principal,\n  action == ${ns}::Action::"${escapeCedarString(tool)}",\n  resource\n) when { context.session has "call_count" && context.session.call_count >= ${max} };`
     )
   }
 
@@ -106,6 +109,7 @@ function generateTimeWindowPolicy(config: CedarAgentConfig): string[] {
 
 function generateEnvDenialPolicies(config: CedarAgentConfig): string[] {
   if (!config.denyInEnv) return []
+  const ns = config.namespace ?? 'Agent'
   const policies: string[] = []
 
   for (const [env, tools] of Object.entries(config.denyInEnv)) {
@@ -117,7 +121,7 @@ function generateEnvDenialPolicies(config: CedarAgentConfig): string[] {
     } else {
       for (const tool of tools) {
         policies.push(
-          `forbid(\n  principal,\n  action == Action::"${escapeCedarString(tool)}",\n  resource\n) when { context.session has "environment" && context.session.environment == "${escapeCedarString(env)}" };`
+          `forbid(\n  principal,\n  action == ${ns}::Action::"${escapeCedarString(tool)}",\n  resource\n) when { context.session has "environment" && context.session.environment == "${escapeCedarString(env)}" };`
         )
       }
     }
@@ -128,6 +132,7 @@ function generateEnvDenialPolicies(config: CedarAgentConfig): string[] {
 
 function generateConsentPolicies(config: CedarAgentConfig): string[] {
   if (!config.consent) return []
+  const ns = config.namespace ?? 'Agent'
   const principalType = config.principal.type ?? 'User'
   const policies: string[] = []
 
@@ -136,12 +141,12 @@ function generateConsentPolicies(config: CedarAgentConfig): string[] {
     if (roles.includes('*')) {
       // All roles need consent — no role check in the policy
       policies.push(
-        `permit(\n  principal is ${principalType},\n  action == Action::"${escapeCedarString(tool)}",\n  resource\n) when { context.session has "user_consent" && context.session.user_consent == true };`
+        `permit(\n  principal is ${ns}::${principalType},\n  action == ${ns}::Action::"${escapeCedarString(tool)}",\n  resource\n) when { context.session has "user_consent" && context.session.user_consent == true };`
       )
     } else {
       for (const role of roles) {
         policies.push(
-          `permit(\n  principal is ${principalType},\n  action == Action::"${escapeCedarString(tool)}",\n  resource\n) when { principal.role == "${escapeCedarString(role)}" && context.session has "user_consent" && context.session.user_consent == true };`
+          `permit(\n  principal is ${ns}::${principalType},\n  action == ${ns}::Action::"${escapeCedarString(tool)}",\n  resource\n) when { principal.role == "${escapeCedarString(role)}" && context.session has "user_consent" && context.session.user_consent == true };`
         )
       }
     }

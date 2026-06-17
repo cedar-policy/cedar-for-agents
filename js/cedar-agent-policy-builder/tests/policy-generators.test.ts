@@ -22,10 +22,10 @@ describe('generatePolicies', () => {
       }
       const policies = generatePolicies(config)
       expect(policies).toContain(
-        `permit(\n  principal is User,\n  action == Action::"search",\n  resource\n) when { principal.role == "analyst" };`
+        `permit(\n  principal is Agent::User,\n  action == Agent::Action::"search",\n  resource\n) when { principal.role == "analyst" };`
       )
       expect(policies).toContain(
-        `permit(\n  principal is User,\n  action == Action::"query_database",\n  resource\n) when { principal.role == "analyst" };`
+        `permit(\n  principal is Agent::User,\n  action == Agent::Action::"query_database",\n  resource\n) when { principal.role == "analyst" };`
       )
     })
 
@@ -36,7 +36,7 @@ describe('generatePolicies', () => {
       }
       const policies = generatePolicies(config)
       expect(policies).toContain(
-        `permit(\n  principal is User,\n  action,\n  resource\n) when { principal.role == "admin" };`
+        `permit(\n  principal is Agent::User,\n  action,\n  resource\n) when { principal.role == "admin" };`
       )
     })
 
@@ -46,7 +46,7 @@ describe('generatePolicies', () => {
         roles: { viewer: ['read'] },
       }
       const policies = generatePolicies(config)
-      expect(policies).toContain('principal is User')
+      expect(policies).toContain('principal is Agent::User')
     })
 
     it('uses custom principal type', () => {
@@ -55,7 +55,7 @@ describe('generatePolicies', () => {
         roles: { viewer: ['read'] },
       }
       const policies = generatePolicies(config)
-      expect(policies).toContain('principal is Agent')
+      expect(policies).toContain('principal is Agent::Agent')
     })
   })
 
@@ -69,7 +69,7 @@ describe('generatePolicies', () => {
       }
       const policies = generatePolicies(config)
       expect(policies).toContain(
-        `forbid(\n  principal,\n  action == Action::"query_database",\n  resource\n) when {\n  !(context.input has "database" && (context.input.database == "analytics" || context.input.database == "reporting"))\n};`
+        `forbid(\n  principal,\n  action == Agent::Action::"query_database",\n  resource\n) when {\n  !(context.input has "database" && (context.input.database == "analytics" || context.input.database == "reporting"))\n};`
       )
     })
 
@@ -82,7 +82,7 @@ describe('generatePolicies', () => {
       }
       const policies = generatePolicies(config)
       expect(policies).toContain(
-        `forbid(\n  principal,\n  action == Action::"delete_file",\n  resource\n) when {\n  !(context.input has "path" && (context.input.path == "/tmp"))\n};`
+        `forbid(\n  principal,\n  action == Agent::Action::"delete_file",\n  resource\n) when {\n  !(context.input has "path" && (context.input.path == "/tmp"))\n};`
       )
     })
   })
@@ -95,7 +95,7 @@ describe('generatePolicies', () => {
       }
       const policies = generatePolicies(config)
       expect(policies).toContain(
-        `forbid(\n  principal,\n  action == Action::"send_email",\n  resource\n) when { context.session has "call_count" && context.session.call_count >= 3 };`
+        `forbid(\n  principal,\n  action == Agent::Action::"send_email",\n  resource\n) when { context.session has "call_count" && context.session.call_count >= 3 };`
       )
     })
   })
@@ -121,7 +121,7 @@ describe('generatePolicies', () => {
       }
       const policies = generatePolicies(config)
       expect(policies).toContain(
-        `forbid(\n  principal,\n  action == Action::"delete_record",\n  resource\n) when { context.session has "environment" && context.session.environment == "production" };`
+        `forbid(\n  principal,\n  action == Agent::Action::"delete_record",\n  resource\n) when { context.session has "environment" && context.session.environment == "production" };`
       )
     })
 
@@ -131,8 +131,8 @@ describe('generatePolicies', () => {
         denyInEnv: { production: ['delete_record', 'drop_table'] },
       }
       const policies = generatePolicies(config)
-      expect(policies).toContain('Action::"delete_record"')
-      expect(policies).toContain('Action::"drop_table"')
+      expect(policies).toContain('Agent::Action::"delete_record"')
+      expect(policies).toContain('Agent::Action::"drop_table"')
     })
   })
 
@@ -182,7 +182,7 @@ describe('generatePolicies', () => {
         roles: { 'role"evil': ['tool"inject'] },
       }
       const policies = generatePolicies(config)
-      expect(policies).toContain('Action::"tool\\"inject"')
+      expect(policies).toContain('Agent::Action::"tool\\"inject"')
       expect(policies).toContain('principal.role == "role\\"evil"')
     })
   })
