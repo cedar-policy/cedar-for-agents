@@ -59,24 +59,9 @@ impl LocatedString {
         &self.loc
     }
 
-    /// Unwrap the `LocatedString` and retrieve the location of the string within the input string.
-    pub(crate) fn into_loc(self) -> Loc {
-        self.loc
-    }
-
     /// Get the `&str` matching the decoded contents of the `LocatedString`
     pub(crate) fn as_str(&self) -> &str {
         &self.decoded
-    }
-
-    /// Create a `String` matching the decoded contents of the `LocatedString`
-    #[expect(dead_code, reason = "Added for completeness.")]
-    #[expect(
-        clippy::inherent_to_string,
-        reason = "Not provided as a proxy for display."
-    )]
-    pub(crate) fn to_string(&self) -> String {
-        self.decoded.to_string()
     }
 
     /// Create a `SmolStr` matching the decoded contents of the `LocatedString`
@@ -305,8 +290,10 @@ mod tests {
         assert!(LocatedValue::new_bool(false, new_loc("false")).is_bool());
         assert!(!LocatedValue::new_null(new_loc("null")).is_bool());
         assert!(!LocatedValue::new_number(new_loc("0.1")).is_bool());
-        assert!(!LocatedValue::new_string(new_loc("my cool str"), SmolStr::from("my cool str"))
-            .is_bool());
+        assert!(
+            !LocatedValue::new_string(new_loc("my cool str"), SmolStr::from("my cool str"))
+                .is_bool()
+        );
         assert!(!LocatedValue::new_array(Vec::new(), new_loc("[]")).is_bool());
         assert!(!LocatedValue::new_object(LinkedHashMap::new(), new_loc("{}")).is_bool());
     }
@@ -344,8 +331,10 @@ mod tests {
         assert!(!LocatedValue::new_bool(false, new_loc("false")).is_null());
         assert!(LocatedValue::new_null(new_loc("null")).is_null());
         assert!(!LocatedValue::new_number(new_loc("0.1")).is_null());
-        assert!(!LocatedValue::new_string(new_loc("my cool str"), SmolStr::from("my cool str"))
-            .is_null());
+        assert!(
+            !LocatedValue::new_string(new_loc("my cool str"), SmolStr::from("my cool str"))
+                .is_null()
+        );
         assert!(!LocatedValue::new_array(Vec::new(), new_loc("[]")).is_null());
         assert!(!LocatedValue::new_object(LinkedHashMap::new(), new_loc("{}")).is_null());
     }
@@ -356,8 +345,10 @@ mod tests {
         assert!(!LocatedValue::new_bool(false, new_loc("false")).is_number());
         assert!(!LocatedValue::new_null(new_loc("null")).is_number());
         assert!(LocatedValue::new_number(new_loc("0.1")).is_number());
-        assert!(!LocatedValue::new_string(new_loc("my cool str"), SmolStr::from("my cool str"))
-            .is_number());
+        assert!(
+            !LocatedValue::new_string(new_loc("my cool str"), SmolStr::from("my cool str"))
+                .is_number()
+        );
         assert!(!LocatedValue::new_array(Vec::new(), new_loc("[]")).is_number());
         assert!(!LocatedValue::new_object(LinkedHashMap::new(), new_loc("{}")).is_number());
     }
@@ -401,8 +392,10 @@ mod tests {
         assert!(!LocatedValue::new_bool(false, new_loc("false")).is_string());
         assert!(!LocatedValue::new_null(new_loc("null")).is_string());
         assert!(!LocatedValue::new_number(new_loc("0.1")).is_string());
-        assert!(LocatedValue::new_string(new_loc("my cool str"), SmolStr::from("my cool str"))
-            .is_string());
+        assert!(
+            LocatedValue::new_string(new_loc("my cool str"), SmolStr::from("my cool str"))
+                .is_string()
+        );
         assert!(!LocatedValue::new_array(Vec::new(), new_loc("[]")).is_string());
         assert!(!LocatedValue::new_object(LinkedHashMap::new(), new_loc("{}")).is_string());
     }
@@ -494,8 +487,10 @@ mod tests {
         assert!(!LocatedValue::new_bool(false, new_loc("false")).is_array());
         assert!(!LocatedValue::new_null(new_loc("null")).is_array());
         assert!(!LocatedValue::new_number(new_loc("0.1")).is_array());
-        assert!(!LocatedValue::new_string(new_loc("my cool str"), SmolStr::from("my cool str"))
-            .is_array());
+        assert!(
+            !LocatedValue::new_string(new_loc("my cool str"), SmolStr::from("my cool str"))
+                .is_array()
+        );
         assert!(LocatedValue::new_array(Vec::new(), new_loc("[]")).is_array());
         assert!(!LocatedValue::new_object(LinkedHashMap::new(), new_loc("{}")).is_array());
     }
@@ -533,8 +528,10 @@ mod tests {
         assert!(!LocatedValue::new_bool(false, new_loc("false")).is_object());
         assert!(!LocatedValue::new_null(new_loc("null")).is_object());
         assert!(!LocatedValue::new_number(new_loc("0.1")).is_object());
-        assert!(!LocatedValue::new_string(new_loc("my cool str"), SmolStr::from("my cool str"))
-            .is_object());
+        assert!(
+            !LocatedValue::new_string(new_loc("my cool str"), SmolStr::from("my cool str"))
+                .is_object()
+        );
         assert!(!LocatedValue::new_array(Vec::new(), new_loc("[]")).is_object());
         assert!(LocatedValue::new_object(LinkedHashMap::new(), new_loc("{}")).is_object());
     }
