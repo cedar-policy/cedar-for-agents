@@ -22,6 +22,9 @@ const { policies, entities, schema } = new CedarAgentPolicyBuilder({
   // Policy configuration — defines who can do what
   .role('admin', ['*'])
   .role('analyst', ['search', 'query_database'])
+  .role('developer', ['delete_record'])
+  .user('alice', 'admin')
+  .user('bob', 'analyst', 'developer')
   .restrict('query_database', { allowedValues: { database: ['analytics', 'reporting'] } })
   .rateLimit('send_email', 3)
   .timeWindow({ hourStart: 9, hourEnd: 17 })
@@ -29,6 +32,7 @@ const { policies, entities, schema } = new CedarAgentPolicyBuilder({
   .consent(['send_email', 'delete_file'])
   .build()
 ```
+The policy configuration above references three roles 'admin', 'analyst' and 'developer', and attaches permissions to those roles. A user can have zero or more roles (.e.g. 'alice' is an 'admin' and 'bob' is an 'analyst' and a 'developer'). Declaring users is optional — if you omit `.user()` calls, the generated entities contain only roles and the resource, and you can resolve the principal directly as a `Role` entity (e.g. `{ type: 'Agent::Role', id: 'admin' }`) in your [Strands `principalResolver`](https://strandsagents.com/docs/user-guide/concepts/agents/interventions/cedar-authorization/). This works because Cedar's `in` operator treats an entity as being `in` itself, so `Role::"admin" in Role::"admin"` evaluates to true. When you do declare users, `build()` emits `User` entities with `Role` parents in the entity hierarchy, and your `principalResolver` returns the user identity for a full audit trail.
 
 <details>
 <summary><strong>Generated output</strong></summary>
@@ -39,22 +43,16 @@ The above produces:
 
 ```cedar
 permit(
-  principal is Agent::User,
+  principal in Agent::Role::"admin",
   action,
   resource
-) when { principal.role == "admin" };
+) when { !(action == Agent::Action::"send_email" || action == Agent::Action::"delete_file") };
 
-permit(
-  principal is Agent::User,
-  action == Agent::Action::"search",
-  resource
-) when { principal.role == "analyst" };
+permit(principal in Agent::Role::"analyst", action == Agent::Action::"search", resource);
 
-permit(
-  principal is Agent::User,
-  action == Agent::Action::"query_database",
-  resource
-) when { principal.role == "analyst" };
+permit(principal in Agent::Role::"analyst", action == Agent::Action::"query_database", resource);
+
+permit(principal in Agent::Role::"developer", action == Agent::Action::"delete_record", resource);
 
 forbid(
   principal,
@@ -83,13 +81,13 @@ forbid(
 ) when { context.session has "environment" && context.session.environment == "production" };
 
 permit(
-  principal is Agent::User,
+  principal,
   action == Agent::Action::"send_email",
   resource
 ) when { context.session has "user_consent" && context.session.user_consent == true };
 
 permit(
-  principal is Agent::User,
+  principal,
   action == Agent::Action::"delete_file",
   resource
 ) when { context.session has "user_consent" && context.session.user_consent == true };
@@ -99,9 +97,12 @@ permit(
 
 ```json
 [
-  { "uid": { "type": "Role", "id": "admin" }, "attrs": {}, "parents": [] },
-  { "uid": { "type": "Role", "id": "analyst" }, "attrs": {}, "parents": [] },
-  { "uid": { "type": "McpServer", "id": "default" }, "attrs": {}, "parents": [] }
+  { "uid": { "type": "Agent::Role", "id": "admin" }, "attrs": {}, "parents": [] },
+  { "uid": { "type": "Agent::Role", "id": "analyst" }, "attrs": {}, "parents": [] },
+  { "uid": { "type": "Agent::Role", "id": "developer" }, "attrs": {}, "parents": [] },
+  { "uid": { "type": "Agent::User", "id": "alice" }, "attrs": {}, "parents": [{ "type": "Agent::Role", "id": "admin" }] },
+  { "uid": { "type": "Agent::User", "id": "bob" }, "attrs": {}, "parents": [{ "type": "Agent::Role", "id": "analyst" }, { "type": "Agent::Role", "id": "developer" }] },
+  { "uid": { "type": "Agent::McpServer", "id": "default" }, "attrs": {}, "parents": [] }
 ]
 ```
 
@@ -120,9 +121,9 @@ namespace Agent {
 
   entity McpServer;
 
-  entity User = {
-    role: String,
-  };
+  entity Role;
+
+  entity User in [Role];
 
   action "search" appliesTo {
     principal: [User],
@@ -139,6 +140,41 @@ namespace Agent {
 ```
 
 </details>
+
+### Role modeling
+
+Roles are modeled using Cedar's entity hierarchy. The generated policies use `principal in Role::"name"`, which is satisfied by:
+
+- A `User` entity whose parents include the role: `User::"alice"` with parent `Role::"admin"`
+- The role entity itself: `Role::"admin"` (an entity is always `in` itself)
+
+This gives you two options for how you resolve the principal at request time:
+
+**With users** — full audit trail, the principal is the individual user:
+
+```typescript
+const { policies, entities } = new CedarAgentPolicyBuilder(...)
+  .role('admin', ['*'])
+  .role('analyst', ['search'])
+  .user('alice', 'admin')
+  .user('bob', 'analyst')
+  .build()
+
+// principalResolver returns the user identity
+principalResolver: (state) => ({ type: 'Agent::User', id: state.user_id })
+```
+
+**Without users** — simpler, the principal is the role directly:
+
+```typescript
+const { policies, entities } = new CedarAgentPolicyBuilder(...)
+  .role('admin', ['*'])
+  .role('analyst', ['search'])
+  .build()
+
+// principalResolver returns the role
+principalResolver: (state) => ({ type: 'Agent::Role', id: state.role })
+```
 
 ### `tools` — framework-agnostic
 
@@ -186,28 +222,79 @@ constructor { principal } ─────┘                                    
                                                                             at build time
 ```
 
+## Integration with Strands Agents
+
+The [Strands Agents SDK](https://strandsagents.com/docs/user-guide/concepts/agents/interventions/cedar-authorization/) provides `CedarAuthorization` as a vended intervention handler. There are two approaches to modeling role-based access:
+
+### Entity hierarchy (recommended)
+
+Use this package to generate policies and entities, then resolve the principal via `principalResolver`. Roles are expressed structurally through Cedar's entity graph:
+
+```typescript
+import { CedarAgentPolicyBuilder } from 'cedar-agent-policy-builder'
+import { CedarAuthorization } from '@strands-agents/sdk/vended-interventions/cedar'
+
+const { policies, entities } = new CedarAgentPolicyBuilder(...)
+  .role('admin', ['*'])
+  .role('analyst', ['search'])
+  .user('alice', 'admin')
+  .user('bob', 'analyst')
+  .build()
+
+const cedar = new CedarAuthorization({
+  policies,
+  entities,
+  principalResolver: (state) => {
+    if (!state.user_id) return undefined
+    return { type: 'Agent::User', id: String(state.user_id) }
+  },
+})
+```
+
+This authorization schema has a few benefits; it allows better static analysis, you can inspect role inheritance, you have a full user audit trail, and no runtime role assertion needed.
+
+### Runtime context (alternative)
+
+Strands also supports passing role via `contextEnricher` into `context.session.role`. In this pattern you write policies manually against `context.session.role`:
+
+```typescript
+const cedar = new CedarAuthorization({
+  policies: `
+    permit(principal, action, resource)
+    when { context.session.role == "admin" };
+  `,
+  principalResolver: (state) => ({ type: 'User', id: String(state.user_id) }),
+  contextEnricher: ({ invocationState }) => ({
+    role: String(invocationState.role ?? 'none'),
+  }),
+})
+```
+
+This is simpler but role is a pure runtime declaration — no entity graph backing, no static analysis of role membership, and role information must be passed on every request.
+
 ## API Reference
 
 ### Constructor (schema configuration)
 
-| Option | Description |
-|--------|-------------|
+| Option      | Description                                                      |
+| ----------- | ---------------------------------------------------------------- |
 | `principal` | Identity resolution. Default: `{ key: 'user_id', type: 'User' }` |
-| `resource` | Custom resource entity. Default: `McpServer::"default"`. |
-| `tools` | MCP tool definitions for schema generation. |
-| `namespace` | Cedar namespace. Default: `"Agent"`. |
+| `resource`  | Custom resource entity. Default: `McpServer::"default"`.         |
+| `tools`     | MCP tool definitions for schema generation.                      |
+| `namespace` | Cedar namespace. Default: `"Agent"`.                             |
 
 ### Policy methods
 
-| Method | Description |
-|--------|-------------|
-| `.role(name, tools)` | Grant a role access to tools. `['*']` = all tools. |
-| `.restrict(tool, { allowedValues })` | Restrict tool arguments to specific values. Empty `{}` = deny tool entirely. |
-| `.rateLimit(tool, max)` | Max calls per session. `0` = always denied. |
-| `.timeWindow({ hourStart, hourEnd })` | Allow tools only during UTC hours. `start == end` = deny all. |
-| `.denyToolsInEnv(env, tools?)` | Deny tools in an environment. No `tools` arg = deny all tools. |
-| `.consent(tools, forRole?)` | Require human consent. No `forRole` = all roles need consent. |
-| `.build()` | Generate `{ policies, entities, schema? }`. |
+| Method                                | Description                                                                       |
+| ------------------------------------- | --------------------------------------------------------------------------------- |
+| `.role(name, tools)`                  | Grant a role access to tools. `['*']` = all tools.                                |
+| `.user(id, ...roles)`                 | Declare a user with one or more roles. Generates a User entity with Role parents. |
+| `.restrict(tool, { allowedValues })`  | Restrict tool arguments to specific values. Empty `{}` = deny tool entirely.      |
+| `.rateLimit(tool, max)`               | Max calls per session. `0` = always denied.                                       |
+| `.timeWindow({ hourStart, hourEnd })` | Allow tools only during UTC hours. `start == end` = deny all.                     |
+| `.denyToolsInEnv(env, tools?)`        | Deny tools in an environment. No `tools` arg = deny all tools.                    |
+| `.consent(tools, forRole?)`           | Require human consent. No `forRole` = all roles need consent.                     |
+| `.build()`                            | Generate `{ policies, entities, schema? }`.                                       |
 
 ### `fromConfig(config)`
 
@@ -219,6 +306,7 @@ import { fromConfig } from 'cedar-agent-policy-builder'
 const { policies, entities } = fromConfig({
   principal: { key: 'user_id', type: 'User' },
   roles: { admin: ['*'], analyst: ['search', 'query_database'] },
+  users: { alice: ['admin'], bob: ['analyst'] },
   restrictions: { query_database: { allowedValues: { database: ['analytics', 'reporting'] } } },
   rateLimits: { send_email: 3 },
   timeWindow: { hourStart: 9, hourEnd: 17 },
@@ -235,7 +323,8 @@ The builder generates Cedar policies following the [cedar-for-agents](https://gi
 
 - **Actions** are named directly after tools (e.g. `Agent::Action::"search"`)
 - **Context** is nested: `context.input.*` for tool arguments, `context.session.*` for runtime state
-- **Principals** are entity types with a `role` attribute
+- **Roles** are Cedar entities; principals are granted access via `principal in Role::"name"`
+- **Users** are entities with Role parents in the entity hierarchy
 - **Resource** defaults to `McpServer::"default"`
 - **Default-deny** — no permit = denied
 

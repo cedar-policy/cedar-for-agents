@@ -13,13 +13,13 @@ describe('fromConfig', () => {
     })
 
     expect(policies).toContain(
-      `permit(\n  principal is Agent::User,\n  action,\n  resource\n) when { principal.role == "admin" };`
+      `permit(principal in Agent::Role::"admin", action, resource);`
     )
     expect(policies).toContain(
-      `permit(\n  principal is Agent::User,\n  action == Agent::Action::"search",\n  resource\n) when { principal.role == "analyst" };`
+      `permit(principal in Agent::Role::"analyst", action == Agent::Action::"search", resource);`
     )
     expect(policies).toContain(
-      `permit(\n  principal is Agent::User,\n  action == Agent::Action::"query_database",\n  resource\n) when { principal.role == "analyst" };`
+      `permit(principal in Agent::Role::"analyst", action == Agent::Action::"query_database", resource);`
     )
     expect(policies).toContain(
       `forbid(\n  principal,\n  action == Agent::Action::"query_database",\n  resource\n) when {\n  !(context.input has "database" && (context.input.database == "analytics" || context.input.database == "reporting"))\n};`
@@ -35,9 +35,9 @@ describe('fromConfig', () => {
     )
 
     expect(entities).toEqual([
-      { uid: { type: 'Role', id: 'admin' }, attrs: {}, parents: [] },
-      { uid: { type: 'Role', id: 'analyst' }, attrs: {}, parents: [] },
-      { uid: { type: 'McpServer', id: 'default' }, attrs: {}, parents: [] },
+      { uid: { type: 'Agent::Role', id: 'admin' }, attrs: {}, parents: [] },
+      { uid: { type: 'Agent::Role', id: 'analyst' }, attrs: {}, parents: [] },
+      { uid: { type: 'Agent::McpServer', id: 'default' }, attrs: {}, parents: [] },
     ])
   })
 })

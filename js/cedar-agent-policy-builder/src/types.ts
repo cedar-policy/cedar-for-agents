@@ -24,6 +24,7 @@ export interface SchemaConfig {
 export interface CedarAgentConfig {
   principal: PrincipalConfig
   roles?: Record<string, string[]>
+  users?: Record<string, string[]>
   restrictions?: Record<string, {
     allowedValues: Record<string, unknown[]>
   }>

@@ -7,10 +7,10 @@ function buildSchemaStub(config: CedarAgentConfig): string {
   const resourceType = config.resource?.type ?? 'McpServer'
 
   return `namespace ${ns} {
+  entity Role;
+
   @mcp_principal("${principalType}")
-  entity ${principalType} = {
-    role: String,
-  };
+  entity ${principalType} in [Role];
 
   @mcp_resource("${resourceType}")
   entity ${resourceType};

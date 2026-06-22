@@ -14,8 +14,8 @@ describe('CedarAgentPolicyBuilder', () => {
       .denyToolsInEnv('production', ['delete_record'])
       .build()
 
-    expect(result.policies).toContain('principal.role == "admin"')
-    expect(result.policies).toContain('principal.role == "analyst"')
+    expect(result.policies).toContain('Agent::Role::"admin"')
+    expect(result.policies).toContain('Agent::Role::"analyst"')
     expect(result.policies).toContain('Agent::Action::"query_database"')
     expect(result.policies).toContain('context.session has "call_count" && context.session.call_count >= 3')
     expect(result.policies).toContain('context.session has "hour_utc"')
@@ -28,14 +28,14 @@ describe('CedarAgentPolicyBuilder', () => {
       .role('viewer', ['read'])
       .build()
 
-    expect(result.policies).toContain('principal is Agent::User')
+    expect(result.policies).toContain('principal in Agent::Role::"viewer"')
   })
 
   it('generates McpServer entity even with no roles', () => {
     const result = new CedarAgentPolicyBuilder().build()
     expect(result.policies).toBe('')
     expect(result.entities).toEqual([
-      { uid: { type: 'McpServer', id: 'default' }, attrs: {}, parents: [] },
+      { uid: { type: 'Agent::McpServer', id: 'default' }, attrs: {}, parents: [] },
     ])
   })
 
@@ -48,7 +48,7 @@ describe('CedarAgentPolicyBuilder', () => {
     expect(result.policies).toContain('context.session has "user_consent" && context.session.user_consent == true')
     expect(result.policies).toContain('Agent::Action::"send_email"')
     expect(result.policies).toContain('Agent::Action::"delete_file"')
-    expect(result.policies).toContain('principal.role == "developer"')
+    expect(result.policies).toContain('Agent::Role::"developer"')
   })
 
   it('supports custom resource entity via constructor', () => {
@@ -57,7 +57,7 @@ describe('CedarAgentPolicyBuilder', () => {
     }).build()
 
     expect(result.entities).toContainEqual(
-      { uid: { type: 'AgentServer', id: 'my-agent' }, attrs: {}, parents: [] },
+      { uid: { type: 'Agent::AgentServer', id: 'my-agent' }, attrs: {}, parents: [] },
     )
   })
 
@@ -144,8 +144,8 @@ describe('CedarAgentPolicyBuilder', () => {
 
       // search gets an unconditional permit
       expect(result.policies).toContain('Agent::Action::"search"')
-      // send_email does NOT get an unconditional permit — only a consent-gated one
-      expect(result.policies).not.toMatch(/action == Agent::Action::"send_email".*\n.*\) when \{ principal\.role/)
+      // send_email does NOT get an unconditional role permit — only a consent-gated one
+      expect(result.policies).not.toMatch(/principal in Agent::Role::"analyst", action == Agent::Action::"send_email", resource\);/)
       expect(result.policies).toContain('context.session has "user_consent" && context.session.user_consent == true')
     })
 

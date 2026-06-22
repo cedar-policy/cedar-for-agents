@@ -60,6 +60,12 @@ export class CedarAgentPolicyBuilder {
     return this
   }
 
+  user(id: string, ...roles: string[]): this {
+    this._config.users ??= {}
+    this._config.users[id] = roles
+    return this
+  }
+
   restrict(tool: string, config: { allowedValues: Record<string, unknown[]> }): this {
     this._config.restrictions ??= {}
     this._config.restrictions[tool] = config

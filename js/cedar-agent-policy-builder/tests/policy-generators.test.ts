@@ -22,10 +22,10 @@ describe('generatePolicies', () => {
       }
       const policies = generatePolicies(config)
       expect(policies).toContain(
-        `permit(\n  principal is Agent::User,\n  action == Agent::Action::"search",\n  resource\n) when { principal.role == "analyst" };`
+        `permit(principal in Agent::Role::"analyst", action == Agent::Action::"search", resource);`
       )
       expect(policies).toContain(
-        `permit(\n  principal is Agent::User,\n  action == Agent::Action::"query_database",\n  resource\n) when { principal.role == "analyst" };`
+        `permit(principal in Agent::Role::"analyst", action == Agent::Action::"query_database", resource);`
       )
     })
 
@@ -36,7 +36,7 @@ describe('generatePolicies', () => {
       }
       const policies = generatePolicies(config)
       expect(policies).toContain(
-        `permit(\n  principal is Agent::User,\n  action,\n  resource\n) when { principal.role == "admin" };`
+        `permit(principal in Agent::Role::"admin", action, resource);`
       )
     })
 
@@ -46,16 +46,16 @@ describe('generatePolicies', () => {
         roles: { viewer: ['read'] },
       }
       const policies = generatePolicies(config)
-      expect(policies).toContain('principal is Agent::User')
+      expect(policies).toContain('principal in Agent::Role::"viewer"')
     })
 
-    it('uses custom principal type', () => {
+    it('custom principal type does not affect role policies', () => {
       const config: CedarAgentConfig = {
         principal: { key: 'agent_id', type: 'Agent' },
         roles: { viewer: ['read'] },
       }
       const policies = generatePolicies(config)
-      expect(policies).toContain('principal is Agent::Agent')
+      expect(policies).toContain('principal in Agent::Role::"viewer"')
     })
   })
 
@@ -183,7 +183,7 @@ describe('generatePolicies', () => {
       }
       const policies = generatePolicies(config)
       expect(policies).toContain('Agent::Action::"tool\\"inject"')
-      expect(policies).toContain('principal.role == "role\\"evil"')
+      expect(policies).toContain('Agent::Role::"role\\"evil"')
     })
   })
 
