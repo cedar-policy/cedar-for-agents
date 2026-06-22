@@ -94,6 +94,8 @@ cargo release version <minor|patch> --package cedar-policy-mcp-schema-generator-
 cargo release version <minor|patch> --package cedar-policy-mcp-schema-generator-python --execute
 ```
 
+> We may automate the version bump with a script or GitHub Action in the future.
+
 Stage the manifest changes and push:
 
 ```bash
@@ -123,7 +125,7 @@ For a **minor release**, replace the `## [Unreleased]` heading with:
 ## [<MAJOR>.<MINOR>.<PATCH>] - Coming soon
 ```
 
-For a **patch release**, add a new section above the previous patch entry for this minor version.
+For a patch release, add a new section above the previous patch entry for this minor version, with descriptions of the cherry-picked changes (bug fixes, security patches, etc.) that make up this patch release.
 
 Then commit and push:
 
@@ -181,7 +183,7 @@ Open a PR targeting `release/<CRATE>-<MAJOR>.<MINOR>.x`.
 
 Before moving to Phase 2, confirm that CI is green on the release branch HEAD:
 
-1. Go to the [Actions tab](https://github.com/cedar-policy/cedar-for-agents/actions) and check the latest run on `release/<CRATE>-<MAJOR>.<MINOR>.x`.
+1. Go to the [Actions tab](https://github.com/cedar-policy/cedar-for-agents/actions) and check the latest run of the **"CI"** workflow (`ci.yaml`) on `release/<CRATE>-<MAJOR>.<MINOR>.x`.
 2. If CI hasn't run automatically, push an empty commit or re-run the workflow manually.
 
 Do not proceed to publishing if tests are failing.
@@ -194,6 +196,8 @@ If you need to publish a Rust crates, follow these steps. If you are publishing 
 Typically, you will publish `mcp-tools-sdk`, then `cedar-policy-mcp-schema-generator` and then the bindings for `cedar-policy-mcp-schema-generator`.
 
 ### Create a GitHub release
+
+> In the future, we may automate GitHub release creation with a script or GitHub Action.
 
 1. Go to [Releases](https://github.com/cedar-policy/cedar-for-agents/releases) → "Create a new release".
 2. Create a new tag: `<CRATE>-v<MAJOR>.<MINOR>.<PATCH>`.
@@ -320,19 +324,21 @@ Open a PR targeting `main`.
 
 ## Rollback
 
-Published releases cannot be fully rolled back. If a release contains a critical defect:
+Published releases cannot be fully rolled back. We follow the [official crates.io guidance on yanking](https://doc.rust-lang.org/nightly/cargo/commands/cargo-yank.html#when-to-yank), which generally advises against it. Under normal circumstances, publish a corrective patch release first, then yank the defective version only after a semver-compatible replacement is available.
 
-1. **crates.io**: `cargo yank --vers <VERSION> <CRATE>`
-2. **npm**: `npm deprecate @cedar-policy/mcp-schema-generator-wasm@<VERSION> "reason"`
-3. **PyPI**: Yank the version via the PyPI web UI.
+If a release contains a critical defect:
 
-Then prepare and publish a corrective patch release as soon as possible.
+1. Prepare and publish a corrective patch release following the process above.
+2. Once the patch is available, yank the defective version:
+   - **crates.io**: `cargo yank --vers <VERSION> <CRATE>`
+   - **npm**: `npm deprecate @cedar-policy/mcp-schema-generator-wasm@<VERSION> "reason"`
+   - **PyPI**: Yank the version via the PyPI web UI.
 
 ---
 
 ## Environment Protection
 
-All publish workflows are gated by a protected GitHub environment (`release`) that requires manual approval before publishing proceeds. The approval requirements are configured in the repository's **Settings → Environments → `release`** and may change over time.
+All publish workflows are gated by a protected GitHub environment (`release`) that requires manual approval before publishing proceeds. Contact a repository maintainer if you need approval access.
 
 ## Security Note
 
