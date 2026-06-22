@@ -37,7 +37,7 @@ describe('fromConfig', () => {
     expect(entities).toEqual([
       { uid: { type: 'Agent::Role', id: 'admin' }, attrs: {}, parents: [] },
       { uid: { type: 'Agent::Role', id: 'analyst' }, attrs: {}, parents: [] },
-      { uid: { type: 'Agent::McpServer', id: 'default' }, attrs: {}, parents: [] },
+      { uid: { type: 'Agent::Resource', id: 'default' }, attrs: {}, parents: [] },
     ])
   })
 })

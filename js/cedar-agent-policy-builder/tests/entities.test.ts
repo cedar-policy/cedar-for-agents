@@ -7,7 +7,7 @@ describe('generateEntities', () => {
   it('generates McpServer resource entity even with no roles', () => {
     const config: CedarAgentConfig = { principal: { key: 'user_id' } }
     expect(generateEntities(config)).toEqual([
-      { uid: { type: 'Agent::McpServer', id: 'default' }, attrs: {}, parents: [] },
+      { uid: { type: 'Agent::Resource', id: 'default' }, attrs: {}, parents: [] },
     ])
   })
 
@@ -20,7 +20,7 @@ describe('generateEntities', () => {
     expect(entities).toEqual([
       { uid: { type: 'Agent::Role', id: 'admin' }, attrs: {}, parents: [] },
       { uid: { type: 'Agent::Role', id: 'analyst' }, attrs: {}, parents: [] },
-      { uid: { type: 'Agent::McpServer', id: 'default' }, attrs: {}, parents: [] },
+      { uid: { type: 'Agent::Resource', id: 'default' }, attrs: {}, parents: [] },
     ])
   })
 

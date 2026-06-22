@@ -102,7 +102,7 @@ permit(
   { "uid": { "type": "Agent::Role", "id": "developer" }, "attrs": {}, "parents": [] },
   { "uid": { "type": "Agent::User", "id": "alice" }, "attrs": {}, "parents": [{ "type": "Agent::Role", "id": "admin" }] },
   { "uid": { "type": "Agent::User", "id": "bob" }, "attrs": {}, "parents": [{ "type": "Agent::Role", "id": "analyst" }, { "type": "Agent::Role", "id": "developer" }] },
-  { "uid": { "type": "Agent::McpServer", "id": "default" }, "attrs": {}, "parents": [] }
+  { "uid": { "type": "Agent::Resource", "id": "default" }, "attrs": {}, "parents": [] }
 ]
 ```
 
@@ -119,7 +119,7 @@ namespace Agent {
     query: String
   };
 
-  entity McpServer;
+  entity Resource;
 
   entity Role;
 
@@ -127,13 +127,13 @@ namespace Agent {
 
   action "search" appliesTo {
     principal: [User],
-    resource: [McpServer],
+    resource: [Resource],
     context: { input: searchInput }
   };
 
   action "query_database" appliesTo {
     principal: [User],
-    resource: [McpServer],
+    resource: [Resource],
     context: { input: query_databaseInput }
   };
 }
@@ -279,7 +279,7 @@ This is simpler but role is a pure runtime declaration — no entity graph backi
 | Option      | Description                                                      |
 | ----------- | ---------------------------------------------------------------- |
 | `principal` | Identity resolution. Default: `{ key: 'user_id', type: 'User' }` |
-| `resource`  | Custom resource entity. Default: `McpServer::"default"`.         |
+| `resource`  | Custom resource entity. Default: `Resource::"default"`.         |
 | `tools`     | MCP tool definitions for schema generation.                      |
 | `namespace` | Cedar namespace. Default: `"Agent"`.                             |
 
@@ -325,7 +325,7 @@ The builder generates Cedar policies following the [cedar-for-agents](https://gi
 - **Context** is nested: `context.input.*` for tool arguments, `context.session.*` for runtime state
 - **Roles** are Cedar entities; principals are granted access via `principal in Role::"name"`
 - **Users** are entities with Role parents in the entity hierarchy
-- **Resource** defaults to `McpServer::"default"`
+- **Resource** defaults to `Resource::"default"`
 - **Default-deny** — no permit = denied
 
 All `context.session.*` field accesses include `has` guards for safety (Cedar errors on missing fields rather than returning false).

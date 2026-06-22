@@ -19,7 +19,7 @@ function authorize(opts: {
   const result = isAuthorized({
     principal: opts.principal,
     action: { type: 'Agent::Action', id: opts.action },
-    resource: { type: 'Agent::McpServer', id: 'default' },
+    resource: { type: 'Agent::Resource', id: 'default' },
     context: {
       input: opts.context?.input ?? {},
       session: { hour_utc: 12, call_count: 0, ...opts.context?.session },

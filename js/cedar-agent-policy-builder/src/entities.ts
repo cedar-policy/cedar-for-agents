@@ -22,7 +22,7 @@ export function generateEntities(config: CedarAgentConfig): EntityJson[] {
     }
   }
 
-  const resource = config.resource ?? { type: 'McpServer', id: 'default' }
+  const resource = config.resource ?? { type: 'Resource', id: 'default' }
   entities.push({ uid: { type: `${ns}::${resource.type}`, id: resource.id }, attrs: {}, parents: [] })
 
   return entities

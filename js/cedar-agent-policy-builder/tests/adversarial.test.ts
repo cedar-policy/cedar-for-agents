@@ -37,7 +37,7 @@ describe('adversarial: Cedar syntax injection via tool names', () => {
       entities: [{ uid: { type: 'Agent::User', id: 'alice' }, attrs: {}, parents: [{ type: 'Agent::Role', id: 'admin' }] }],
       principal: { type: 'Agent::User', id: 'alice' },
       action: 'tool"; forbid(principal, action, resource);// ',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: {} },
     })
     expect(result.decision).toBe('allow')
@@ -55,7 +55,7 @@ describe('adversarial: Cedar syntax injection via tool names', () => {
       ],
       principal: { type: 'Agent::User', id: 'alice' },
       action: 'search',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: {} },
     })
     expect(result.decision).toBe('allow')
@@ -71,7 +71,7 @@ describe('adversarial: Cedar syntax injection via tool names', () => {
       entities: [{ uid: { type: 'Agent::User', id: 'a' }, attrs: {}, parents: [{ type: 'Agent::Role', id: 'user' }] }],
       principal: { type: 'Agent::User', id: 'a' },
       action: 'tool\\',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: {} },
     })
     // Should either allow (correct parse) or error (invalid Cedar) — never silently permit everything
@@ -93,7 +93,7 @@ describe('adversarial: deny-by-default behavior', () => {
       ],
       principal: { type: 'Agent::User', id: 'unknown' },
       action: 'search',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: {} },
     })
     expect(result.decision).toBe('deny')
@@ -112,7 +112,7 @@ describe('adversarial: deny-by-default behavior', () => {
       ],
       principal: { type: 'Agent::User', id: 'norole' },
       action: 'search',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: {} },
     })
     expect(result.decision).not.toBe('allow')
@@ -131,7 +131,7 @@ describe('adversarial: deny-by-default behavior', () => {
       ],
       principal: { type: 'Hacker', id: 'evil' },
       action: 'search',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: {} },
     })
     expect(result.decision).toBe('deny')
@@ -158,7 +158,7 @@ describe('adversarial: restriction bypass attempts', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'bob' },
       action: 'query_database',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: {} },
     })
     // The `has` guard makes this safe: context.input has "database" → false
@@ -172,7 +172,7 @@ describe('adversarial: restriction bypass attempts', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'bob' },
       action: 'query_database',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: { database: null }, session: {} },
     })
     expect(result.decision).not.toBe('allow')
@@ -184,7 +184,7 @@ describe('adversarial: restriction bypass attempts', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'bob' },
       action: 'query_database',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: { database: 123 }, session: {} },
     })
     expect(result.decision).not.toBe('allow')
@@ -196,7 +196,7 @@ describe('adversarial: restriction bypass attempts', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'bob' },
       action: 'query_database',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: { database: 'Analytics' }, session: {} },
     })
     expect(result.decision).toBe('deny')
@@ -208,7 +208,7 @@ describe('adversarial: restriction bypass attempts', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'bob' },
       action: 'query_database',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: { database: 'analytics ' }, session: {} },
     })
     expect(result.decision).toBe('deny')
@@ -233,7 +233,7 @@ describe('adversarial: rate limit boundary conditions', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'alice' },
       action: 'send_email',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: { call_count: 0 } },
     })
     expect(result.decision).toBe('allow')
@@ -245,7 +245,7 @@ describe('adversarial: rate limit boundary conditions', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'alice' },
       action: 'send_email',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: { call_count: 2 } },
     })
     expect(result.decision).toBe('allow')
@@ -257,7 +257,7 @@ describe('adversarial: rate limit boundary conditions', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'alice' },
       action: 'send_email',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: { call_count: 3 } },
     })
     expect(result.decision).toBe('deny')
@@ -269,7 +269,7 @@ describe('adversarial: rate limit boundary conditions', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'alice' },
       action: 'send_email',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: { call_count: 999999 } },
     })
     expect(result.decision).toBe('deny')
@@ -281,7 +281,7 @@ describe('adversarial: rate limit boundary conditions', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'alice' },
       action: 'send_email',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: { call_count: -1 } },
     })
     expect(result.decision).toBe('allow')
@@ -293,7 +293,7 @@ describe('adversarial: rate limit boundary conditions', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'alice' },
       action: 'send_email',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: {} },
     })
     // Cedar errors on accessing missing attr → forbid policy errors out → no forbid effect → allow
@@ -321,7 +321,7 @@ describe('adversarial: time window edge cases', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'alice' },
       action: 'search',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: { hour_utc: 9 } },
     })
     expect(result.decision).toBe('allow')
@@ -333,7 +333,7 @@ describe('adversarial: time window edge cases', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'alice' },
       action: 'search',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: { hour_utc: 16 } },
     })
     expect(result.decision).toBe('allow')
@@ -345,7 +345,7 @@ describe('adversarial: time window edge cases', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'alice' },
       action: 'search',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: { hour_utc: 17 } },
     })
     expect(result.decision).toBe('deny')
@@ -357,7 +357,7 @@ describe('adversarial: time window edge cases', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'alice' },
       action: 'search',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: { hour_utc: 8 } },
     })
     expect(result.decision).toBe('deny')
@@ -369,7 +369,7 @@ describe('adversarial: time window edge cases', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'alice' },
       action: 'search',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: { hour_utc: 0 } },
     })
     expect(result.decision).toBe('deny')
@@ -381,7 +381,7 @@ describe('adversarial: time window edge cases', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'alice' },
       action: 'search',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: { hour_utc: 23 } },
     })
     expect(result.decision).toBe('deny')
@@ -406,7 +406,7 @@ describe('adversarial: environment denial bypass attempts', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'alice' },
       action: 'delete_record',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: { environment: 'Production' } },
     })
     // "Production" != "production" — forbid doesn't fire, so allow stands
@@ -419,7 +419,7 @@ describe('adversarial: environment denial bypass attempts', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'alice' },
       action: 'delete_record',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: { environment: '' } },
     })
     expect(result.decision).toBe('allow')
@@ -431,7 +431,7 @@ describe('adversarial: environment denial bypass attempts', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'alice' },
       action: 'delete_record',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: {} },
     })
     // Cedar errors accessing missing field → forbid errors out → no forbid → allow
@@ -455,7 +455,7 @@ describe('adversarial: policy interaction / precedence', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'alice' },
       action: 'search',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: { call_count: 5 } },
     })
     // Even though admin has wildcard permit, the rate limit forbid wins
@@ -479,7 +479,7 @@ describe('adversarial: policy interaction / precedence', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'alice' },
       action: 'search',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: { hour_utc: 2, environment: 'staging' } },
     })
     expect(result1.decision).toBe('deny')
@@ -490,7 +490,7 @@ describe('adversarial: policy interaction / precedence', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'alice' },
       action: 'delete_record',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: { hour_utc: 10, environment: 'production' } },
     })
     expect(result2.decision).toBe('deny')
@@ -512,7 +512,7 @@ describe('adversarial: unicode and special characters', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'tanaka' },
       action: 'search',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: {} },
     })
     expect(result.decision).toBe('allow')
@@ -532,7 +532,7 @@ describe('adversarial: unicode and special characters', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'a' },
       action: '🔍search',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: {} },
     })
     expect(result.decision).toBe('allow')
@@ -552,7 +552,7 @@ describe('adversarial: unicode and special characters', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'a' },
       action: '',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: {} },
     })
     expect(result.decision).toBe('allow')
@@ -566,14 +566,14 @@ describe('adversarial: empty and degenerate configs', () => {
     })
     expect(policies).toBe('')
     expect(entities).toEqual([
-      { uid: { type: 'Agent::McpServer', id: 'default' }, attrs: {}, parents: [] },
+      { uid: { type: 'Agent::Resource', id: 'default' }, attrs: {}, parents: [] },
     ])
     const result = authorize({
       policies,
       entities: [{ uid: { type: 'Agent::User', id: 'a' }, attrs: {}, parents: [] }],
       principal: { type: 'Agent::User', id: 'a' },
       action: 'anything',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: {} },
     })
     expect(result.decision).toBe('deny')
@@ -595,7 +595,7 @@ describe('adversarial: empty and degenerate configs', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'a' },
       action: 'search',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: { call_count: 0 } },
     })
     expect(result.decision).toBe('deny')
@@ -617,7 +617,7 @@ describe('adversarial: empty and degenerate configs', () => {
       entities: userEntities,
       principal: { type: 'Agent::User', id: 'a' },
       action: 'search',
-      resource: { type: 'Agent::McpServer', id: 'agent' },
+      resource: { type: 'Agent::Resource', id: 'agent' },
       context: { input: {}, session: { hour_utc: 12 } },
     })
     expect(result.decision).toBe('deny')
@@ -634,15 +634,15 @@ describe('consent enforcement: consent cannot be bypassed by role permits', () =
     const allEntities = [...entities, { uid: { type: 'Agent::User', id: 'bob' }, attrs: {}, parents: [{ type: 'Agent::Role', id: 'analyst' }] }]
 
     // search: allowed (unconditional permit)
-    const r1 = authorize({ policies, entities: allEntities, principal: { type: 'Agent::User', id: 'bob' }, action: 'search', resource: { type: 'Agent::McpServer', id: 'default' }, context: { input: {}, session: {} } })
+    const r1 = authorize({ policies, entities: allEntities, principal: { type: 'Agent::User', id: 'bob' }, action: 'search', resource: { type: 'Agent::Resource', id: 'default' }, context: { input: {}, session: {} } })
     expect(r1.decision).toBe('allow')
 
     // send_email without consent: denied
-    const r2 = authorize({ policies, entities: allEntities, principal: { type: 'Agent::User', id: 'bob' }, action: 'send_email', resource: { type: 'Agent::McpServer', id: 'default' }, context: { input: {}, session: {} } })
+    const r2 = authorize({ policies, entities: allEntities, principal: { type: 'Agent::User', id: 'bob' }, action: 'send_email', resource: { type: 'Agent::Resource', id: 'default' }, context: { input: {}, session: {} } })
     expect(r2.decision).toBe('deny')
 
     // send_email with consent: allowed
-    const r3 = authorize({ policies, entities: allEntities, principal: { type: 'Agent::User', id: 'bob' }, action: 'send_email', resource: { type: 'Agent::McpServer', id: 'default' }, context: { input: {}, session: { user_consent: true } } })
+    const r3 = authorize({ policies, entities: allEntities, principal: { type: 'Agent::User', id: 'bob' }, action: 'send_email', resource: { type: 'Agent::Resource', id: 'default' }, context: { input: {}, session: { user_consent: true } } })
     expect(r3.decision).toBe('allow')
   })
 
@@ -655,15 +655,15 @@ describe('consent enforcement: consent cannot be bypassed by role permits', () =
     const allEntities = [...entities, { uid: { type: 'Agent::User', id: 'alice' }, attrs: {}, parents: [{ type: 'Agent::Role', id: 'admin' }] }]
 
     // other tools: allowed (wildcard minus exclusion)
-    const r1 = authorize({ policies, entities: allEntities, principal: { type: 'Agent::User', id: 'alice' }, action: 'delete_record', resource: { type: 'Agent::McpServer', id: 'default' }, context: { input: {}, session: {} } })
+    const r1 = authorize({ policies, entities: allEntities, principal: { type: 'Agent::User', id: 'alice' }, action: 'delete_record', resource: { type: 'Agent::Resource', id: 'default' }, context: { input: {}, session: {} } })
     expect(r1.decision).toBe('allow')
 
     // send_email without consent: denied even for admin
-    const r2 = authorize({ policies, entities: allEntities, principal: { type: 'Agent::User', id: 'alice' }, action: 'send_email', resource: { type: 'Agent::McpServer', id: 'default' }, context: { input: {}, session: {} } })
+    const r2 = authorize({ policies, entities: allEntities, principal: { type: 'Agent::User', id: 'alice' }, action: 'send_email', resource: { type: 'Agent::Resource', id: 'default' }, context: { input: {}, session: {} } })
     expect(r2.decision).toBe('deny')
 
     // send_email with consent: allowed
-    const r3 = authorize({ policies, entities: allEntities, principal: { type: 'Agent::User', id: 'alice' }, action: 'send_email', resource: { type: 'Agent::McpServer', id: 'default' }, context: { input: {}, session: { user_consent: true } } })
+    const r3 = authorize({ policies, entities: allEntities, principal: { type: 'Agent::User', id: 'alice' }, action: 'send_email', resource: { type: 'Agent::Resource', id: 'default' }, context: { input: {}, session: { user_consent: true } } })
     expect(r3.decision).toBe('allow')
   })
 
@@ -681,15 +681,15 @@ describe('consent enforcement: consent cannot be bypassed by role permits', () =
     ]
 
     // admin: send_email allowed without consent (no consent gate for admin)
-    const r1 = authorize({ policies, entities: allEntities, principal: { type: 'Agent::User', id: 'alice' }, action: 'send_email', resource: { type: 'Agent::McpServer', id: 'default' }, context: { input: {}, session: {} } })
+    const r1 = authorize({ policies, entities: allEntities, principal: { type: 'Agent::User', id: 'alice' }, action: 'send_email', resource: { type: 'Agent::Resource', id: 'default' }, context: { input: {}, session: {} } })
     expect(r1.decision).toBe('allow')
 
     // analyst: send_email denied without consent
-    const r2 = authorize({ policies, entities: allEntities, principal: { type: 'Agent::User', id: 'bob' }, action: 'send_email', resource: { type: 'Agent::McpServer', id: 'default' }, context: { input: {}, session: {} } })
+    const r2 = authorize({ policies, entities: allEntities, principal: { type: 'Agent::User', id: 'bob' }, action: 'send_email', resource: { type: 'Agent::Resource', id: 'default' }, context: { input: {}, session: {} } })
     expect(r2.decision).toBe('deny')
 
     // analyst: send_email allowed with consent
-    const r3 = authorize({ policies, entities: allEntities, principal: { type: 'Agent::User', id: 'bob' }, action: 'send_email', resource: { type: 'Agent::McpServer', id: 'default' }, context: { input: {}, session: { user_consent: true } } })
+    const r3 = authorize({ policies, entities: allEntities, principal: { type: 'Agent::User', id: 'bob' }, action: 'send_email', resource: { type: 'Agent::Resource', id: 'default' }, context: { input: {}, session: { user_consent: true } } })
     expect(r3.decision).toBe('allow')
   })
 })

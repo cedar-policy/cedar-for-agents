@@ -20,7 +20,7 @@ describe('CedarAgentPolicyBuilder', () => {
     expect(result.policies).toContain('context.session has "call_count" && context.session.call_count >= 3')
     expect(result.policies).toContain('context.session has "hour_utc"')
     expect(result.policies).toContain('context.session has "environment" && context.session.environment == "production"')
-    expect(result.entities).toHaveLength(3) // 2 roles + McpServer
+    expect(result.entities).toHaveLength(3) // 2 roles + Resource
   })
 
   it('defaults principal type to User when no constructor arg', () => {
@@ -31,11 +31,11 @@ describe('CedarAgentPolicyBuilder', () => {
     expect(result.policies).toContain('principal in Agent::Role::"viewer"')
   })
 
-  it('generates McpServer entity even with no roles', () => {
+  it('generates Resource entity even with no roles', () => {
     const result = new CedarAgentPolicyBuilder().build()
     expect(result.policies).toBe('')
     expect(result.entities).toEqual([
-      { uid: { type: 'Agent::McpServer', id: 'default' }, attrs: {}, parents: [] },
+      { uid: { type: 'Agent::Resource', id: 'default' }, attrs: {}, parents: [] },
     ])
   })
 
@@ -75,7 +75,7 @@ describe('CedarAgentPolicyBuilder', () => {
     expect(result.schema).toContain('action "search"')
     expect(result.schema).toContain('searchInput')
     expect(result.schema).toContain('entity User')
-    expect(result.schema).toContain('entity McpServer')
+    expect(result.schema).toContain('entity Resource')
   })
 
   it('does not generate schema when no tools provided', () => {
