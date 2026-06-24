@@ -776,13 +776,18 @@ impl SchemaGenerator {
         if self.tools.tool_descriptions().count() != 0 {
             return Err(SchemaGeneratorError::ServerDescriptionMerge);
         }
-        self.tools = ServerDescription::new(vec![description.clone()].into_iter(), HashMap::new());
-        // Keep a copy of schema fragment in case we have an error
+        // Keep a copy of state (schema, tools and dedup) in case we have an error
         let fragment = self.fragment.clone();
+        let tools = self.tools.clone();
+        let resolved_dedup = self.resolved_dedup.clone();
+        self.tools = ServerDescription::new(vec![description.clone()].into_iter(), HashMap::new());
         match self.add_action_from_tool_description_inner(description, BTreeMap::new()) {
             Ok(_) => Ok(()),
             Err(e) => {
+                // Restore the values if adding the new tool failed.
                 self.fragment = fragment;
+                self.tools = tools;
+                self.resolved_dedup = resolved_dedup;
                 Err(e)
             }
         }
@@ -794,12 +799,17 @@ impl SchemaGenerator {
         &mut self,
         description: &ServerDescription,
     ) -> Result<(), SchemaGeneratorError> {
-        // Keep a copy of schema fragment in case we have an error
+        // Keep a copy of generatore state (schema, tools, dedup map) in case we have an error
         let fragment = self.fragment.clone();
+        let tools = self.tools.clone();
+        let resolved_dedup = self.resolved_dedup.clone();
         match self.add_actions_from_server_description_inner(description) {
             Ok(_) => Ok(()),
             Err(e) => {
+                // Restore the cloned values
                 self.fragment = fragment;
+                self.tools = tools;
+                self.resolved_dedup = resolved_dedup;
                 Err(e)
             }
         }
@@ -3156,6 +3166,65 @@ namespace Test2 {
                 .contains_key(&"Proj0".parse().unwrap()),
             "Expected deduplicated enum from tuple in root namespace"
         );
+    }
+
+    fn bad_tool() -> ToolDescription {
+        let json = r#"{
+    "name": "bad_tool",
+    "description": "Tool with invalid property name",
+    "inputSchema": {
+        "type": "object",
+        "properties": { "foo bar": {"type": "string"} }
+    }
+}"#;
+        ToolDescription::from_json_str(json).expect("Failed to parse tool description")
+    }
+
+    fn good_tool() -> ToolDescription {
+        let json = r#"{
+    "name": "good_tool",
+    "description": "Valid tool",
+    "inputSchema": {
+        "type": "object",
+        "properties": { "task_id": {"type": "string"} }
+    }
+}"#;
+        ToolDescription::from_json_str(json).expect("Failed to parse tool description")
+    }
+
+    #[test]
+    fn test_failed_add_action_does_not_lock_generator() {
+        let mut schema_gen =
+            SchemaGenerator::new(test_schema_stub()).expect("Failed to create schema generator");
+
+        assert!(schema_gen
+            .add_action_from_tool_description(&bad_tool())
+            .is_err());
+
+        assert_eq!(
+            schema_gen.tools.tool_descriptions().count(),
+            0,
+            "Failed tool should not remain in generator state"
+        );
+
+        schema_gen
+            .add_action_from_tool_description(&good_tool())
+            .expect("Generator should accept a valid tool after a failed attempt");
+    }
+
+    #[test]
+    fn test_failed_add_actions_from_server_does_not_lock_generator() {
+        let bad_server = ServerDescription::new(vec![bad_tool()].into_iter(), HashMap::new());
+
+        let mut gen =
+            SchemaGenerator::new(test_schema_stub()).expect("Failed to create schema generator");
+
+        assert!(gen
+            .add_actions_from_server_description(&bad_server)
+            .is_err());
+
+        gen.add_action_from_tool_description(&good_tool())
+            .expect("Generator should accept a valid tool after a failed server description");
     }
 }
 
