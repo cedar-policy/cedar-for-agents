@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `SchemaGenerator` now stays in a good state even when `add_actions_from_server_description` / `add_action_from_tool_description` fails due to malformed tool descriptions.
+
 ## [0.6.0] - 2026-05-26
 
 ### Added
