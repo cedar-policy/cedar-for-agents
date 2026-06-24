@@ -172,25 +172,25 @@ pub fn decode_json_escapes_bytes(input: &[u8], start: usize, end: usize) -> (res
         if b != 0x5C {
             // Non-escape byte: copy directly
             out.push(b);
-            i = i + 1;
+            i += 1;
         } else {
             // Escape sequence
-            i = i + 1;
+            i += 1;
             if i >= end {
                 return DecodeResult::Err { pos: i };
             }
             let esc = input[i];
-            if esc == 0x22 { out.push(0x22); i = i + 1; }        // \"
-            else if esc == 0x5C { out.push(0x5C); i = i + 1; }   // \\
-            else if esc == 0x2F { out.push(0x2F); i = i + 1; }   // \/
-            else if esc == 0x62 { out.push(0x08); i = i + 1; }   // \b
-            else if esc == 0x66 { out.push(0x0C); i = i + 1; }   // \f
-            else if esc == 0x6E { out.push(0x0A); i = i + 1; }   // \n
-            else if esc == 0x72 { out.push(0x0D); i = i + 1; }   // \r
-            else if esc == 0x74 { out.push(0x09); i = i + 1; }   // \t
+            if esc == 0x22 { out.push(0x22); i += 1; }        // \"
+            else if esc == 0x5C { out.push(0x5C); i += 1; }   // \\
+            else if esc == 0x2F { out.push(0x2F); i += 1; }   // \/
+            else if esc == 0x62 { out.push(0x08); i += 1; }   // \b
+            else if esc == 0x66 { out.push(0x0C); i += 1; }   // \f
+            else if esc == 0x6E { out.push(0x0A); i += 1; }   // \n
+            else if esc == 0x72 { out.push(0x0D); i += 1; }   // \r
+            else if esc == 0x74 { out.push(0x09); i += 1; }   // \t
             else if esc == 0x75 {
                 // \uXXXX
-                i = i + 1;
+                i += 1;
                 if end - i < 4 {
                     return DecodeResult::Err { pos: i };
                 }
@@ -198,7 +198,7 @@ pub fn decode_json_escapes_bytes(input: &[u8], start: usize, end: usize) -> (res
                     Some(v) => v,
                     None => return DecodeResult::Err { pos: i },
                 };
-                i = i + 4;
+                i += 4;
 
                 if 0xD800 <= cp && cp <= 0xDBFF {
                     // High surrogate — expect \uXXXX low surrogate
@@ -208,12 +208,12 @@ pub fn decode_json_escapes_bytes(input: &[u8], start: usize, end: usize) -> (res
                     if input[i] != 0x5C || input[i + 1] != 0x75 {
                         return DecodeResult::Err { pos: i };
                     }
-                    i = i + 2;
+                    i += 2;
                     let low = match decode_hex4(input, i) {
                         Some(v) => v,
                         None => return DecodeResult::Err { pos: i },
                     };
-                    i = i + 4;
+                    i += 4;
                     if !(0xDC00 <= low && low <= 0xDFFF) {
                         return DecodeResult::Err { pos: i };
                     }

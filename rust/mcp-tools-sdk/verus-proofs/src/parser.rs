@@ -1,7 +1,7 @@
-use vstd::prelude::*;
-use crate::tokenizer::{Token, TokenKind};
-use crate::escape::{decode_json_escapes_bytes, DecodeResult};
 use crate::dedup::slices_equal;
+use crate::escape::{decode_json_escapes_bytes, DecodeResult};
+use crate::tokenizer::{Token, TokenKind};
+use vstd::prelude::*;
 
 verus! {
 
@@ -74,7 +74,7 @@ fn decode_string_token(input: &[u8], start: usize, end: usize) -> (result: Decod
                 decreases content_end - k,
             {
                 raw.push(input[k]);
-                k = k + 1;
+                k += 1;
             }
             DecodeStringResult::Ok { bytes: raw }
         }
@@ -86,7 +86,7 @@ fn decode_string_token(input: &[u8], start: usize, end: usize) -> (result: Decod
 pub fn parse_value(input: &[u8], tokens: &[Token], idx: usize, gas: usize) -> (result: ParseResult)
     requires
         idx <= tokens@.len(),
-        forall|i: int| 0 <= i && i < tokens@.len() ==>
+        forall|i: int| #![auto] 0 <= i && i < tokens@.len() ==>
             tokens@[i].start < tokens@[i].end && tokens@[i].end <= input@.len(),
     ensures
         match result {
@@ -147,7 +147,7 @@ fn parse_array_body(input: &[u8], tokens: &[Token], cur_start: usize, gas: usize
         cur_start <= tokens@.len(),
         cur_start >= 1,
         gas > 0,
-        forall|i: int| 0 <= i && i < tokens@.len() ==>
+        forall|i: int| #![auto] 0 <= i && i < tokens@.len() ==>
             tokens@[i].start < tokens@[i].end && tokens@[i].end <= input@.len(),
     ensures
         match result {
@@ -178,7 +178,7 @@ fn parse_array_body(input: &[u8], tokens: &[Token], cur_start: usize, gas: usize
             cur_start <= cur <= tokens@.len(),
             cur_start >= 1,
             gas > 0,
-            forall|i: int| 0 <= i && i < tokens@.len() ==>
+            forall|i: int| #![auto] 0 <= i && i < tokens@.len() ==>
                 tokens@[i].start < tokens@[i].end && tokens@[i].end <= input@.len(),
         decreases tokens@.len() - cur,
     {
@@ -186,7 +186,7 @@ fn parse_array_body(input: &[u8], tokens: &[Token], cur_start: usize, gas: usize
             return ParseResult::Err { err: ParseError::UnexpectedToken { pos: 0 } };
         }
 
-        let sub_gas = if gas > 1 { (gas - 1) as usize } else { 0 };
+        let sub_gas = if gas > 1 { gas - 1 } else { 0 };
         match parse_value(input, tokens, cur, sub_gas) {
             ParseResult::Ok { value, next } => {
                 elements.push(value);
@@ -208,7 +208,7 @@ fn parse_array_body(input: &[u8], tokens: &[Token], cur_start: usize, gas: usize
                 };
             }
             TokenKind::Comma => {
-                cur = cur + 1;
+                cur += 1;
             }
             _ => {
                 return ParseResult::Err { err: ParseError::UnexpectedToken { pos: tokens[cur].start } };
@@ -220,6 +220,7 @@ fn parse_array_body(input: &[u8], tokens: &[Token], cur_start: usize, gas: usize
 /// Spec: all decoded keys in entries are pairwise distinct
 pub open spec fn keys_are_distinct(entries: Seq<ObjectEntry>) -> bool {
     forall|i: int, j: int|
+        #![auto]
         0 <= i && i < j && j < entries.len()
         ==> !(entries[i].decoded_key@ =~= entries[j].decoded_key@)
 }
@@ -230,7 +231,7 @@ fn parse_object_body(input: &[u8], tokens: &[Token], cur_start: usize, gas: usiz
         cur_start <= tokens@.len(),
         cur_start >= 1,
         gas > 0,
-        forall|i: int| 0 <= i && i < tokens@.len() ==>
+        forall|i: int| #![auto] 0 <= i && i < tokens@.len() ==>
             tokens@[i].start < tokens@[i].end && tokens@[i].end <= input@.len(),
     ensures
         match result {
@@ -268,7 +269,7 @@ fn parse_object_body(input: &[u8], tokens: &[Token], cur_start: usize, gas: usiz
             cur_start <= cur <= tokens@.len(),
             cur_start >= 1,
             gas > 0,
-            forall|i: int| 0 <= i && i < tokens@.len() ==>
+            forall|i: int| #![auto] 0 <= i && i < tokens@.len() ==>
                 tokens@[i].start < tokens@[i].end && tokens@[i].end <= input@.len(),
             keys_are_distinct(entries@),
         decreases tokens@.len() - cur,
@@ -331,7 +332,7 @@ fn parse_object_body(input: &[u8], tokens: &[Token], cur_start: usize, gas: usiz
                 dup_idx <= entries@.len(),
                 found_dup ==> dup_idx < entries@.len(),
                 // All entries before dup_idx differ from decoded_key
-                !found_dup ==> forall|k: int| 0 <= k && k < dup_idx as int ==>
+                !found_dup ==> forall|k: int| #![auto] 0 <= k && k < dup_idx as int ==>
                     !(entries@[k].decoded_key@ =~= decoded_key@),
             decreases entries@.len() - dup_idx, (!found_dup) as int,
         {
@@ -346,7 +347,7 @@ fn parse_object_body(input: &[u8], tokens: &[Token], cur_start: usize, gas: usiz
             return ParseResult::Err { err: ParseError::DuplicateKey { first_pos, second_pos: key_start } };
         }
         // At this point: decoded_key differs from all existing entries' keys
-        assert(forall|k: int| 0 <= k && k < entries@.len() ==>
+        assert(forall|k: int| #![auto] 0 <= k && k < entries@.len() ==>
             !(entries@[k].decoded_key@ =~= decoded_key@));
 
         // Colon
@@ -401,7 +402,7 @@ fn parse_object_body(input: &[u8], tokens: &[Token], cur_start: usize, gas: usiz
 /// Parse a complete JSON document.
 pub fn parse(input: &[u8], tokens: &[Token]) -> (result: ParseResult)
     requires
-        forall|i: int| 0 <= i && i < tokens@.len() ==>
+        forall|i: int| #![auto] 0 <= i && i < tokens@.len() ==>
             tokens@[i].start < tokens@[i].end && tokens@[i].end <= input@.len(),
     ensures
         match result {

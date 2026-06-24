@@ -455,16 +455,16 @@ pub fn consume_string(input: &[u8], pos: usize) -> (result: StringResult)
             return StringResult::Ok { end: i + 1 };
         } else if b == 0x5C {
             // backslash — escape sequence
-            i = i + 1;
+            i += 1;
             if i >= input.len() {
                 return StringResult::UnterminatedString;
             }
             let esc = input[i];
             if is_simple_escape(esc) {
-                i = i + 1;
+                i += 1;
             } else if esc == 0x75 {
                 // 'u' — unicode escape \uXXXX
-                i = i + 1;
+                i += 1;
                 match consume_four_hex_digits(input, i) {
                     Some(end) => { i = end; }
                     None => { return StringResult::InvalidEscape { pos: i }; }
@@ -476,7 +476,7 @@ pub fn consume_string(input: &[u8], pos: usize) -> (result: StringResult)
             // control characters not allowed in JSON strings
             return StringResult::InvalidEscape { pos: i };
         } else {
-            i = i + 1;
+            i += 1;
         }
     }
     StringResult::UnterminatedString
@@ -518,7 +518,7 @@ pub fn consume_keyword(input: &[u8], pos: usize, keyword: &[u8]) -> (result: Opt
         if input[pos + i] != keyword[i] {
             return None;
         }
-        i = i + 1;
+        i += 1;
     }
     assert(input@.subrange(pos as int, end as int) =~= keyword@);
     Some(end)
@@ -656,7 +656,7 @@ pub fn get_token(input: &[u8], pos: usize) -> (result: TokenResult)
     }
 
     // Number: starts with '-' or digit
-    if b == 0x2D || (0x30 <= b && b <= 0x39) {
+    if b == 0x2D || (0x30..=0x39).contains(&b) {
         match consume_number(input, start) {
             NumberResult::Ok { end } => return TokenResult::Ok { token: Token { kind: TokenKind::Number, start, end } },
             NumberResult::Err { pos: err_pos } => {
