@@ -47,7 +47,11 @@ impl JsonParser {
     /// Get a single JSON Value (as a `LocatedValue`) from the Parser's input.
     pub(crate) fn get_value(&mut self) -> Result<LocatedValue, ParseError> {
         if self.consumed {
-            let p = if self.input.is_empty() { 0 } else { self.input.len() - 1 };
+            let p = if self.input.is_empty() {
+                0
+            } else {
+                self.input.len() - 1
+            };
             let loc = Loc::new((p, 0), self.input.clone());
             return Err(ParseError::from(super::err::TokenizeError::unexpected_eof(
                 loc,
@@ -87,7 +91,7 @@ impl JsonParser {
     }
 }
 
-/// Tokenize using the verified tokenizer, mapping errors to ParseError.
+/// Tokenize using the verified tokenizer, mapping errors to [`ParseError`].
 fn tokenize(bytes: &[u8], src: &Arc<str>) -> Result<Vec<verified_tok::Token>, ParseError> {
     verified_tok::tokenize_all(bytes).map_err(|e| convert_tokenize_error(&e, bytes, src))
 }
@@ -101,18 +105,27 @@ fn convert_tokenize_error(
     match err {
         verified_tok::TokenizeError::UnexpectedEof { pos } => {
             let loc = Loc::new((*pos, 0), src.clone());
-            ParseError::from(super::err::TokenizeError::unexpected_eof(loc, "Expected more input."))
+            ParseError::from(super::err::TokenizeError::unexpected_eof(
+                loc,
+                "Expected more input.",
+            ))
         }
         verified_tok::TokenizeError::InvalidNumber { pos } => {
             let loc = Loc::new((*pos, 1), src.clone());
-            ParseError::from(super::err::TokenizeError::invalid_number(loc, "Invalid number literal"))
+            ParseError::from(super::err::TokenizeError::invalid_number(
+                loc,
+                "Invalid number literal",
+            ))
         }
         verified_tok::TokenizeError::InvalidEscape { pos } => {
             let is_eof = *pos >= bytes.len()
                 || (*pos + 4 > bytes.len() && *pos >= 1 && bytes.get(*pos - 1) == Some(&0x75));
             if is_eof {
                 let loc = Loc::new((*pos, 0), src.clone());
-                ParseError::from(super::err::TokenizeError::unexpected_eof(loc, "Expected more input."))
+                ParseError::from(super::err::TokenizeError::unexpected_eof(
+                    loc,
+                    "Expected more input.",
+                ))
             } else {
                 let loc = Loc::new((*pos, 1), src.clone());
                 ParseError::from(super::err::TokenizeError::unknown_escape_sequence(
@@ -123,12 +136,15 @@ fn convert_tokenize_error(
         }
         verified_tok::TokenizeError::UnexpectedToken { pos } => {
             let loc = Loc::new((*pos, 1), src.clone());
-            ParseError::from(super::err::TokenizeError::unexpected_token(loc, "Unexpected token"))
+            ParseError::from(super::err::TokenizeError::unexpected_token(
+                loc,
+                "Unexpected token",
+            ))
         }
     }
 }
 
-/// Convert a verified `JsonValue` tree into a `LocatedValue`.
+/// Convert a verified [`verified_parser::JsonValue`] tree into a [`LocatedValue`].
 /// Escape decoding and duplicate key detection have already been done
 /// by the verified parser — this is purely structural conversion.
 fn convert_value(
@@ -148,16 +164,22 @@ fn convert_value(
             let loc = Loc::new((*start, end - start), src.clone());
             Ok(LocatedValue::new_number(loc))
         }
-        verified_parser::JsonValue::String { start, end, decoded } => {
+        verified_parser::JsonValue::String {
+            start,
+            end,
+            decoded,
+        } => {
             let loc = Loc::new((*start, end - start), src.clone());
-            let decoded_str = std::str::from_utf8(decoded)
-                .map_err(|_| ParseError::invalid_unicode_escape(
-                    loc.clone(),
-                    "Invalid UTF-8 in decoded string",
-                ))?;
+            let decoded_str = std::str::from_utf8(decoded).map_err(|_| {
+                ParseError::invalid_unicode_escape(loc.clone(), "Invalid UTF-8 in decoded string")
+            })?;
             Ok(LocatedValue::new_string(loc, SmolStr::from(decoded_str)))
         }
-        verified_parser::JsonValue::Array { elements, start, end } => {
+        verified_parser::JsonValue::Array {
+            elements,
+            start,
+            end,
+        } => {
             let loc = Loc::new((*start, end - start), src.clone());
             let mut items = Vec::with_capacity(elements.len());
             for elem in elements.iter() {
@@ -165,17 +187,25 @@ fn convert_value(
             }
             Ok(LocatedValue::new_array(items, loc))
         }
-        verified_parser::JsonValue::Object { entries, start, end } => {
+        verified_parser::JsonValue::Object {
+            entries,
+            start,
+            end,
+        } => {
             let loc = Loc::new((*start, end - start), src.clone());
             let mut items: LinkedHashMap<LocatedString, LocatedValue> = LinkedHashMap::new();
             for entry in entries.iter() {
-                let key_loc = Loc::new((entry.key_start, entry.key_end - entry.key_start), src.clone());
+                let key_loc = Loc::new(
+                    (entry.key_start, entry.key_end - entry.key_start),
+                    src.clone(),
+                );
                 // Use the already-decoded key bytes from the verified parser
-                let decoded_str = std::str::from_utf8(&entry.decoded_key)
-                    .map_err(|_| ParseError::invalid_unicode_escape(
+                let decoded_str = std::str::from_utf8(&entry.decoded_key).map_err(|_| {
+                    ParseError::invalid_unicode_escape(
                         key_loc.clone(),
                         "Invalid UTF-8 in decoded key",
-                    ))?;
+                    )
+                })?;
                 let key = LocatedString::new(key_loc, SmolStr::from(decoded_str));
                 let value = convert_value(&entry.value, src)?;
                 items.insert(key, value);
@@ -185,8 +215,12 @@ fn convert_value(
     }
 }
 
-/// Convert a verified parser error into the main crate's ParseError.
-fn convert_parse_error(err: &verified_parser::ParseError, bytes: &[u8], src: &Arc<str>) -> ParseError {
+/// Convert a verified parser error into the main crate's [`ParseError`].
+fn convert_parse_error(
+    err: &verified_parser::ParseError,
+    bytes: &[u8],
+    src: &Arc<str>,
+) -> ParseError {
     match err {
         verified_parser::ParseError::UnexpectedToken { pos } => {
             if *pos > 0 && *pos < bytes.len() {
@@ -208,7 +242,10 @@ fn convert_parse_error(err: &verified_parser::ParseError, bytes: &[u8], src: &Ar
             let loc = Loc::new((*pos, 1), src.clone());
             ParseError::invalid_unicode_escape(loc, "Invalid Unicode escape sequence")
         }
-        verified_parser::ParseError::DuplicateKey { first_pos, second_pos } => {
+        verified_parser::ParseError::DuplicateKey {
+            first_pos,
+            second_pos,
+        } => {
             let first_loc = Loc::new((*first_pos, 1), src.clone());
             let second_loc = Loc::new((*second_pos, 1), src.clone());
             ParseError::duplicate_key(first_loc.into(), second_loc)

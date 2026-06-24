@@ -42,12 +42,14 @@ pub fn check_no_duplicate_keys(keys: &[Vec<u8>]) -> (result: Result<(), usize>)
         match result {
             Ok(()) => {
                 forall|i: int, j: int|
+                    #![auto]
                     0 <= i && i < j && j < keys@.len()
                     ==> !(keys@[i]@ =~= keys@[j]@)
             },
             Err(dup_idx) => {
                 dup_idx < keys@.len()
                 && exists|earlier: int|
+                    #![auto]
                     0 <= earlier && earlier < dup_idx as int
                     && keys@[earlier]@ =~= keys@[dup_idx as int]@
             },
@@ -59,6 +61,7 @@ pub fn check_no_duplicate_keys(keys: &[Vec<u8>]) -> (result: Result<(), usize>)
             i <= keys@.len(),
             // All keys in [0, i) are pairwise distinct
             forall|j: int, k: int|
+                #![auto]
                 0 <= j && j < k && k < i as int
                 ==> !(keys@[j]@ =~= keys@[k]@),
         decreases keys@.len() - i,
@@ -68,7 +71,7 @@ pub fn check_no_duplicate_keys(keys: &[Vec<u8>]) -> (result: Result<(), usize>)
             invariant
                 j <= i,
                 i < keys@.len(),
-                forall|k: int| 0 <= k && k < j as int ==> !(keys@[k]@ =~= keys@[i as int]@),
+                forall|k: int| #![auto] 0 <= k && k < j as int ==> !(keys@[k]@ =~= keys@[i as int]@),
             decreases i - j,
         {
             if slices_equal(keys[j].as_slice(), keys[i].as_slice()) {
