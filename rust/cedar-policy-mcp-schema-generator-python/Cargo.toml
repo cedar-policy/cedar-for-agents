@@ -1,6 +1,6 @@
 [package]
-name = "cedar-policy-mcp-schema-generator-wasm"
-description = "WASM bindings for cedar-policy-mcp-schema-generator, exposing SchemaGenerator to JavaScript/TypeScript."
+name = "cedar-policy-mcp-schema-generator-python"
+description = "Python bindings for cedar-policy-mcp-schema-generator, exposing SchemaGenerator via PyO3."
 version = "0.6.0"
 
 edition.workspace = true
@@ -12,19 +12,14 @@ homepage.workspace = true
 repository.workspace = true
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+name = "cedar_mcp_schema_generator"
+crate-type = ["cdylib"]
 
 [dependencies]
 cedar-policy-mcp-schema-generator = { path = "../cedar-policy-mcp-schema-generator" }
 mcp-tools-sdk = { path = "../mcp-tools-sdk" }
-wasm-bindgen = "0.2"
+pyo3 = { version = "0.29", features = ["extension-module"] }
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-uuid = { version = "1.23.3", features = ["js"] }
-getrandom = { version = "0.4", features = ["wasm_js"] }
-
-[dev-dependencies]
-wasm-bindgen-test = "0.3"
 serde_json = "1.0"
 
 [lints]

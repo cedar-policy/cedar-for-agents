@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - `deduplicate_entity_types` now consolidates identical leaf record objects into shared common types when `objects_as_records` is enabled, instead of creating duplicate type definitions per tool.
+- `SchemaGenerator` now stays in a good state even when `add_actions_from_server_description` / `add_action_from_tool_description` fails due to malformed tool descriptions.
 
 ## [0.6.0] - 2026-05-26
 

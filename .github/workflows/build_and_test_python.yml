@@ -1,0 +1,61 @@
+name: Python Integration Tests
+on:
+  workflow_call:
+
+permissions: read-all
+
+jobs:
+  build_and_test:
+    name: Python Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Configure Rust toolchain
+        run: rustup update stable && rustup default stable
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Create virtual environment
+        run: python -m venv .venv
+        working-directory: rust/cedar-policy-mcp-schema-generator-python
+
+      - name: Install maturin
+        run: .venv/bin/pip install maturin[patchelf]
+        working-directory: rust/cedar-policy-mcp-schema-generator-python
+
+      - name: Build and install package
+        run: .venv/bin/maturin develop --extras dev
+        working-directory: rust/cedar-policy-mcp-schema-generator-python
+
+      - name: Run tests
+        run: .venv/bin/pytest tests/ -v
+        working-directory: rust/cedar-policy-mcp-schema-generator-python
+
+  lint:
+    name: Python Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.13"
+
+      - name: Install ruff
+        run: pip install ruff==0.14.14
+
+      - name: Check formatting
+        run: ruff format --check cedar_mcp_schema_generator/ tests/
+        working-directory: rust/cedar-policy-mcp-schema-generator-python
+
+      - name: Check linting
+        run: ruff check cedar_mcp_schema_generator/ tests/
+        working-directory: rust/cedar-policy-mcp-schema-generator-python

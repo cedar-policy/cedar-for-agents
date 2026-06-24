@@ -21,7 +21,7 @@ jobs:
     needs: build_and_test_rust
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/create_coverage_comment
         with:
           threshold: 0.8
@@ -31,3 +31,6 @@ jobs:
 
   wasm_integration_tests:
     uses: ./.github/workflows/wasm_integration_tests.yml
+
+  build_and_test_python:
+    uses: ./.github/workflows/build_and_test_python.yml
