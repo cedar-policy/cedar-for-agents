@@ -47,7 +47,7 @@ jobs:
         shell: bash
         run: df -h
       - name: Set environment variables for coverage collection
-        if: ${{ inputs.collect_coverage }} && ${{ matrix.toolchain }} == 'stable'
+        if: ${{ inputs.collect_coverage && matrix.toolchain == 'stable' }}
         shell: bash
         run: |
           echo "RUSTFLAGS=${RUSTFLAGS} -C instrument-coverage" >> $GITHUB_ENV
@@ -74,7 +74,7 @@ jobs:
         working-directory: rust/
 
       - name: Create a coverage report
-        if: ${{ inputs.collect_coverage }} && ${{ matrix.toolchain }} == 'stable'
+        if: ${{ inputs.collect_coverage && matrix.toolchain == 'stable' }}
         uses: ./.github/actions/create_coverage_reports
         with:
           retention-days: ${{ inputs.retention-days }}
