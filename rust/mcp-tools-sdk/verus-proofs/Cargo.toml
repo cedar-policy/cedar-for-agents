@@ -7,4 +7,4 @@ edition = "2021"
 verify = true
 
 [dependencies]
-vstd = "=0.0.0-2026-05-17-0151"
+vstd = "=0.0.0-2026-06-14-0213"
