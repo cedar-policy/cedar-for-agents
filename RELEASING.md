@@ -324,7 +324,8 @@ Open a PR targeting `main`.
 
 ## Rollback
 
-Published releases cannot be fully rolled back. We follow the [official crates.io guidance on yanking](https://doc.rust-lang.org/nightly/cargo/commands/cargo-yank.html#when-to-yank), which generally advises against it. Under normal circumstances, publish a corrective patch release first, then yank the defective version only after a semver-compatible replacement is available.
+Published releases cannot be fully rolled back. We follow the [official crates.io guidance on yanking](https://doc.rust-lang.org/nightly/cargo/commands/cargo-yank.html#when-to-yank), which generally advises against it.
+In the unusual case where a published release needs to be yanked, you should first release the corrective patch (i.e. semver-compatible replacement of the release to be yanked), and only then yank the release.
 
 If a release contains a critical defect:
 
