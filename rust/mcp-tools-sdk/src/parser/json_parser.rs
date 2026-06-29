@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use super::err::ParseError;
+use super::err::{ParseError, TokenizeError};
 use super::json_value::{LocatedString, LocatedValue};
 use super::loc::Loc;
 use linked_hash_map::LinkedHashMap;
@@ -53,7 +53,7 @@ impl JsonParser {
                 self.input.len() - 1
             };
             let loc = Loc::new((p, 0), self.input.clone());
-            return Err(ParseError::from(super::err::TokenizeError::unexpected_eof(
+            return Err(ParseError::from(TokenizeError::unexpected_eof(
                 loc,
                 "Expected more input.",
             )));
@@ -61,39 +61,21 @@ impl JsonParser {
 
         let bytes = self.input.as_bytes();
 
-        // Tokenize using the verified tokenizer
-        let tokens = tokenize(bytes, &self.input)?;
-
-        // Parse using the verified parser (includes key decoding + duplicate detection)
-        let gas = tokens.len();
-        let (value, next) = match verified_parser::parse_value(bytes, &tokens, 0, gas) {
-            verified_parser::ParseResult::Ok { value, next } => (value, next),
-            verified_parser::ParseResult::Err { err } => {
+        // Tokenize and parse using verified code (includes trailing token rejection)
+        let value = match verified_parser::parse_json(bytes) {
+            Ok(value) => value,
+            Err(verified_parser::ParseJsonError::Tokenize { err }) => {
+                return Err(convert_tokenize_error(&err, bytes, &self.input));
+            }
+            Err(verified_parser::ParseJsonError::Parse { err }) => {
                 return Err(convert_parse_error(&err, bytes, &self.input));
             }
         };
-
-        // Reject trailing tokens
-        if next < tokens.len() {
-            let loc = Loc::new(
-                (tokens[next].start, tokens[next].end - tokens[next].start),
-                self.input.clone(),
-            );
-            return Err(ParseError::unexpected_token(
-                loc,
-                "Unexpected trailing token after value.",
-            ));
-        }
 
         // Convert verified JsonValue tree to LocatedValue
         self.consumed = true;
         convert_value(&value, &self.input)
     }
-}
-
-/// Tokenize using the verified tokenizer, mapping errors to [`ParseError`].
-fn tokenize(bytes: &[u8], src: &Arc<str>) -> Result<Vec<verified_tok::Token>, ParseError> {
-    verified_tok::tokenize_all(bytes).map_err(|e| convert_tokenize_error(&e, bytes, src))
 }
 
 /// Map a verified tokenizer error to the main crate's error type.
@@ -105,30 +87,21 @@ fn convert_tokenize_error(
     match err {
         verified_tok::TokenizeError::UnexpectedEof { pos } => {
             let loc = Loc::new((*pos, 0), src.clone());
-            ParseError::from(super::err::TokenizeError::unexpected_eof(
-                loc,
-                "Expected more input.",
-            ))
+            ParseError::from(TokenizeError::unexpected_eof(loc, "Expected more input."))
         }
         verified_tok::TokenizeError::InvalidNumber { pos } => {
             let loc = Loc::new((*pos, 1), src.clone());
-            ParseError::from(super::err::TokenizeError::invalid_number(
-                loc,
-                "Invalid number literal",
-            ))
+            ParseError::from(TokenizeError::invalid_number(loc, "Invalid number literal"))
         }
         verified_tok::TokenizeError::InvalidEscape { pos } => {
             let is_eof = *pos >= bytes.len()
                 || (*pos + 4 > bytes.len() && *pos >= 1 && bytes.get(*pos - 1) == Some(&0x75));
             if is_eof {
                 let loc = Loc::new((*pos, 0), src.clone());
-                ParseError::from(super::err::TokenizeError::unexpected_eof(
-                    loc,
-                    "Expected more input.",
-                ))
+                ParseError::from(TokenizeError::unexpected_eof(loc, "Expected more input."))
             } else {
                 let loc = Loc::new((*pos, 1), src.clone());
-                ParseError::from(super::err::TokenizeError::unknown_escape_sequence(
+                ParseError::from(TokenizeError::unknown_escape_sequence(
                     loc,
                     "Expected valid escape sequence",
                 ))
@@ -136,10 +109,7 @@ fn convert_tokenize_error(
         }
         verified_tok::TokenizeError::UnexpectedToken { pos } => {
             let loc = Loc::new((*pos, 1), src.clone());
-            ParseError::from(super::err::TokenizeError::unexpected_token(
-                loc,
-                "Unexpected token",
-            ))
+            ParseError::from(TokenizeError::unexpected_token(loc, "Unexpected token"))
         }
     }
 }
@@ -232,10 +202,7 @@ fn convert_parse_error(
             } else {
                 let p = if bytes.is_empty() { 0 } else { bytes.len() - 1 };
                 let loc = Loc::new((p, 0), src.clone());
-                ParseError::from(super::err::TokenizeError::unexpected_eof(
-                    loc,
-                    "Expected more input.",
-                ))
+                ParseError::from(TokenizeError::unexpected_eof(loc, "Expected more input."))
             }
         }
         verified_parser::ParseError::InvalidEscape { pos } => {

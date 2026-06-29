@@ -1,6 +1,6 @@
 use crate::dedup::slices_equal;
 use crate::escape::{decode_json_escapes_bytes, DecodeResult};
-use crate::tokenizer::{Token, TokenKind};
+use crate::tokenizer::{tokenize_all, Token, TokenKind, TokenizeError};
 use vstd::prelude::*;
 
 verus! {
@@ -399,8 +399,8 @@ fn parse_object_body(input: &[u8], tokens: &[Token], cur_start: usize, gas: usiz
     }
 }
 
-/// Parse a complete JSON document.
-pub fn parse(input: &[u8], tokens: &[Token]) -> (result: ParseResult)
+/// Parse a complete JSON document from tokens.
+fn parse(input: &[u8], tokens: &[Token]) -> (result: ParseResult)
     requires
         forall|i: int| #![auto] 0 <= i && i < tokens@.len() ==>
             tokens@[i].start < tokens@[i].end && tokens@[i].end <= input@.len(),
@@ -422,6 +422,36 @@ pub fn parse(input: &[u8], tokens: &[Token]) -> (result: ParseResult)
             }
         }
         ParseResult::Err { err } => ParseResult::Err { err },
+    }
+}
+
+// =============================================================================
+// Top-level entry point: tokenize + parse in one step
+// =============================================================================
+
+/// Error from `parse_json`: either a tokenization error or a parse error.
+#[allow(inconsistent_fields)]
+pub enum ParseJsonError {
+    Tokenize { err: TokenizeError },
+    Parse { err: ParseError },
+}
+
+/// Tokenize and parse a complete JSON document from raw bytes.
+///
+/// This is the primary entry point that combines tokenization and parsing
+/// in verified code, eliminating the need for unverified glue between the
+/// tokenizer and parser.
+pub fn parse_json(input: &[u8]) -> (result: Result<JsonValue, ParseJsonError>)
+{
+    let tokens = match tokenize_all(input) {
+        Ok(tokens) => tokens,
+        Err(err) => {
+            return Err(ParseJsonError::Tokenize { err });
+        }
+    };
+    match parse(input, tokens.as_slice()) {
+        ParseResult::Ok { value, next: _ } => Ok(value),
+        ParseResult::Err { err } => Err(ParseJsonError::Parse { err }),
     }
 }
 

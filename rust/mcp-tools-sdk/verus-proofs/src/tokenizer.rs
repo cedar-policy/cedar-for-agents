@@ -6,12 +6,15 @@ verus! {
 // Character classification
 // =============================================================================
 
+// The first specs are categorizing bytes into specific ASCII characters.
+// Refer to an ASCII table for reference.
+
 /// Spec: byte is an ASCII digit '0'-'9'
 pub open spec fn spec_is_ascii_digit(b: u8) -> bool {
     0x30 <= b && b <= 0x39
 }
 
-/// Spec: byte is a hex digit
+/// Spec: byte is a hex digit (i.e. 0-9, a-f, A-F)
 pub open spec fn spec_is_hex_digit(b: u8) -> bool {
     (0x30 <= b && b <= 0x39) || (0x61 <= b && b <= 0x66) || (0x41 <= b && b <= 0x46)
 }

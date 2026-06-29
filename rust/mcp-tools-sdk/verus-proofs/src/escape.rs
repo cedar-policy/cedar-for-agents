@@ -136,6 +136,9 @@ pub fn decode_json_escapes_bytes(input: &[u8], start: usize, end: usize) -> (res
     requires
         start <= end,
         end <= input@.len(),
+    ensures
+        // no escapes iff no backslashes
+        result is NoEscapes <==> (forall|k: int| start <= k < end ==> input@[k] != 0x5C),
 {
     // Fast path: scan for backslash
     let mut has_escape = false;
@@ -144,6 +147,9 @@ pub fn decode_json_escapes_bytes(input: &[u8], start: usize, end: usize) -> (res
         invariant
             start <= scan <= end,
             end <= input@.len(),
+            !has_escape ==> (forall|k: int| start <= k < scan ==> input@[k] != 0x5C),
+            has_escape ==> scan == end,
+            has_escape ==> (exists|k: int| start <= k < end && input@[k] == 0x5C),
         decreases end - scan,
     {
         if input[scan] == 0x5C {
