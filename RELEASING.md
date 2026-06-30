@@ -289,7 +289,7 @@ Verify the release exists at `https://github.com/cedar-policy/cedar-for-agents/r
 2. Test installation:
    ```bash
    pip install cedar-policy-mcp-schema-generator==<MAJOR>.<MINOR>.<PATCH>
-   python -c "from cedar_policy_mcp_schema_generator import generate_schema; print('OK')"
+   python -c "from cedar_mcp_schema_generator import generate_schema; print('OK')"
    ```
 
 ---
