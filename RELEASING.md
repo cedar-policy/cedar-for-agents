@@ -11,7 +11,7 @@ Throughout this guide, replace `<CRATE>` with the crate name (e.g., `mcp-tools-s
 | `mcp-tools-sdk`                            | [crates.io](https://crates.io/crates/mcp-tools-sdk)                          |
 | `cedar-policy-mcp-schema-generator`        | [crates.io](https://crates.io/crates/cedar-policy-mcp-schema-generator)      |
 | `cedar-policy-mcp-schema-generator-wasm`   | [npm](https://www.npmjs.com/package/@cedar-policy/mcp-schema-generator-wasm) |
-| `cedar-policy-mcp-schema-generator-python` | [PyPI](https://pypi.org/project/cedar-mcp-schema-generator/)                 |
+| `cedar-policy-mcp-schema-generator-python` | [PyPI](https://pypi.org/project/cedar-policy-mcp-schema-generator/)                 |
 
 When releasing `cedar-policy-mcp-schema-generator`, you should also release the WASM and Python bindings at the same version.
 
@@ -289,7 +289,7 @@ Verify the release exists at `https://github.com/cedar-policy/cedar-for-agents/r
 2. Test installation:
    ```bash
    pip install cedar-policy-mcp-schema-generator==<MAJOR>.<MINOR>.<PATCH>
-   python -c "from cedar_policy_mcp_schema_generator import generate_schema; print('OK')"
+   python -c "from cedar_mcp_schema_generator import generate_schema; print('OK')"
    ```
 
 ---
