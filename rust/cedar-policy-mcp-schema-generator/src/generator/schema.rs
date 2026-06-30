@@ -901,12 +901,7 @@ impl SchemaGenerator {
             }
         }
 
-        let mut resolved = dedup_map.resolve_duplicates();
-
-        // LeafRecord dedup only applies when objects are encoded as entity types
-        if self.config.objects_as_records {
-            resolved.retain(|fp, _| !matches!(fp, EntityTypeFingerprint::LeafRecord { .. }));
-        }
+        let resolved = dedup_map.resolve_duplicates();
 
         // Determine which fingerprints to skip:
         // - Same base_name targeting the same LCA (different variants conflict)
@@ -929,7 +924,9 @@ impl SchemaGenerator {
         }
 
         // Skip fingerprints whose base_name collides with a *different* type in the LCA.
-        // If the LCA already has an identical enum (same name + same variants), we reuse it.
+        // If the LCA already has an identical type (same name + same structure), we reuse it.
+        // When objects_as_records is true, LeafRecord types are placed as common types,
+        // so we check existing common types for matching record shapes.
         let mut reused = HashSet::<&EntityTypeFingerprint>::new();
         for (fp, info) in &resolved {
             if skipped.contains(fp) {
@@ -937,8 +934,29 @@ impl SchemaGenerator {
             }
             let base_name = fp.base_name();
             if let Some(nsdef) = self.fragment.0.get(&info.lca_namespace) {
-                if nsdef.common_types.keys().any(|k| k.as_ref() == base_name) {
-                    skipped.insert(fp);
+                // Check for common type name collision
+                let common_type_id = CommonTypeId::new(base_name.clone());
+                let existing_common = common_type_id
+                    .as_ref()
+                    .ok()
+                    .and_then(|id| nsdef.common_types.get(id));
+
+                if let Some(existing_ct) = existing_common {
+                    // When objects_as_records is true and fp is a LeafRecord,
+                    // check if the existing common type matches the record shape.
+                    if self.config.objects_as_records
+                        && matches!(fp, EntityTypeFingerprint::LeafRecord { .. })
+                    {
+                        if let EntityTypeFingerprint::LeafRecord { fields, .. } = fp {
+                            if Self::record_matches_fields(&existing_ct.ty, fields) {
+                                reused.insert(fp);
+                            } else {
+                                skipped.insert(fp);
+                            }
+                        }
+                    } else {
+                        skipped.insert(fp);
+                    }
                 } else if let Some(existing_entity) = nsdef.entity_types.get(base_name) {
                     if Self::fingerprint_matches_entity(fp, existing_entity) {
                         reused.insert(fp);
@@ -1001,22 +1019,35 @@ impl SchemaGenerator {
                                 ))
                             })
                             .collect::<Result<_, SchemaGeneratorError>>()?;
-                        let ty = EntityType {
-                            kind: EntityTypeKind::Standard(StandardEntityType {
-                                member_of_types: Vec::new(),
-                                shape: AttributesOrContext(Type::Type {
-                                    ty: TypeVariant::Record(RecordType {
-                                        attributes,
-                                        additional_attributes: false,
-                                    }),
-                                    loc: None,
+                        if self.config.objects_as_records {
+                            // When objects_as_records is true, place as a common type (record)
+                            let ty = Type::Type {
+                                ty: TypeVariant::Record(RecordType {
+                                    attributes,
+                                    additional_attributes: false,
                                 }),
-                                tags: None,
-                            }),
-                            annotations: Annotations::new(),
-                            loc: None,
-                        };
-                        self.add_entitytype(lca_ns, ty, base_name.clone(), true)?;
+                                loc: None,
+                            };
+                            self.add_commontype(lca_ns, ty, base_name.clone(), true)?;
+                        } else {
+                            // Otherwise place as an entity type (original behavior)
+                            let ty = EntityType {
+                                kind: EntityTypeKind::Standard(StandardEntityType {
+                                    member_of_types: Vec::new(),
+                                    shape: AttributesOrContext(Type::Type {
+                                        ty: TypeVariant::Record(RecordType {
+                                            attributes,
+                                            additional_attributes: false,
+                                        }),
+                                        loc: None,
+                                    }),
+                                    tags: None,
+                                }),
+                                annotations: Annotations::new(),
+                                loc: None,
+                            };
+                            self.add_entitytype(lca_ns, ty, base_name.clone(), true)?;
+                        }
                     }
                 }
             }
@@ -1648,18 +1679,29 @@ impl SchemaGenerator {
                 additional_properties,
             } => {
                 // Check if this is a leaf record and it was deduplicated (placed in LCA namespace during Pass 1)
-                if !self.config.objects_as_records && is_leaf_record(property_type) {
+                if is_leaf_record(property_type) {
                     let fingerprint =
                         EntityTypeFingerprint::new_leaf_record(ty_name.clone(), properties);
                     if let Some(lca_ns) = self.get_dedup_namespace(&fingerprint) {
                         let name = RawName::new_from_unreserved(ty_name, None);
                         let name = RawName::from_name(name.qualify_with_name(lca_ns.as_ref()));
-                        return Ok(Type::Type {
-                            ty: TypeVariant::Entity {
-                                name: self.flatten_rawname(name),
-                            },
-                            loc: None,
-                        });
+                        if self.config.objects_as_records {
+                            // Reference the shared common type in the LCA namespace
+                            return Ok(Type::Type {
+                                ty: TypeVariant::EntityOrCommon {
+                                    type_name: self.flatten_rawname(name),
+                                },
+                                loc: None,
+                            });
+                        } else {
+                            // Reference the shared entity type in the LCA namespace
+                            return Ok(Type::Type {
+                                ty: TypeVariant::Entity {
+                                    name: self.flatten_rawname(name),
+                                },
+                                loc: None,
+                            });
+                        }
                     }
                 }
 
@@ -2988,10 +3030,124 @@ namespace Test2 {
     }
 
     #[test]
-    fn test_dedup_leaf_record_skipped_with_objects_as_records() {
-        // With objects_as_records, leaf records become common types, not entity types.
-        // Dedup should not apply.
+    fn test_dedup_leaf_record_with_objects_as_records() {
+        // With objects_as_records, leaf records become common types.
+        // Dedup should consolidate identical records into a shared common type at the LCA.
         let schema_stub = test_schema_stub();
+        let config = SchemaGeneratorConfig::default()
+            .deduplicate_entity_types(true)
+            .objects_as_records(true);
+
+        let tools_json = r#"{
+            "result": {
+                "tools": [
+                    {
+                        "name": "tool_a",
+                        "description": "Tool A",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "meta": {
+                                        "type": "object",
+                                        "properties": {
+                                            "name": { "type": "string" }
+                                        },
+                                        "required": ["name"]
+                                    },
+                                    "local": {
+                                        "type": "object",
+                                        "properties": {
+                                            "flag": { "type": "string" }
+                                        },
+                                        "required": ["flag"]
+                                    }
+                                },
+                                "required": ["meta"]
+                            }
+                        }
+                    },
+                    {
+                        "name": "tool_b",
+                        "description": "Tool B",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "meta": {
+                                        "type": "object",
+                                        "properties": {
+                                            "name": { "type": "string" }
+                                        },
+                                        "required": ["name"]
+                                    }
+                                },
+                                "required": ["meta"]
+                            }
+                        }
+                    }
+                ]
+            }
+        }"#;
+
+        let description =
+            ServerDescription::from_json_str(tools_json).expect("Failed to parse tools JSON");
+        let mut generator = SchemaGenerator::new_with_config(schema_stub, config)
+            .expect("Failed to create schema generator");
+        generator
+            .add_actions_from_server_description(&description)
+            .expect("Failed to add server description");
+
+        let schema = generator.get_schema();
+        let root_ns = Some("Test".parse::<Name>().unwrap());
+        let root_nsdef = schema.0.get(&root_ns).expect("Expected namespace Test");
+
+        // Should have a deduplicated common type 'meta' in root namespace
+        assert!(
+            root_nsdef
+                .common_types
+                .contains_key(&CommonTypeId::new("meta".parse().unwrap()).unwrap()),
+            "'meta' should be deduplicated as common type when objects_as_records is true"
+        );
+        // Should NOT have a deduplicated entity type in root
+        assert!(
+            !root_nsdef
+                .entity_types
+                .contains_key(&"meta".parse().unwrap()),
+            "'meta' should not be an entity type when objects_as_records is true"
+        );
+        // Tool-local namespaces should NOT have their own 'meta' common type
+        let tool_a_input_ns: Option<Name> = Some("Test::tool_a::Input".parse().unwrap());
+        let tool_a_nsdef = schema.0.get(&tool_a_input_ns);
+        let tool_a_nsdef =
+            tool_a_nsdef.expect("tool_a::Input should exist due to tool-local 'local' record");
+        assert!(
+            !tool_a_nsdef
+                .common_types
+                .contains_key(&CommonTypeId::new("meta".parse().unwrap()).unwrap()),
+            "tool_a::Input should NOT have local 'meta' common type (it should be deduplicated)"
+        );
+    }
+
+    #[test]
+    fn test_dedup_leaf_record_reuses_existing_common_type_in_lca() {
+        let schema = r#"namespace Test {
+    @mcp_principal("User")
+    entity user;
+
+    @mcp_resource("McpServer")
+    entity resource;
+
+    @mcp_context("foo")
+    entity Foo;
+
+    type meta = {
+        name: String,
+    };
+}"#;
+        let schema_stub = Fragment::from_cedarschema_str(schema, Extensions::all_available())
+            .expect("Failed to parse schema")
+            .0;
         let config = SchemaGeneratorConfig::default()
             .deduplicate_entity_types(true)
             .objects_as_records(true);
@@ -3053,14 +3209,103 @@ namespace Test2 {
         let root_ns = Some("Test".parse::<Name>().unwrap());
         let root_nsdef = schema.0.get(&root_ns).expect("Expected namespace Test");
 
-        // Should NOT have a deduplicated entity type in root
-        assert!(
-            !root_nsdef
-                .entity_types
-                .contains_key(&"meta".parse().unwrap()),
-            "'meta' should not be deduplicated as entity type when objects_as_records is true"
+        assert_eq!(
+            root_nsdef.common_types.len(),
+            3,
+            "Expected stub meta plus two tool input types"
         );
-        // Should have common types in tool-local namespaces instead
+        assert!(
+            root_nsdef
+                .common_types
+                .contains_key(&CommonTypeId::new("meta".parse().unwrap()).unwrap()),
+            "Pre-existing 'meta' common type should be reused"
+        );
+        assert!(
+            !schema
+                .0
+                .contains_key(&Some("Test::tool_a::Input".parse().unwrap())),
+            "tool_a::Input should not have a local 'meta' copy"
+        );
+    }
+
+    #[test]
+    fn test_dedup_leaf_record_skips_mismatched_common_type_in_lca() {
+        let schema = r#"namespace Test {
+    @mcp_principal("User")
+    entity user;
+
+    @mcp_resource("McpServer")
+    entity resource;
+
+    @mcp_context("foo")
+    entity Foo;
+
+    type meta = {
+        count: Long,
+        name: String,
+    };
+}"#;
+        let schema_stub = Fragment::from_cedarschema_str(schema, Extensions::all_available())
+            .expect("Failed to parse schema")
+            .0;
+        let config = SchemaGeneratorConfig::default()
+            .deduplicate_entity_types(true)
+            .objects_as_records(true);
+
+        let tools_json = r#"{
+            "result": {
+                "tools": [
+                    {
+                        "name": "tool_a",
+                        "description": "Tool A",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "meta": {
+                                        "type": "object",
+                                        "properties": {
+                                            "name": { "type": "string" }
+                                        },
+                                        "required": ["name"]
+                                    }
+                                },
+                                "required": ["meta"]
+                            }
+                        }
+                    },
+                    {
+                        "name": "tool_b",
+                        "description": "Tool B",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "meta": {
+                                        "type": "object",
+                                        "properties": {
+                                            "name": { "type": "string" }
+                                        },
+                                        "required": ["name"]
+                                    }
+                                },
+                                "required": ["meta"]
+                            }
+                        }
+                    }
+                ]
+            }
+        }"#;
+
+        let description =
+            ServerDescription::from_json_str(tools_json).expect("Failed to parse tools JSON");
+        let mut generator = SchemaGenerator::new_with_config(schema_stub, config)
+            .expect("Failed to create schema generator");
+        generator
+            .add_actions_from_server_description(&description)
+            .expect("Failed to add server description");
+
+        let schema = generator.get_schema();
         let tool_a_input_ns: Option<Name> = Some("Test::tool_a::Input".parse().unwrap());
         let tool_a_nsdef = schema
             .0
@@ -3070,7 +3315,7 @@ namespace Test2 {
             tool_a_nsdef
                 .common_types
                 .contains_key(&CommonTypeId::new("meta".parse().unwrap()).unwrap()),
-            "tool_a::Input should have local 'meta' common type"
+            "Mismatched pre-existing 'meta' should force a local copy"
         );
     }
 

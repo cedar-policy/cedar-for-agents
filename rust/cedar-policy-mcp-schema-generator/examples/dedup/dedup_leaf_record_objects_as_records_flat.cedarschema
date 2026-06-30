@@ -1,0 +1,72 @@
+// Same scenario as dedup_leaf_record_objects_as_records but with flatten_namespaces enabled.
+// Shared metadata is deduplicated to MyMcpServer as a common type.
+// tool_c's different metadata stays local with a flattened name (tool_c_Input_metadata).
+// All namespaces collapse into the single MyMcpServer namespace.
+
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type metadata = {
+    author: String,
+    version?: Long
+  };
+
+  type tool_aInput = {
+    metadata?: MyMcpServer::metadata,
+    query: String
+  };
+
+  type tool_bInput = {
+    data: String,
+    metadata?: MyMcpServer::metadata
+  };
+
+  type tool_cInput = {
+    input: String,
+    metadata?: MyMcpServer::tool_c_Input_metadata
+  };
+
+  type tool_c_Input_metadata = {
+    count: Long,
+    title: String
+  };
+
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  action "call_tool";
+
+  action "tool_a" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      session: CommonContext
+    }
+  };
+
+  action "tool_b" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
+      session: CommonContext
+    }
+  };
+
+  action "tool_c" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_cInput,
+      session: CommonContext
+    }
+  };
+}
