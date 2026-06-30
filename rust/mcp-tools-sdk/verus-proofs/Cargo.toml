@@ -1,0 +1,25 @@
+[package]
+name = "mcp-tools-sdk-verus-proofs"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+rust-version = "1.90"
+
+[package.metadata.verus]
+verify = true
+
+[dependencies]
+vstd = "=0.0.0-2026-06-14-0213"
+
+# Verus-verified code uses idioms that conflict with some clippy lints:
+# - explicit `i = i + 1` mirrors proof invariants
+# - manual range checks are transparent to the SMT solver
+# - explicit casts document type reasoning for the verifier
+# - explicit saturating patterns are needed for termination proofs
+# - match with wildcard arm is sometimes clearer in proof code
+[lints.clippy]
+assign_op_pattern = "allow"
+manual_range_contains = "allow"
+unnecessary_cast = "allow"
+implicit_saturating_sub = "allow"
+single_match = "allow"

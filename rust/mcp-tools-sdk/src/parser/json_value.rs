@@ -20,92 +20,7 @@ use smol_str::SmolStr;
 use std::borrow::Borrow;
 use std::hash::{Hash, Hasher};
 
-use super::err::ParseError;
 use super::loc::Loc;
-
-/// Decode JSON escape sequences from a raw string slice (content between quotes).
-/// Returns `Ok(None)` if the string contains no escape sequences (allowing zero-copy).
-/// Returns `Err` if the string contains an invalid Unicode escape (e.g., malformed surrogate pair).
-fn decode_json_escapes(raw: &str, loc: &Loc) -> Result<Option<String>, ParseError> {
-    if !raw.contains('\\') {
-        return Ok(None);
-    }
-    let mut decoded = String::with_capacity(raw.len());
-    let mut chars = raw.chars();
-    while let Some(c) = chars.next() {
-        if c != '\\' {
-            decoded.push(c);
-            continue;
-        }
-        // JSON Spec (RFC 8259, Section 7) defines escape sequences that must be decoded
-        // https://www.rfc-editor.org/rfc/rfc8259#section-7
-        match chars.next() {
-            Some('"') => decoded.push('"'),
-            Some('\\') => decoded.push('\\'),
-            Some('/') => decoded.push('/'),
-            Some('b') => decoded.push('\u{0008}'),
-            Some('f') => decoded.push('\u{000C}'),
-            Some('n') => decoded.push('\n'),
-            Some('r') => decoded.push('\r'),
-            Some('t') => decoded.push('\t'),
-            Some('u') => {
-                let hex: String = chars.by_ref().take(4).collect();
-                // Tokenizer guarantees hex should be a valid u16 (max FFFF)
-                #[expect(
-                    clippy::unwrap_used,
-                    reason = "Tokenizer validates exactly 4 hex digits after \\u"
-                )]
-                let code_point = u16::from_str_radix(&hex, 16).unwrap();
-                // Handle UTF-16 surrogate pairs
-                if (0xD800..=0xDBFF).contains(&code_point) {
-                    // High surrogate — expect \uXXXX low surrogate
-                    let has_low = chars.next() == Some('\\') && chars.next() == Some('u');
-                    if !has_low {
-                        return Err(ParseError::invalid_unicode_escape(
-                            loc.clone(),
-                            "High surrogate not followed by \\uXXXX low surrogate",
-                        ));
-                    }
-                    let hex2: String = chars.by_ref().take(4).collect();
-                    #[expect(
-                        clippy::unwrap_used,
-                        reason = "Tokenizer validates exactly 4 hex digits after \\u"
-                    )]
-                    let low = u16::from_str_radix(&hex2, 16).unwrap();
-                    match char::decode_utf16([code_point, low]).next() {
-                        Some(Ok(ch)) => decoded.push(ch),
-                        _ => {
-                            return Err(ParseError::invalid_unicode_escape(
-                                loc.clone(),
-                                "Invalid UTF-16 surrogate pair",
-                            ));
-                        }
-                    }
-                } else if (0xDC00..=0xDFFF).contains(&code_point) {
-                    // Lone low surrogate
-                    return Err(ParseError::invalid_unicode_escape(
-                        loc.clone(),
-                        "Unexpected low surrogate without preceding high surrogate",
-                    ));
-                } else if let Some(ch) = char::from_u32(u32::from(code_point)) {
-                    decoded.push(ch);
-                } else {
-                    return Err(ParseError::invalid_unicode_escape(
-                        loc.clone(),
-                        "Invalid Unicode code point",
-                    ));
-                }
-            }
-            // The tokenizer already validated escape sequences, so this is unreachable
-            Some(other) => {
-                decoded.push('\\');
-                decoded.push(other);
-            }
-            None => decoded.push('\\'),
-        }
-    }
-    Ok(Some(decoded))
-}
 
 // The kind of a Located (JSON) Value
 #[derive(Debug, Clone)]
@@ -133,23 +48,10 @@ pub(crate) struct LocatedValue {
 }
 
 impl LocatedString {
-    /// Create a new `LocatedString`
-    pub(crate) fn new(loc: Loc) -> Result<Self, ParseError> {
-        let start = loc.start() + 1;
-        let end = loc.end() - 1;
-        #[expect(
-            clippy::string_slice,
-            reason = r#"By construction `start` and `end` are both at valid character boundaries and `start` <= `end`.
-                        The JSON parser ensures that `self.loc.start()` immediately preceeds a quotation mark (`"`) and
-                        `self.loc.end()` immediately follows a quotation mark (`"`). In addition, the parser ensures that
-                        these are separate distinct quotation marks (`"`)."#
-        )]
-        let raw = &loc.src[start..end];
-        let decoded = match decode_json_escapes(raw, &loc)? {
-            Some(s) => SmolStr::from(s),
-            None => SmolStr::from(raw),
-        };
-        Ok(Self { loc, decoded })
+    /// Create a `LocatedString` from an already-decoded string and its source location.
+    /// The verified parser has already performed escape decoding.
+    pub(crate) fn new(loc: Loc, decoded: SmolStr) -> Self {
+        Self { loc, decoded }
     }
 
     /// Get a reference to the location of the `LocatedString` within the input string
@@ -157,24 +59,9 @@ impl LocatedString {
         &self.loc
     }
 
-    /// Unwrap the `LocatedString` and retrieve the location of the string within the input string.
-    pub(crate) fn into_loc(self) -> Loc {
-        self.loc
-    }
-
     /// Get the `&str` matching the decoded contents of the `LocatedString`
     pub(crate) fn as_str(&self) -> &str {
         &self.decoded
-    }
-
-    /// Create a `String` matching the decoded contents of the `LocatedString`
-    #[expect(dead_code, reason = "Added for completeness.")]
-    #[expect(
-        clippy::inherent_to_string,
-        reason = "Not provided as a proxy for display."
-    )]
-    pub(crate) fn to_string(&self) -> String {
-        self.decoded.to_string()
     }
 
     /// Create a `SmolStr` matching the decoded contents of the `LocatedString`
@@ -232,25 +119,12 @@ impl LocatedValue {
     }
 
     /// Create a new `LocatedValue` of kind String
-    pub(crate) fn new_string(loc: Loc) -> Result<Self, ParseError> {
-        let start = loc.start() + 1;
-        let end = loc.end() - 1;
-        #[expect(
-            clippy::string_slice,
-            reason = r#"By construction `start` and `end` are both at valid character boundaries and `start` <= `end`.
-                        The JSON parser ensures that `self.loc.start()` immediately preceeds a quotation mark (`"`) and
-                        `self.loc.end()` immediately follows a quotation mark (`"`). In addition, the parser ensures that
-                        these are separate distinct quotation marks (`"`)."#
-        )]
-        let raw = &loc.src[start..end];
-        let decoded = match decode_json_escapes(raw, &loc)? {
-            Some(s) => SmolStr::from(s),
-            None => SmolStr::from(raw),
-        };
-        Ok(Self {
+    /// Create a new `LocatedValue` of kind String from already-decoded bytes.
+    pub(crate) fn new_string(loc: Loc, decoded: SmolStr) -> Self {
+        Self {
             kind: ValueKind::String(decoded),
             loc,
-        })
+        }
     }
 
     /// Create a new `LocatedValue` of kind Array
@@ -416,9 +290,10 @@ mod tests {
         assert!(LocatedValue::new_bool(false, new_loc("false")).is_bool());
         assert!(!LocatedValue::new_null(new_loc("null")).is_bool());
         assert!(!LocatedValue::new_number(new_loc("0.1")).is_bool());
-        assert!(!LocatedValue::new_string(new_loc("my cool str"))
-            .unwrap()
-            .is_bool());
+        assert!(
+            !LocatedValue::new_string(new_loc("my cool str"), SmolStr::from("my cool str"))
+                .is_bool()
+        );
         assert!(!LocatedValue::new_array(Vec::new(), new_loc("[]")).is_bool());
         assert!(!LocatedValue::new_object(LinkedHashMap::new(), new_loc("{}")).is_bool());
     }
@@ -436,8 +311,7 @@ mod tests {
         assert_matches!(LocatedValue::new_null(new_loc("null")).get_bool(), None);
         assert_matches!(LocatedValue::new_number(new_loc("0.1")).get_bool(), None);
         assert_matches!(
-            LocatedValue::new_string(new_loc("my cool str"))
-                .unwrap()
+            LocatedValue::new_string(new_loc("my cool str"), SmolStr::from("my cool str"))
                 .get_bool(),
             None
         );
@@ -457,9 +331,10 @@ mod tests {
         assert!(!LocatedValue::new_bool(false, new_loc("false")).is_null());
         assert!(LocatedValue::new_null(new_loc("null")).is_null());
         assert!(!LocatedValue::new_number(new_loc("0.1")).is_null());
-        assert!(!LocatedValue::new_string(new_loc("my cool str"))
-            .unwrap()
-            .is_null());
+        assert!(
+            !LocatedValue::new_string(new_loc("my cool str"), SmolStr::from("my cool str"))
+                .is_null()
+        );
         assert!(!LocatedValue::new_array(Vec::new(), new_loc("[]")).is_null());
         assert!(!LocatedValue::new_object(LinkedHashMap::new(), new_loc("{}")).is_null());
     }
@@ -470,9 +345,10 @@ mod tests {
         assert!(!LocatedValue::new_bool(false, new_loc("false")).is_number());
         assert!(!LocatedValue::new_null(new_loc("null")).is_number());
         assert!(LocatedValue::new_number(new_loc("0.1")).is_number());
-        assert!(!LocatedValue::new_string(new_loc("my cool str"))
-            .unwrap()
-            .is_number());
+        assert!(
+            !LocatedValue::new_string(new_loc("my cool str"), SmolStr::from("my cool str"))
+                .is_number()
+        );
         assert!(!LocatedValue::new_array(Vec::new(), new_loc("[]")).is_number());
         assert!(!LocatedValue::new_object(LinkedHashMap::new(), new_loc("{}")).is_number());
     }
@@ -496,8 +372,7 @@ mod tests {
             Some(..)
         );
         assert_matches!(
-            LocatedValue::new_string(new_loc("my cool str"))
-                .unwrap()
+            LocatedValue::new_string(new_loc("my cool str"), SmolStr::from("my cool str"))
                 .get_numeric_str(),
             None
         );
@@ -517,9 +392,10 @@ mod tests {
         assert!(!LocatedValue::new_bool(false, new_loc("false")).is_string());
         assert!(!LocatedValue::new_null(new_loc("null")).is_string());
         assert!(!LocatedValue::new_number(new_loc("0.1")).is_string());
-        assert!(LocatedValue::new_string(new_loc("my cool str"))
-            .unwrap()
-            .is_string());
+        assert!(
+            LocatedValue::new_string(new_loc("my cool str"), SmolStr::from("my cool str"))
+                .is_string()
+        );
         assert!(!LocatedValue::new_array(Vec::new(), new_loc("[]")).is_string());
         assert!(!LocatedValue::new_object(LinkedHashMap::new(), new_loc("{}")).is_string());
     }
@@ -537,8 +413,7 @@ mod tests {
         assert_matches!(LocatedValue::new_null(new_loc("null")).get_str(), None);
         assert_matches!(LocatedValue::new_number(new_loc("0.1")).get_str(), None);
         assert_matches!(
-            LocatedValue::new_string(new_loc("my cool str"))
-                .unwrap()
+            LocatedValue::new_string(new_loc("my cool str"), SmolStr::from("my cool str"))
                 .get_str(),
             Some(..)
         );
@@ -565,8 +440,7 @@ mod tests {
         assert_matches!(LocatedValue::new_null(new_loc("null")).get_string(), None);
         assert_matches!(LocatedValue::new_number(new_loc("0.1")).get_string(), None);
         assert_matches!(
-            LocatedValue::new_string(new_loc("my cool str"))
-                .unwrap()
+            LocatedValue::new_string(new_loc("my cool str"), SmolStr::from("my cool str"))
                 .get_string(),
             Some(..)
         );
@@ -593,8 +467,7 @@ mod tests {
         assert_matches!(LocatedValue::new_null(new_loc("null")).get_smolstr(), None);
         assert_matches!(LocatedValue::new_number(new_loc("0.1")).get_smolstr(), None);
         assert_matches!(
-            LocatedValue::new_string(new_loc("my cool str"))
-                .unwrap()
+            LocatedValue::new_string(new_loc("my cool str"), SmolStr::from("my cool str"))
                 .get_smolstr(),
             Some(..)
         );
@@ -614,9 +487,10 @@ mod tests {
         assert!(!LocatedValue::new_bool(false, new_loc("false")).is_array());
         assert!(!LocatedValue::new_null(new_loc("null")).is_array());
         assert!(!LocatedValue::new_number(new_loc("0.1")).is_array());
-        assert!(!LocatedValue::new_string(new_loc("my cool str"))
-            .unwrap()
-            .is_array());
+        assert!(
+            !LocatedValue::new_string(new_loc("my cool str"), SmolStr::from("my cool str"))
+                .is_array()
+        );
         assert!(LocatedValue::new_array(Vec::new(), new_loc("[]")).is_array());
         assert!(!LocatedValue::new_object(LinkedHashMap::new(), new_loc("{}")).is_array());
     }
@@ -634,8 +508,7 @@ mod tests {
         assert_matches!(LocatedValue::new_null(new_loc("null")).get_array(), None);
         assert_matches!(LocatedValue::new_number(new_loc("0.1")).get_array(), None);
         assert_matches!(
-            LocatedValue::new_string(new_loc("my cool str"))
-                .unwrap()
+            LocatedValue::new_string(new_loc("my cool str"), SmolStr::from("my cool str"))
                 .get_array(),
             None
         );
@@ -655,9 +528,10 @@ mod tests {
         assert!(!LocatedValue::new_bool(false, new_loc("false")).is_object());
         assert!(!LocatedValue::new_null(new_loc("null")).is_object());
         assert!(!LocatedValue::new_number(new_loc("0.1")).is_object());
-        assert!(!LocatedValue::new_string(new_loc("my cool str"))
-            .unwrap()
-            .is_object());
+        assert!(
+            !LocatedValue::new_string(new_loc("my cool str"), SmolStr::from("my cool str"))
+                .is_object()
+        );
         assert!(!LocatedValue::new_array(Vec::new(), new_loc("[]")).is_object());
         assert!(LocatedValue::new_object(LinkedHashMap::new(), new_loc("{}")).is_object());
     }
@@ -675,8 +549,7 @@ mod tests {
         assert_matches!(LocatedValue::new_null(new_loc("null")).get_object(), None);
         assert_matches!(LocatedValue::new_number(new_loc("0.1")).get_object(), None);
         assert_matches!(
-            LocatedValue::new_string(new_loc("my cool str"))
-                .unwrap()
+            LocatedValue::new_string(new_loc("my cool str"), SmolStr::from("my cool str"))
                 .get_object(),
             None
         );

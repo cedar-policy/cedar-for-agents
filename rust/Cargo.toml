@@ -5,6 +5,9 @@ members = [
 	"cedar-policy-mcp-schema-generator-wasm",
 	"mcp-tools-sdk",
 ]
+exclude = [
+	"mcp-tools-sdk/verus-proofs",
+]
 
 resolver = "2"
 
