@@ -24,32 +24,28 @@ function getConsentToolsForRole(config: CedarAgentConfig, roleName: string): Set
 function generateRolePolicies(config: CedarAgentConfig): string[] {
   if (!config.roles) return []
   const ns = config.namespace ?? 'Agent'
-  const principalType = config.principal.type ?? 'User'
   const policies: string[] = []
 
   for (const [roleName, tools] of Object.entries(config.roles)) {
     const consentToolsForRole = getConsentToolsForRole(config, roleName)
+    const roleRef = `${ns}::Role::"${escapeCedarString(roleName)}"`
 
     if (tools.includes('*')) {
       if (consentToolsForRole.size > 0) {
-        // Wildcard with consent exclusions: permit all actions EXCEPT consent-gated tools for this role
         const exclusions = [...consentToolsForRole]
           .map((t) => `action == ${ns}::Action::"${escapeCedarString(t)}"`)
           .join(' || ')
         policies.push(
-          `permit(\n  principal is ${ns}::${principalType},\n  action,\n  resource\n) when { principal.role == "${escapeCedarString(roleName)}" && !(${exclusions}) };`
+          `permit(\n  principal in ${roleRef},\n  action,\n  resource\n) when { !(${exclusions}) };`
         )
       } else {
-        policies.push(
-          `permit(\n  principal is ${ns}::${principalType},\n  action,\n  resource\n) when { principal.role == "${escapeCedarString(roleName)}" };`
-        )
+        policies.push(`permit(principal in ${roleRef}, action, resource);`)
       }
     } else {
-      // Filter out consent-gated tools for this role — they get their own consent permits
       const filteredTools = tools.filter((t) => !consentToolsForRole.has(t))
       for (const tool of filteredTools) {
         policies.push(
-          `permit(\n  principal is ${ns}::${principalType},\n  action == ${ns}::Action::"${escapeCedarString(tool)}",\n  resource\n) when { principal.role == "${escapeCedarString(roleName)}" };`
+          `permit(principal in ${roleRef}, action == ${ns}::Action::"${escapeCedarString(tool)}", resource);`
         )
       }
     }
@@ -133,20 +129,19 @@ function generateEnvDenialPolicies(config: CedarAgentConfig): string[] {
 function generateConsentPolicies(config: CedarAgentConfig): string[] {
   if (!config.consent) return []
   const ns = config.namespace ?? 'Agent'
-  const principalType = config.principal.type ?? 'User'
   const policies: string[] = []
 
   for (const [tool, value] of Object.entries(config.consent)) {
     const roles = normalizeConsentRoles(value)
     if (roles.includes('*')) {
-      // All roles need consent — no role check in the policy
       policies.push(
-        `permit(\n  principal is ${ns}::${principalType},\n  action == ${ns}::Action::"${escapeCedarString(tool)}",\n  resource\n) when { context.session has "user_consent" && context.session.user_consent == true };`
+        `permit(\n  principal,\n  action == ${ns}::Action::"${escapeCedarString(tool)}",\n  resource\n) when { context.session has "user_consent" && context.session.user_consent == true };`
       )
     } else {
       for (const role of roles) {
+        const roleRef = `${ns}::Role::"${escapeCedarString(role)}"`
         policies.push(
-          `permit(\n  principal is ${ns}::${principalType},\n  action == ${ns}::Action::"${escapeCedarString(tool)}",\n  resource\n) when { principal.role == "${escapeCedarString(role)}" && context.session has "user_consent" && context.session.user_consent == true };`
+          `permit(\n  principal in ${roleRef},\n  action == ${ns}::Action::"${escapeCedarString(tool)}",\n  resource\n) when { context.session has "user_consent" && context.session.user_consent == true };`
         )
       }
     }

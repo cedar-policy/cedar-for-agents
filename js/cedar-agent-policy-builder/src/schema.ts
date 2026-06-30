@@ -4,13 +4,13 @@ import { generateSchema as generateSchemaWasm } from '@cedar-policy/mcp-schema-g
 function buildSchemaStub(config: CedarAgentConfig): string {
   const ns = config.namespace ?? 'Agent'
   const principalType = config.principal.type ?? 'User'
-  const resourceType = config.resource?.type ?? 'McpServer'
+  const resourceType = config.resource?.type ?? 'Resource'
 
   return `namespace ${ns} {
+  entity Role;
+
   @mcp_principal("${principalType}")
-  entity ${principalType} = {
-    role: String,
-  };
+  entity ${principalType} in [Role];
 
   @mcp_resource("${resourceType}")
   entity ${resourceType};

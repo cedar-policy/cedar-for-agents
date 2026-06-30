@@ -1,3 +1,5 @@
 rust/Cargo.lock
 rust/*/Cargo.lock
 rust/target/
+js/*/dist/
+js/*/node_modules
