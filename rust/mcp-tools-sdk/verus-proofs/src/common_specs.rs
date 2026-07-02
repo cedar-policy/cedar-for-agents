@@ -68,12 +68,12 @@ pub open spec fn spec_is_hex_digit(b: u8) -> bool {
     || (UPPER_A() <= b && b <= UPPER_F())
 }
 
-/// Spec: byte is JSON whitespace (space, tab, newline, carriage return)
+/// Spec: byte is JSON whitespace (RFC 8259 §2: space, tab, newline, carriage return)
 pub open spec fn spec_is_whitespace(b: u8) -> bool {
     b == SPACE() || b == TAB() || b == NEWLINE() || b == CR()
 }
 
-/// Spec: byte is a valid simple escape character (after the backslash)
+/// Spec: byte is a valid simple escape character after the backslash (RFC 8259 §7)
 pub open spec fn spec_is_simple_escape(b: u8) -> bool {
     b == QUOTE()
     || b == BACKSLASH()
@@ -94,13 +94,68 @@ pub open spec fn spec_hex_val(b: u8) -> u8 {
     else { 0 }
 }
 
+/// Spec: 4 consecutive bytes starting at `pos` are all hex digits.
+pub open spec fn spec_is_hex_quad(input: Seq<u8>, pos: nat) -> bool {
+    pos + 4 <= input.len()
+    && spec_is_hex_digit(input[pos as int])
+    && spec_is_hex_digit(input[(pos + 1) as int])
+    && spec_is_hex_digit(input[(pos + 2) as int])
+    && spec_is_hex_digit(input[(pos + 3) as int])
+}
+
 // =============================================================================
 // Unicode and UTF-8 encoding
+//
+// References:
+//   - Unicode scalar values: The Unicode Standard, Chapter 3, §D76
+//     https://www.unicode.org/versions/Unicode15.0.0/ch03.pdf
+//   - UTF-8 encoding: RFC 3629 https://www.rfc-editor.org/rfc/rfc3629
+//   - Surrogate pairs in JSON: RFC 8259 §7 https://www.rfc-editor.org/rfc/rfc8259#section-7
 // =============================================================================
 
-/// A Unicode scalar value: a code point that is not a surrogate.
+// --- Unicode code point boundaries ---
+
+/// Maximum valid Unicode code point (U+10FFFF).
+pub open spec fn MAX_CODE_POINT() -> u32 { 0x10FFFF }
+
+/// First code point in the high surrogate range (U+D800).
+pub open spec fn HIGH_SURROGATE_MIN() -> u32 { 0xD800 }
+
+/// Last code point in the high surrogate range (U+DBFF).
+pub open spec fn HIGH_SURROGATE_MAX() -> u32 { 0xDBFF }
+
+/// First code point in the low surrogate range (U+DC00).
+pub open spec fn LOW_SURROGATE_MIN() -> u32 { 0xDC00 }
+
+/// Last code point in the low surrogate range (U+DFFF).
+pub open spec fn LOW_SURROGATE_MAX() -> u32 { 0xDFFF }
+
+/// Spec: code point is a high surrogate (U+D800..U+DBFF).
+pub open spec fn is_high_surrogate(cp: u32) -> bool {
+    HIGH_SURROGATE_MIN() <= cp && cp <= HIGH_SURROGATE_MAX()
+}
+
+/// Spec: code point is a low surrogate (U+DC00..U+DFFF).
+pub open spec fn is_low_surrogate(cp: u32) -> bool {
+    LOW_SURROGATE_MIN() <= cp && cp <= LOW_SURROGATE_MAX()
+}
+
+/// Spec: code point is any surrogate (high or low).
+pub open spec fn is_surrogate(cp: u32) -> bool {
+    HIGH_SURROGATE_MIN() <= cp && cp <= LOW_SURROGATE_MAX()
+}
+
+/// A Unicode scalar value: a code point that is not a surrogate (RFC 3629 §3).
 pub open spec fn is_unicode_scalar(cp: u32) -> bool {
-    cp <= 0x10FFFF && !(0xD800 <= cp && cp <= 0xDFFF)
+    cp <= MAX_CODE_POINT() && !is_surrogate(cp)
+}
+
+/// Combine a surrogate pair into a supplementary code point (RFC 8259 §7).
+/// Formula: (hi - 0xD800) * 0x400 + (lo - 0xDC00) + 0x10000
+pub open spec fn surrogate_pair_value(hi: u32, lo: u32) -> u32
+    recommends is_high_surrogate(hi) && is_low_surrogate(lo),
+{
+    (0x10000u32 + (hi - HIGH_SURROGATE_MIN()) * 0x400 + (lo - LOW_SURROGATE_MIN())) as u32
 }
 
 /// Spec: the UTF-8 byte encoding of a single code point.
@@ -365,8 +420,8 @@ pub fn is_simple_escape(b: u8) -> (result: bool)
 pub fn hex_val(b: u8) -> (result: Option<u8>)
     ensures
         match result {
-            Some(v) => v <= 15 && v == spec_hex_val(b),
-            None => true,
+            Some(v) => v <= 15 && v == spec_hex_val(b) && spec_is_hex_digit(b),
+            None => !spec_is_hex_digit(b),
         },
 {
     if 0x30 <= b && b <= 0x39 { Some((b - 0x30) as u8) }
@@ -406,8 +461,14 @@ pub fn decode_hex4(input: &[u8], pos: usize) -> (result: Option<u16>)
         pos + 4 <= input@.len(),
     ensures
         match result {
-            Some(v) => v <= 0xFFFF && v == spec_decode_hex4(input@, pos as nat),
-            None => true,
+            Some(v) => {
+                &&& v <= 0xFFFF
+                &&& v == spec_decode_hex4(input@, pos as nat)
+                &&& spec_is_hex_quad(input@, pos as nat)
+            },
+            None => {
+                !spec_is_hex_quad(input@, pos as nat)
+            },
         },
 {
     let d0 = match hex_val(input[pos]) { Some(v) => v as u16, None => return None };

@@ -207,15 +207,6 @@ pub fn consume_digits(input: &[u8], pos: usize) -> (result: usize)
 // Consume hex digits (for \uXXXX escape sequences)
 // =============================================================================
 
-/// Spec: checks that 4 consecutive bytes starting at `pos` are all hex digits
-pub open spec fn spec_four_hex_digits_at(input: Seq<u8>, pos: nat) -> bool {
-    pos + 4 <= input.len()
-    && spec_is_hex_digit(input[pos as int])
-    && spec_is_hex_digit(input[(pos + 1) as int])
-    && spec_is_hex_digit(input[(pos + 2) as int])
-    && spec_is_hex_digit(input[(pos + 3) as int])
-}
-
 /// Exec: check and consume exactly 4 hex digits. Returns Some(pos+4) on success.
 pub fn consume_four_hex_digits(input: &[u8], pos: usize) -> (result: Option<usize>)
     requires
@@ -224,9 +215,9 @@ pub fn consume_four_hex_digits(input: &[u8], pos: usize) -> (result: Option<usiz
         match result {
             Some(end) => {
                 end == pos + 4
-                && spec_four_hex_digits_at(input@, pos as nat)
+                && spec_is_hex_quad(input@, pos as nat)
             },
-            None => !spec_four_hex_digits_at(input@, pos as nat),
+            None => !spec_is_hex_quad(input@, pos as nat),
         },
 {
     if input.len() - pos < 4 {
