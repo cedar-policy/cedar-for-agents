@@ -1,5 +1,5 @@
-use vstd::prelude::*;
 use crate::common_specs::*;
+use vstd::prelude::*;
 
 verus! {
 

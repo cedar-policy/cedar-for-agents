@@ -211,6 +211,22 @@ proof fn lemma_decode_unfold_plain(input: Seq<u8>, start: nat, end: nat)
 {
 }
 
+/// Lemma (backward): if input[start] is not a backslash and spec_decode(start+1, end)
+/// succeeds, then spec_decode(start, end) also succeeds.
+proof fn lemma_decode_fold_plain(input: Seq<u8>, start: nat, end: nat)
+    requires
+        start < end,
+        end <= input.len(),
+        input[start as int] != BACKSLASH(),
+        spec_decode_ok(input, start + 1, end),
+    ensures
+        spec_decode_ok(input, start, end),
+        spec_decode(input, start, end) == Some(
+            seq![input[start as int]] + spec_decode(input, start + 1, end).unwrap()
+        ),
+{
+}
+
 /// Lemma: spec_decode unfolding for a simple escape.
 /// If input[start] == '\' and input[start+1] is a simple escape char,
 /// and spec_decode(start, end) is Some, then spec_decode(start+2, end) is also Some.
@@ -230,6 +246,24 @@ proof fn lemma_decode_unfold_simple_escape(input: Seq<u8>, start: nat, end: nat)
 {
 }
 
+/// Lemma (backward): if we have a simple escape at start and spec_decode(start+2, end)
+/// succeeds, then spec_decode(start, end) also succeeds.
+proof fn lemma_decode_fold_simple_escape(input: Seq<u8>, start: nat, end: nat)
+    requires
+        start + 1 < end,
+        end <= input.len(),
+        input[start as int] == BACKSLASH(),
+        spec_is_simple_escape(input[(start + 1) as int]),
+        spec_decode_ok(input, start + 2, end),
+    ensures
+        spec_decode_ok(input, start, end),
+        spec_decode(input, start, end) == Some(
+            seq![spec_simple_escape_byte(input[(start + 1) as int])]
+            + spec_decode(input, start + 2, end).unwrap()
+        ),
+{
+}
+
 /// Lemma: spec_decode unfolding for a BMP unicode escape (\uXXXX, non-surrogate).
 proof fn lemma_decode_unfold_bmp(input: Seq<u8>, start: nat, end: nat)
     requires
@@ -242,6 +276,26 @@ proof fn lemma_decode_unfold_bmp(input: Seq<u8>, start: nat, end: nat)
         spec_decode_ok(input, start, end),
     ensures
         spec_decode_ok(input, start + 6, end),
+        spec_decode(input, start, end) == Some(
+            spec_encode_code_point(spec_decode_hex4(input, (start + 2) as nat) as u32)
+            + spec_decode(input, start + 6, end).unwrap()
+        ),
+{
+}
+
+/// Lemma (backward): if we have a BMP escape at start and spec_decode(start+6, end)
+/// succeeds, then spec_decode(start, end) also succeeds.
+proof fn lemma_decode_fold_bmp(input: Seq<u8>, start: nat, end: nat)
+    requires
+        start + 6 <= end,
+        end <= input.len(),
+        input[start as int] == BACKSLASH(),
+        input[(start + 1) as int] == LOWER_U(),
+        spec_is_hex_quad(input, (start + 2) as nat),
+        !is_surrogate(spec_decode_hex4(input, (start + 2) as nat) as u32),
+        spec_decode_ok(input, start + 6, end),
+    ensures
+        spec_decode_ok(input, start, end),
         spec_decode(input, start, end) == Some(
             spec_encode_code_point(spec_decode_hex4(input, (start + 2) as nat) as u32)
             + spec_decode(input, start + 6, end).unwrap()
@@ -279,6 +333,37 @@ proof fn lemma_decode_unfold_surrogate_pair(input: Seq<u8>, start: nat, end: nat
 {
 }
 
+/// Lemma (backward): if we have a surrogate pair at start and spec_decode(start+12, end)
+/// succeeds, then spec_decode(start, end) also succeeds.
+proof fn lemma_decode_fold_surrogate_pair(input: Seq<u8>, start: nat, end: nat)
+    requires
+        start + 12 <= end,
+        end <= input.len(),
+        input[start as int] == BACKSLASH(),
+        input[(start + 1) as int] == LOWER_U(),
+        spec_is_hex_quad(input, (start + 2) as nat),
+        input[(start + 6) as int] == BACKSLASH(),
+        input[(start + 7) as int] == LOWER_U(),
+        spec_is_hex_quad(input, (start + 8) as nat),
+        ({
+            let hi = spec_decode_hex4(input, (start + 2) as nat) as u32;
+            let lo = spec_decode_hex4(input, (start + 8) as nat) as u32;
+            is_high_surrogate(hi) && is_low_surrogate(lo)
+        }),
+        spec_decode_ok(input, start + 12, end),
+    ensures
+        spec_decode_ok(input, start, end),
+        spec_decode(input, start, end) == Some(
+            spec_encode_code_point(
+                surrogate_pair_value(
+                    spec_decode_hex4(input, (start + 2) as nat) as u32,
+                    spec_decode_hex4(input, (start + 8) as nat) as u32,
+                )
+            ) + spec_decode(input, start + 12, end).unwrap()
+        ),
+{
+}
+
 /// Process one chunk (plain byte or escape) starting at position `i`.
 /// Appends decoded bytes to `out` and returns the next position.
 ///
@@ -302,6 +387,9 @@ fn decode_one_chunk(input: &[u8], i: usize, end: usize, out: &mut Vec<u8>) -> (r
                         + spec_decode(input@, next as nat, end as nat).unwrap()
                     )
                 ))
+                // Backward: if the tail is decodable, so is the whole from i
+                &&& (spec_decode_ok(input@, next as nat, end as nat) ==>
+                    spec_decode_ok(input@, i as nat, end as nat))
             },
             ChunkResult::Err { .. } => {
                 &&& !spec_decode_ok(input@, i as nat, end as nat)
@@ -317,6 +405,9 @@ fn decode_one_chunk(input: &[u8], i: usize, end: usize, out: &mut Vec<u8>) -> (r
         proof {
             if spec_decode_ok(input@, i as nat, end as nat) {
                 lemma_decode_unfold_plain(input@, i as nat, end as nat);
+            }
+            if spec_decode_ok(input@, (i + 1) as nat, end as nat) {
+                lemma_decode_fold_plain(input@, i as nat, end as nat);
             }
         }
         ChunkResult::Ok { next: i + 1 }
@@ -343,6 +434,9 @@ fn decode_one_chunk(input: &[u8], i: usize, end: usize, out: &mut Vec<u8>) -> (r
                 if spec_decode_ok(input@, i as nat, end as nat) {
                     lemma_decode_unfold_simple_escape(input@, i as nat, end as nat);
                 }
+                if spec_decode_ok(input@, (i + 2) as nat, end as nat) {
+                    lemma_decode_fold_simple_escape(input@, i as nat, end as nat);
+                }
             }
             ChunkResult::Ok { next: i + 2 }
         } else if esc == 0x75 {
@@ -355,12 +449,6 @@ fn decode_one_chunk(input: &[u8], i: usize, end: usize, out: &mut Vec<u8>) -> (r
             let cp = match decode_hex4(input, hex_start) {
                 Some(v) => v,
                 None => {
-                    // Invalid hex digits — but spec_decode_hex4 always returns a value
-                    // (spec_hex_val returns 0 for non-hex). The exec decode_hex4 returns
-                    // None for non-hex, while spec doesn't check validity.
-                    // Actually: if spec_decode_ok(i,end) held, the spec would have computed
-                    // a cp. But the exec CAN'T fail on hex if the tokenizer already validated.
-                    // For safety, just return error.
                     return ChunkResult::Err { pos: hex_start };
                 }
             };
@@ -389,6 +477,9 @@ fn decode_one_chunk(input: &[u8], i: usize, end: usize, out: &mut Vec<u8>) -> (r
                     if spec_decode_ok(input@, i as nat, end as nat) {
                         lemma_decode_unfold_surrogate_pair(input@, i as nat, end as nat);
                     }
+                    if spec_decode_ok(input@, after_pair as nat, end as nat) {
+                        lemma_decode_fold_surrogate_pair(input@, i as nat, end as nat);
+                    }
                 }
                 encode_code_point(full, out);
                 ChunkResult::Ok { next: after_pair }
@@ -401,6 +492,9 @@ fn decode_one_chunk(input: &[u8], i: usize, end: usize, out: &mut Vec<u8>) -> (r
                 proof {
                     if spec_decode_ok(input@, i as nat, end as nat) {
                         lemma_decode_unfold_bmp(input@, i as nat, end as nat);
+                    }
+                    if spec_decode_ok(input@, after_hex as nat, end as nat) {
+                        lemma_decode_fold_bmp(input@, i as nat, end as nat);
                     }
                 }
                 encode_code_point(cp as u32, out);
@@ -424,7 +518,7 @@ fn decode_one_chunk(input: &[u8], i: usize, end: usize, out: &mut Vec<u8>) -> (r
 /// Functional correctness:
 /// - `NoEscapes` iff no backslashes in the range (bidirectional)
 /// - `NoEscapes` implies `spec_decode` returns `Some(input[start..end])`
-/// - `Ok { bytes }` implies `spec_decode` returns `Some(bytes@)`
+/// - `Ok { bytes }` implies `spec_decode` returns `Some(bytes@)` (unconditional)
 /// - `Err` implies `spec_decode` returns `None`
 pub fn decode_json_escapes_bytes(input: &[u8], start: usize, end: usize) -> (result: DecodeResult)
     requires
@@ -436,11 +530,10 @@ pub fn decode_json_escapes_bytes(input: &[u8], start: usize, end: usize) -> (res
         // Functional correctness for NoEscapes:
         result is NoEscapes ==> spec_decode(input@, start as nat, end as nat)
             == Some(input@.subrange(start as int, end as int)),
-        // Functional correctness for Ok:
+        // Functional correctness for Ok (unconditional):
         match result {
             DecodeResult::Ok { bytes } =>
-                spec_decode_ok(input@, start as nat, end as nat)
-                ==> spec_decode(input@, start as nat, end as nat) == Some(bytes@),
+                spec_decode(input@, start as nat, end as nat) == Some(bytes@),
             _ => true,
         },
         // Functional correctness for Err:
@@ -472,39 +565,44 @@ pub fn decode_json_escapes_bytes(input: &[u8], start: usize, end: usize) -> (res
         return DecodeResult::NoEscapes;
     }
 
-    // Decode pass: try to decode; if spec_decode would return None, we return Err.
-    // We don't know ahead of time whether spec_decode succeeds, so we attempt
-    // decoding and track whether we hit an error.
+    // Decode pass: process chunks left-to-right.
+    // Key insight: decode_one_chunk Ok proves the backward direction
+    // (spec_decode_ok(next, end) ==> spec_decode_ok(i, end)).
+    // We accumulate this into: spec_decode_ok(i, end) ==> spec_decode_ok(start, end).
+    // At loop exit i==end, spec_decode_ok(end, end) is trivially true,
+    // giving us spec_decode_ok(start, end) unconditionally.
     let mut out: Vec<u8> = Vec::new();
     let mut i = start;
-    let ghost valid = spec_decode_ok(input@, start as nat, end as nat);
 
     while i < end
         invariant
             start <= i <= end,
             end <= input@.len(),
-            valid == spec_decode_ok(input@, start as nat, end as nat),
-            // We only enter this loop when has_escape is true
             exists|k: int| start <= k < end && input@[k] == BACKSLASH(),
-            // If valid, the exec is tracking the spec decomposition
-            valid ==> (
+            // Backward chain: if tail from i is decodable, so is the whole from start
+            spec_decode_ok(input@, i as nat, end as nat) ==>
+                spec_decode_ok(input@, start as nat, end as nat),
+            // Forward: if the whole is decodable, then the decomposition holds
+            spec_decode_ok(input@, start as nat, end as nat) ==> (
                 spec_decode_ok(input@, i as nat, end as nat)
                 && spec_decode(input@, start as nat, end as nat)
                     == Some(out@ + spec_decode(input@, i as nat, end as nat).unwrap())
             ),
-            // If !valid, the exec hasn't errored yet but we can't say anything about out@
-            // (this case will eventually hit an Err in decode_one_chunk, or the
-            //  exec happens to match even though spec says None — but we don't need
-            //  to prove anything in that case since we handle it below)
         decreases end - i,
     {
         let ghost old_out = out@;
         match decode_one_chunk(input, i, end, &mut out) {
             ChunkResult::Ok { next } => {
                 proof {
-                    // decode_one_chunk Ok ==> spec_decode_ok(i, end)
-                    // So if valid was true, it's still maintained
-                    if valid {
+                    // Backward: decode_one_chunk gives us
+                    //   spec_decode_ok(next, end) ==> spec_decode_ok(i, end)
+                    // Combined with invariant:
+                    //   spec_decode_ok(i, end) ==> spec_decode_ok(start, end)
+                    // We get:
+                    //   spec_decode_ok(next, end) ==> spec_decode_ok(start, end)
+
+                    // Forward: maintain the decomposition
+                    if spec_decode_ok(input@, start as nat, end as nat) {
                         let chunk = out@.subrange(old_out.len() as int, out@.len() as int);
                         assert(out@ =~= old_out + chunk);
                         assert(
@@ -517,13 +615,15 @@ pub fn decode_json_escapes_bytes(input: &[u8], start: usize, end: usize) -> (res
             }
             ChunkResult::Err { pos: err_pos } => {
                 // decode_one_chunk Err ==> !spec_decode_ok(i, end)
-                // If valid, invariant gives spec_decode_ok(i, end) — contradiction.
-                // So valid must be false, meaning spec_decode(start, end) is None.
-                // Either way, !spec_decode_ok(start, end) holds at this point.
+                // Backward chain says: spec_decode_ok(i, end) ==> spec_decode_ok(start, end)
+                // Contrapositive: !spec_decode_ok(start, end) OR spec_decode_ok(i, end)
+                // Since !spec_decode_ok(i, end), we can't conclude from the chain directly.
+                // But we CAN'T have spec_decode_ok(start, end) either:
+                // If spec_decode_ok(start, end) held, the forward invariant gives
+                // spec_decode_ok(i, end) — contradiction with Err postcondition.
                 proof {
-                    if valid {
-                        // contradiction: invariant says spec_decode_ok(i, end)
-                        // but Err postcondition says !spec_decode_ok(i, end)
+                    if spec_decode_ok(input@, start as nat, end as nat) {
+                        // forward invariant gives spec_decode_ok(i, end) — contradiction
                         assert(false);
                     }
                 }
@@ -533,17 +633,11 @@ pub fn decode_json_escapes_bytes(input: &[u8], start: usize, end: usize) -> (res
     }
 
     // Loop exited normally: i == end
-    // spec_decode(end, end) == Some(seq![])
-    // If valid: spec_decode(start, end) == Some(out@ + seq![]) == Some(out@)
-    // If !valid: we need to show this is impossible (all chunks succeeded,
-    // meaning spec_decode_ok held at every step, meaning valid was true).
-    // Actually: decode_one_chunk Ok ==> spec_decode_ok(i, end).
-    // At the first iteration, i == start, and Ok ==> spec_decode_ok(start, end) == valid.
-    // So valid must be true if we reach here.
+    // spec_decode(end, end) == Some(seq![]) trivially, so spec_decode_ok(end, end).
+    // Backward chain: spec_decode_ok(end, end) ==> spec_decode_ok(start, end).
+    // Forward: spec_decode(start, end) == Some(out@ + spec_decode(end, end).unwrap())
+    //        == Some(out@ + seq![]) == Some(out@).
     proof {
-        // If the loop ran at least once, decode_one_chunk returned Ok on the
-        // first call, proving spec_decode_ok(start, end), i.e., valid == true.
-        // If the loop never ran (start == end), spec_decode(start, end) == Some(seq![]) trivially.
         assert(out@ + Seq::<u8>::empty() =~= out@);
     }
     DecodeResult::Ok { bytes: out }
