@@ -1,5 +1,5 @@
 use crate::dedup::slices_equal;
-use crate::escape::{decode_json_escapes_bytes, DecodeResult, spec_decode, spec_decode_ok};
+use crate::escape::{decode_json_escapes_bytes, DecodeResult};
 use crate::json_spec::*;
 use crate::tokenizer::{tokenize_all, Token, TokenKind, TokenizeError};
 use vstd::prelude::*;
@@ -374,44 +374,13 @@ fn parse_object_body(input: &[u8], tokens: &[Token], cur_start: usize, gas: usiz
         }
 
         // Decode the key (strip quotes, resolve escapes)
-        let decoded_key = if key_end >= 2 && key_start <= key_end - 2 {
-            let content_start = key_start + 1;
-            let content_end = key_end - 1;
-            if content_start <= content_end && content_end <= input.len() {
-                match decode_json_escapes_bytes(input, content_start, content_end) {
-                    DecodeResult::Ok { bytes } => bytes,
-                    DecodeResult::NoEscapes => {
-                        // Copy raw bytes
-                        let mut raw: Vec<u8> = Vec::new();
-                        let mut k = content_start;
-                        while k < content_end
-                            invariant
-                                content_start <= k <= content_end,
-                                content_end <= input@.len(),
-                                raw@ =~= input@.subrange(content_start as int, k as int),
-                            decreases content_end - k,
-                        {
-                            raw.push(input[k]);
-                            proof {
-                                assert(raw@ =~= input@.subrange(content_start as int, (k + 1) as int));
-                            }
-                            k = k + 1;
-                        }
-                        raw
-                    }
-                    DecodeResult::Err { pos } => {
-                        return ParseResult::Err { err: ParseError::InvalidEscape { pos } };
-                    }
-                }
-            } else {
-                Vec::new()
+        let decoded_key = match decode_string_token(input, key_start, key_end) {
+            DecodeStringResult::Ok { bytes } => bytes,
+            DecodeStringResult::Err { pos } => {
+                return ParseResult::Err { err: ParseError::InvalidEscape { pos } };
             }
-        } else {
-            Vec::new()
         };
         proof {
-            // At this point decoded_key@ == spec_decode_string_token(input@, key_start, key_end).unwrap()
-            // (or the edge cases produce empty vec matching the spec's edge cases)
             assert(spec_decode_string_token(input@, key_start as nat, key_end as nat) == Some(decoded_key@));
         }
 

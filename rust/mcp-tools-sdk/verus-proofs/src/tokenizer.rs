@@ -1,4 +1,4 @@
-use crate::common_specs::*;
+use crate::byte_specs::*;
 use vstd::prelude::*;
 
 verus! {
