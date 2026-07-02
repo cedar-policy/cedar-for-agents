@@ -240,6 +240,117 @@ pub fn consume_four_hex_digits(input: &[u8], pos: usize) -> (result: Option<usiz
 //          exp    = ("e"/"E") ["+"/"-"] 1*digit
 // =============================================================================
 
+// --- Number spec: characterizes every byte in a valid JSON number literal ---
+
+/// Spec: byte is valid in a JSON number literal (digit, '-', '+', '.', 'e', 'E')
+pub open spec fn spec_is_number_byte(b: u8) -> bool {
+    spec_is_ascii_digit(b)
+    || b == DASH()   // 0x2D '-'
+    || b == PLUS()   // 0x2B '+'
+    || b == DOT()    // 0x2E '.'
+    || b == LOWER_E() // 0x65 'e'
+    || b == UPPER_E() // 0x45 'E'
+}
+
+/// Spec: all bytes in input[start..end) are valid number bytes.
+pub open spec fn spec_all_number_bytes(input: Seq<u8>, start: nat, end: nat) -> bool {
+    forall|k: int| start <= k < end ==> spec_is_number_byte(#[trigger] input[k])
+}
+
+/// Spec: the integer part at `pos` is valid — either "0" not followed by digit,
+/// or digit1-9 followed by zero or more digits. Returns the end position.
+pub open spec fn spec_int_part_end(input: Seq<u8>, pos: nat) -> Option<nat>
+    recommends pos <= input.len(),
+{
+    if pos >= input.len() {
+        None
+    } else if input[pos as int] == ZERO() {
+        // "0" — valid as long as not followed by another digit
+        if pos + 1 < input.len() && spec_is_ascii_digit(input[(pos + 1) as int]) {
+            None  // leading zero
+        } else {
+            Some(pos + 1)
+        }
+    } else if input[pos as int] >= 0x31 && input[pos as int] <= 0x39 {
+        // digit1-9 followed by digits
+        Some(spec_consume_digits(input, pos + 1))
+    } else {
+        None
+    }
+}
+
+/// Spec: consume optional fractional part. Returns end position (unchanged if no '.').
+pub open spec fn spec_frac_part_end(input: Seq<u8>, pos: nat) -> Option<nat>
+    recommends pos <= input.len(),
+{
+    if pos >= input.len() || input[pos as int] != DOT() {
+        Some(pos)
+    } else {
+        // '.' must be followed by at least one digit
+        let after_dot = pos + 1;
+        if after_dot >= input.len() || !spec_is_ascii_digit(input[after_dot as int]) {
+            None
+        } else {
+            Some(spec_consume_digits(input, after_dot))
+        }
+    }
+}
+
+/// Spec: consume optional exponent part. Returns end position (unchanged if no 'e'/'E').
+pub open spec fn spec_exp_part_end(input: Seq<u8>, pos: nat) -> Option<nat>
+    recommends pos <= input.len(),
+{
+    if pos >= input.len() || (input[pos as int] != LOWER_E() && input[pos as int] != UPPER_E()) {
+        Some(pos)
+    } else {
+        let after_e = pos + 1;
+        // optional sign
+        let after_sign: nat =
+            if after_e < input.len() && (input[after_e as int] == PLUS() || input[after_e as int] == DASH()) {
+                (after_e + 1) as nat
+            } else {
+                after_e
+            };
+        // must have at least one digit
+        if after_sign >= input.len() || !spec_is_ascii_digit(input[after_sign as int]) {
+            None
+        } else {
+            Some(spec_consume_digits(input, after_sign))
+        }
+    }
+}
+
+/// Spec: a valid JSON number at position `pos` ends at position `end`.
+/// This is the complete RFC 8259 §6 grammar as a spec function.
+pub open spec fn spec_number_end(input: Seq<u8>, pos: nat) -> Option<nat>
+    recommends pos <= input.len(),
+{
+    // Optional leading '-'
+    let after_sign: nat =
+        if pos < input.len() && input[pos as int] == DASH() {
+            (pos + 1) as nat
+        } else {
+            pos
+        };
+    // Integer part (required)
+    match spec_int_part_end(input, after_sign) {
+        None => None,
+        Some(after_int) => match spec_frac_part_end(input, after_int) {
+            None => None,
+            Some(after_frac) => spec_exp_part_end(input, after_frac),
+        },
+    }
+}
+
+/// Spec: input[start..end) is a valid JSON number literal.
+pub open spec fn spec_is_valid_json_number(input: Seq<u8>, start: nat, end: nat) -> bool {
+    start < end
+    && end <= input.len()
+    && spec_number_end(input, start) == Some(end)
+}
+
+// --- Strengthened exec functions ---
+
 /// Result of consuming a number literal: Ok(end_position) or Err(position of error)
 pub enum NumberResult {
     Ok { end: usize },
@@ -254,8 +365,12 @@ pub fn consume_int_part(input: &[u8], pos: usize) -> (result: Option<usize>)
         pos <= input@.len(),
     ensures
         match result {
-            Some(end) => pos < end && end <= input@.len(),
-            None => true,
+            Some(end) => {
+                &&& pos < end && end <= input@.len()
+                &&& spec_int_part_end(input@, pos as nat) == Some(end as nat)
+                &&& forall|k: int| pos <= k < end ==> spec_is_ascii_digit(#[trigger] input@[k])
+            },
+            None => spec_int_part_end(input@, pos as nat) is None,
         },
 {
     if pos >= input.len() {
@@ -286,8 +401,13 @@ pub fn consume_frac_part(input: &[u8], pos: usize) -> (result: Option<usize>)
         pos <= input@.len(),
     ensures
         match result {
-            Some(end) => pos <= end && end <= input@.len(),
-            None => true,
+            Some(end) => {
+                &&& pos <= end && end <= input@.len()
+                &&& spec_frac_part_end(input@, pos as nat) == Some(end as nat)
+                &&& forall|k: int| pos <= k < end ==>
+                    (spec_is_ascii_digit(#[trigger] input@[k]) || input@[k] == DOT())
+            },
+            None => spec_frac_part_end(input@, pos as nat) is None,
         },
 {
     if pos >= input.len() || input[pos] != 0x2E {
@@ -311,8 +431,12 @@ pub fn consume_exp_part(input: &[u8], pos: usize) -> (result: Option<usize>)
         pos <= input@.len(),
     ensures
         match result {
-            Some(end) => pos <= end && end <= input@.len(),
-            None => true,
+            Some(end) => {
+                &&& pos <= end && end <= input@.len()
+                &&& spec_exp_part_end(input@, pos as nat) == Some(end as nat)
+                &&& forall|k: int| pos <= k < end ==> spec_is_number_byte(#[trigger] input@[k])
+            },
+            None => spec_exp_part_end(input@, pos as nat) is None,
         },
 {
     if pos >= input.len() || (input[pos] != 0x65 && input[pos] != 0x45) {
@@ -340,7 +464,11 @@ pub fn consume_number(input: &[u8], pos: usize) -> (result: NumberResult)
         pos <= input@.len(),
     ensures
         match result {
-            NumberResult::Ok { end } => pos < end && end <= input@.len(),
+            NumberResult::Ok { end } => {
+                &&& pos < end && end <= input@.len()
+                &&& spec_is_valid_json_number(input@, pos as nat, end as nat)
+                &&& forall|k: int| pos <= k < end ==> spec_is_number_byte(#[trigger] input@[k])
+            },
             NumberResult::Err { .. } => true,
         },
 {
@@ -561,8 +689,10 @@ pub open spec fn token_content_valid(token: Token, input: Seq<u8>) -> bool {
             input[token.start as int] == QUOTE()
         },
         TokenKind::Number => {
-            input[token.start as int] == DASH()
-            || spec_is_ascii_digit(input[token.start as int])
+            &&& (input[token.start as int] == DASH()
+                || spec_is_ascii_digit(input[token.start as int]))
+            &&& spec_is_valid_json_number(input, token.start as nat, token.end as nat)
+            &&& spec_all_number_bytes(input, token.start as nat, token.end as nat)
         },
         TokenKind::ArrayStart  => token.end - token.start == 1 && input[token.start as int] == LBRACKET(),
         TokenKind::ArrayEnd    => token.end - token.start == 1 && input[token.start as int] == RBRACKET(),
