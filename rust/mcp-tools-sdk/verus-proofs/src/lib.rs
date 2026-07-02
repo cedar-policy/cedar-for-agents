@@ -7,3 +7,4 @@ pub mod fuel_mono;
 pub mod json_spec;
 pub mod parser;
 pub mod tokenizer;
+pub mod utf8_validation;

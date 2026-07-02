@@ -516,10 +516,12 @@ pub enum StringResult {
     Ok { end: usize },
     UnterminatedString,
     InvalidEscape { pos: usize },
+    InvalidUtf8 { pos: usize },
 }
 
 /// Consume a JSON string literal body (after opening '"').
 /// Returns the position just after the closing '"'.
+/// Validates that unescaped content is valid UTF-8.
 pub fn consume_string(input: &[u8], pos: usize) -> (result: StringResult)
     requires
         pos <= input@.len(),
@@ -566,7 +568,15 @@ pub fn consume_string(input: &[u8], pos: usize) -> (result: StringResult)
             // control characters not allowed in JSON strings
             return StringResult::InvalidEscape { pos: i };
         } else {
-            i += 1;
+            // Unescaped content: validate UTF-8
+            match crate::utf8_validation::validate_utf8_char(input, i, input.len()) {
+                crate::utf8_validation::Utf8CharResult::Ok { len } => {
+                    i = i + len;
+                }
+                crate::utf8_validation::Utf8CharResult::Err => {
+                    return StringResult::InvalidUtf8 { pos: i };
+                }
+            }
         }
     }
     StringResult::UnterminatedString
@@ -836,6 +846,7 @@ pub fn get_token(input: &[u8], pos: usize) -> (result: TokenResult)
             StringResult::Ok { end } => return TokenResult::Ok { token: Token { kind: TokenKind::String, start, end } },
             StringResult::UnterminatedString => return TokenResult::ErrUnexpectedEof { pos: start },
             StringResult::InvalidEscape { pos: err_pos } => return TokenResult::ErrInvalidEscape { pos: err_pos },
+            StringResult::InvalidUtf8 { pos: err_pos } => return TokenResult::ErrInvalidEscape { pos: err_pos },
         }
     }
 

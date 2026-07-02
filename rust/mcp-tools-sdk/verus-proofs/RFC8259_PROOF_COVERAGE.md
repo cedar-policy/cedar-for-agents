@@ -408,22 +408,23 @@ Legend:
 
 >    unescaped = %x20-21 / %x23-5B / %x5D-10FFFF
 
-⚠️ PARTIAL
-  tokenizer.rs `consume_string` accepts bytes that are:
-  - Not 0x22 (quote — terminates)
-  - Not 0x5C (backslash — starts escape)
-  - Not < 0x20 (control chars — rejected)
-  This covers 0x20-0x21, 0x23-0x5B, 0x5D-0xFF at the byte level.
+✅ PROVEN
+  tokenizer.rs `consume_string` validates unescaped bytes via
+  `utf8_validation::validate_utf8_char`, which is proven against vstd's
+  `valid_first_scalar`. This ensures:
+  - Single bytes 0x20-0x7F (excluding 0x22 quote and 0x5C backslash): accepted
+    as valid 1-byte UTF-8 (ASCII). Quote and backslash are handled before
+    reaching the UTF-8 validator.
+  - Multi-byte sequences (0xC2-0xF4 leading byte + continuation bytes): accepted
+    only if they form valid UTF-8 per RFC 3629 — rejects overlong encodings,
+    surrogate code points, and code points > U+10FFFF.
+  - Bare continuation bytes (0x80-0xBF) and invalid leading bytes (0xC0-0xC1,
+    0xF5-0xFF): rejected.
+  - Control characters (< 0x20): rejected in the preceding branch.
 
-  For single bytes this correctly matches the RFC ranges. For multi-byte UTF-8
-  sequences encoding code points > 0x7F, the individual bytes (0x80-0xFF) are
-  all accepted, which is correct for valid UTF-8.
-
-  GAP: No validation that multi-byte sequences form valid UTF-8. A bare
-  continuation byte (0x80-0xBF) without a proper leading byte would be
-  accepted by the tokenizer. The RFC's `unescaped` production technically
-  operates on Unicode code points (not raw bytes), and invalid byte sequences
-  don't correspond to any code point.
+  This matches the RFC's `unescaped` production which operates on Unicode code
+  points %x20-21 / %x23-5B / %x5D-10FFFF — every accepted byte sequence
+  corresponds to a valid Unicode scalar value in these ranges.
 
 ================================================================================
 §8  String and Character Issues
@@ -434,16 +435,17 @@ Legend:
 > JSON text exchanged between systems that are not part of a closed
 > ecosystem MUST be encoded using UTF-8 [RFC3629].
 
-⚠️ PARTIAL
+✅ PROVEN (for string content)
   - The codebase operates on `&[u8]` / `Seq<u8>` — the correct domain for UTF-8.
   - Escape decoding produces valid UTF-8: `encode_code_point` is proven to emit
     well-formed UTF-8 (`lemma_encode_wellformed` in byte_specs.rs).
-  - GAP: No proof that the *input* is valid UTF-8. The tokenizer accepts raw
-    bytes ≥ 0x20 in string content without checking UTF-8 well-formedness.
-    On the "no escapes" fast path, raw bytes are returned as the decoded string
-    without UTF-8 validation.
-  - NOTE: This is a valid implementation choice per §9 ("An implementation may
-    set limits on the ... character contents of strings").
+  - String content validation: `consume_string` calls `validate_utf8_char` for
+    all unescaped bytes, which is proven against vstd's `valid_first_scalar`.
+    Invalid UTF-8 sequences are rejected at tokenization time.
+  - Keywords (true/false/null) and structural tokens are ASCII (trivially UTF-8).
+  - Number tokens contain only ASCII digits and `-+.eE` (trivially UTF-8).
+  - Whitespace is ASCII (trivially UTF-8).
+  - Therefore: if tokenization succeeds, all bytes in the input are valid UTF-8.
 
 > Implementations MUST NOT add a byte order mark (U+FEFF) to the
 > beginning of a networked-transmitted JSON text.
@@ -580,22 +582,15 @@ Fully proven (✅):
   - §6: Complete number grammar (int, frac, exp, leading zero rejection)
   - §7: String delimiters (opening and closing quotes), all escape sequences
          (simple, BMP \uXXXX, surrogate pairs \uHHHH\uLLLL), control character
-         rejection, hex case insensitivity
+         rejection, hex case insensitivity, UTF-8 validation of unescaped content
+         (proven against vstd::utf8::valid_first_scalar)
+  - §8.1: UTF-8 encoding enforced — invalid UTF-8 in string content rejected
   - §8.2: Unpaired surrogate rejection in escape sequences
   - §8.3: String comparison after escape decoding (duplicate key detection)
 
 Partial (⚠️):
 
-  1. UTF-8 validity of non-escaped string content (§7 `unescaped`, §8.1)
-     - The tokenizer accepts any byte ≥ 0x20 in string bodies without verifying
-       valid UTF-8 sequences. A bare continuation byte (0x80-0xBF) would be
-       accepted.
-     - Severity: MEDIUM — RFC §8.1 says MUST be UTF-8, but §9 allows limits on
-       character contents. Many real parsers don't validate UTF-8 within strings.
-     - Fix: Either (a) add UTF-8 validation to the string tokenizer and prove it,
-       or (b) document as intentional implementation limit per §9.
-
-  2. Completeness — accept all valid texts (§9)
+  1. Completeness — accept all valid texts (§9)
      - Soundness (Ok → correct) is proven. Completeness (valid → Ok) is not.
      - Severity: MEDIUM — meaningful property, requires fuel sufficiency proof
        and tokenizer completeness proof.
@@ -603,9 +598,9 @@ Partial (⚠️):
        token streams). Then prove tokenize_all returns Ok for RFC-valid input.
        Then prove parse_value returns Ok when spec_parse_value returns Some.
 
-  3. Fuel / nesting depth sufficiency (§9)
+  2. Fuel / nesting depth sufficiency (§9)
      - `gas = tokens.len()` is used as fuel. Not proven that this is always
        sufficient for all valid inputs.
-     - Severity: MEDIUM — subsumed by gap 2.
+     - Severity: MEDIUM — subsumed by gap 1.
      - Fix: Prove `spec_parse_value(input, tokens, 0, tokens.len())` returns
        Some for any well-formed token stream.
