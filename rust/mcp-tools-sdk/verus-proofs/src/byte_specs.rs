@@ -5,8 +5,9 @@ verus! {
 // =============================================================================
 // Named ASCII byte constants for use in specifications
 //
-// These are open spec functions purely for readability. Verus inlines their bodies during
-// verification.
+// These are open spec functions purely for readability.
+// Verus inlines their bodies during verification.
+// We use all caps to denote spec constants.
 // =============================================================================
 
 // --- Whitespace ---

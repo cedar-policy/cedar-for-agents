@@ -525,7 +525,11 @@ pub fn consume_string(input: &[u8], pos: usize) -> (result: StringResult)
         pos <= input@.len(),
     ensures
         match result {
-            StringResult::Ok { end } => pos <= end && end <= input@.len(),
+            StringResult::Ok { end } => {
+                &&& pos <= end && end <= input@.len()
+                &&& end >= 1
+                &&& input@[(end - 1) as int] == QUOTE()
+            },
             _ => true,
         },
 {
@@ -687,6 +691,7 @@ pub open spec fn token_content_valid(token: Token, input: Seq<u8>) -> bool {
         },
         TokenKind::String => {
             input[token.start as int] == QUOTE()
+            && input[(token.end - 1) as int] == QUOTE()
         },
         TokenKind::Number => {
             &&& (input[token.start as int] == DASH()
