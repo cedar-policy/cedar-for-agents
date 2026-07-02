@@ -60,6 +60,20 @@ proof fn lemma_skip_whitespace_result_not_ws(input: Seq<u8>, pos: nat)
     }
 }
 
+/// Proof: all bytes in [pos, skip_whitespace(pos)) are whitespace
+proof fn lemma_skip_whitespace_all_ws(input: Seq<u8>, pos: nat)
+    requires
+        pos <= input.len(),
+    ensures
+        forall|k: nat| pos <= k && k < spec_skip_whitespace(input, pos) ==>
+            spec_is_whitespace(#[trigger] input[k as int]),
+    decreases input.len() - pos,
+{
+    if pos < input.len() && spec_is_whitespace(input[pos as int]) {
+        lemma_skip_whitespace_all_ws(input, pos + 1);
+    }
+}
+
 /// Exec: advance past whitespace, returning the index of first non-whitespace byte
 pub fn skip_whitespace(input: &[u8], pos: usize) -> (result: usize)
     requires
@@ -139,6 +153,22 @@ proof fn lemma_consume_digits_all_digits(input: Seq<u8>, pos: nat)
 {
     if pos < input.len() && spec_is_ascii_digit(input[pos as int]) {
         lemma_consume_digits_all_digits(input, pos + 1);
+    }
+}
+
+/// Proof: the byte at consume_digits(pos) is not a digit (if within bounds).
+/// This is the "stopping condition" — the scan stopped because it hit a non-digit.
+proof fn lemma_consume_digits_stops_at_non_digit(input: Seq<u8>, pos: nat)
+    requires
+        pos <= input.len(),
+    ensures ({
+        let result = spec_consume_digits(input, pos);
+        result < input.len() ==> !spec_is_ascii_digit(input[result as int])
+    }),
+    decreases input.len() - pos,
+{
+    if pos < input.len() && spec_is_ascii_digit(input[pos as int]) {
+        lemma_consume_digits_stops_at_non_digit(input, pos + 1);
     }
 }
 
@@ -576,14 +606,24 @@ pub fn get_token(input: &[u8], pos: usize) -> (result: TokenResult)
                 && token.end <= input@.len()
                 && token.end > token.start
                 && token_content_valid(token, input@)
+                // Bytes between pos and token.start are all whitespace
+                && (forall|k: int| pos <= k < token.start ==>
+                    spec_is_whitespace(#[trigger] input@[k]))
             },
-            TokenResult::Eof => true,
+            TokenResult::Eof => {
+                // All remaining bytes from pos are whitespace (nothing left but space)
+                forall|k: int| pos <= k < input@.len() ==>
+                    spec_is_whitespace(#[trigger] input@[k])
+            },
             TokenResult::ErrUnexpectedEof { .. } => true,
             TokenResult::ErrInvalidNumber { .. } => true,
             TokenResult::ErrInvalidEscape { .. } => true,
             TokenResult::ErrUnexpectedToken { .. } => true,
         },
 {
+    proof {
+        lemma_skip_whitespace_all_ws(input@, pos as nat);
+    }
     let start = skip_whitespace(input, pos);
 
     if start >= input.len() {
@@ -696,23 +736,35 @@ pub enum TokenizeError {
 /// - All token spans are within bounds
 /// - Tokens are non-overlapping and ordered (each starts >= previous end)
 /// - Every token's content is valid for its kind (keywords match bytes, etc.)
+/// - Gaps between tokens (and before first / after last) are all whitespace
 pub fn tokenize_all(input: &[u8]) -> (result: Result<Vec<Token>, TokenizeError>)
     ensures
         match result {
             Ok(tokens) => {
                 // All tokens have valid, non-empty spans within the input
-                forall|i: int| 0 <= i && i < tokens@.len() ==> {
+                &&& forall|i: int| 0 <= i && i < tokens@.len() ==> {
                     let t = #[trigger] tokens@[i];
                     t.start < t.end && t.end <= input@.len()
                 }
                 // Tokens are ordered and non-overlapping
-                && forall|i: int, j: int| 0 <= i && i < j && j < tokens@.len() ==> {
+                &&& forall|i: int, j: int| 0 <= i && i < j && j < tokens@.len() ==> {
                     (#[trigger] tokens@[i]).end <= (#[trigger] tokens@[j]).start
                 }
                 // Every token's kind matches the actual input bytes at its span
-                && forall|i: int| 0 <= i && i < tokens@.len() ==> {
+                &&& forall|i: int| 0 <= i && i < tokens@.len() ==> {
                     token_content_valid(#[trigger] tokens@[i], input@)
                 }
+                // Gaps between tokens are all whitespace
+                &&& forall|i: int| #[trigger] tokens@[i].start >= 0 && 0 <= i && i < tokens@.len() ==>
+                    forall|k: int| #![auto]
+                        (if i == 0 { 0int } else { tokens@[i - 1].end as int }) <= k
+                        && k < tokens@[i].start
+                        ==> spec_is_whitespace(input@[k])
+                // Trailing bytes after the last token are all whitespace
+                &&& forall|k: int|
+                    (if tokens@.len() > 0 { tokens@[tokens@.len() - 1].end as int } else { 0int }) <= k
+                    && k < input@.len()
+                    ==> spec_is_whitespace(#[trigger] input@[k])
             },
             Err(_) => true,
         },
@@ -734,6 +786,18 @@ pub fn tokenize_all(input: &[u8]) -> (result: Result<Vec<Token>, TokenizeError>)
                 token_content_valid(#[trigger] tokens@[i], input@)
             },
             tokens@.len() > 0 ==> tokens@[tokens@.len() - 1].end <= pos,
+            // Bytes in [0, first_token.start) and between consecutive tokens are whitespace.
+            // Expressed as: for each token i, bytes in [prev_end, token_i.start) are whitespace.
+            forall|i: int| #[trigger] tokens@[i].start >= 0 && 0 <= i && i < tokens@.len() ==>
+                forall|k: int| #![auto]
+                    (if i == 0 { 0int } else { tokens@[i - 1].end as int }) <= k
+                    && k < tokens@[i].start
+                    ==> spec_is_whitespace(input@[k]),
+            // Everything in [last_token.end, pos) is whitespace
+            forall|k: int|
+                (if tokens@.len() > 0 { tokens@[tokens@.len() - 1].end as int } else { 0int }) <= k
+                && k < pos
+                ==> spec_is_whitespace(#[trigger] input@[k]),
         decreases input.len() - pos,
     {
         match get_token(input, pos) {
