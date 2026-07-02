@@ -1,3 +1,5 @@
+#[allow(non_snake_case)]
+pub mod common_specs;
 pub mod decimal;
 pub mod dedup;
 pub mod escape;

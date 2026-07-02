@@ -1,3 +1,7 @@
 rust/Cargo.lock
 rust/*/Cargo.lock
 rust/target/
+.vscode
+*.code-workspace
+.kiro
+.claude

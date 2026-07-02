@@ -1,52 +1,7 @@
 use vstd::prelude::*;
+use crate::common_specs::*;
 
 verus! {
-
-// =============================================================================
-// Character classification
-// =============================================================================
-
-// The first specs are categorizing bytes into specific ASCII characters.
-// Refer to an ASCII table for reference.
-
-/// Spec: byte is an ASCII digit '0'-'9'
-pub open spec fn spec_is_ascii_digit(b: u8) -> bool {
-    0x30 <= b && b <= 0x39
-}
-
-/// Spec: byte is a hex digit (i.e. 0-9, a-f, A-F)
-pub open spec fn spec_is_hex_digit(b: u8) -> bool {
-    (0x30 <= b && b <= 0x39) || (0x61 <= b && b <= 0x66) || (0x41 <= b && b <= 0x46)
-}
-
-/// Spec: byte is JSON whitespace
-pub open spec fn spec_is_whitespace(b: u8) -> bool {
-    b == 0x20 || b == 0x09 || b == 0x0A || b == 0x0D
-}
-
-/// Exec: check if byte is an ASCII digit
-pub fn is_ascii_digit(b: u8) -> (result: bool)
-    ensures
-        result == spec_is_ascii_digit(b),
-{
-    0x30 <= b && b <= 0x39
-}
-
-/// Exec: check if byte is a hex digit
-pub fn is_hex_digit(b: u8) -> (result: bool)
-    ensures
-        result == spec_is_hex_digit(b),
-{
-    (0x30 <= b && b <= 0x39) || (0x61 <= b && b <= 0x66) || (0x41 <= b && b <= 0x46)
-}
-
-/// Exec: check if byte is JSON whitespace (space, tab, newline, carriage return)
-pub fn is_whitespace(b: u8) -> (result: bool)
-    ensures
-        result == spec_is_whitespace(b),
-{
-    b == 0x20 || b == 0x09 || b == 0x0A || b == 0x0D
-}
 
 // =============================================================================
 // Skip whitespace
@@ -414,27 +369,6 @@ pub enum StringResult {
     InvalidEscape { pos: usize },
 }
 
-/// Spec: byte is a valid single-char escape (after '\')
-pub open spec fn spec_is_simple_escape(b: u8) -> bool {
-    b == 0x22  // "
-    || b == 0x5C  // \
-    || b == 0x2F  // /
-    || b == 0x62  // b
-    || b == 0x66  // f
-    || b == 0x6E  // n
-    || b == 0x72  // r
-    || b == 0x74  // t
-}
-
-/// Exec: check if byte is a valid simple escape character
-pub fn is_simple_escape(b: u8) -> (result: bool)
-    ensures
-        result == spec_is_simple_escape(b),
-{
-    b == 0x22 || b == 0x5C || b == 0x2F || b == 0x62
-        || b == 0x66 || b == 0x6E || b == 0x72 || b == 0x74
-}
-
 /// Consume a JSON string literal body (after opening '"').
 /// Returns the position just after the closing '"'.
 pub fn consume_string(input: &[u8], pos: usize) -> (result: StringResult)
@@ -564,6 +498,61 @@ pub enum TokenResult {
 }
 
 // =============================================================================
+// Token content specification
+// =============================================================================
+
+/// Spec: a token's content is consistent with its kind and the input bytes.
+///
+/// This connects token *kinds* to their *content*, ensuring that:
+/// - Keyword tokens (`true`, `false`, `null`) have exactly the expected bytes
+/// - String tokens are delimited by `"` (opening quote at start)
+/// - Single-character structural tokens have the correct byte
+/// - Number tokens start with '-' or a digit
+pub open spec fn token_content_valid(token: Token, input: Seq<u8>) -> bool {
+    // Common structural requirement: non-empty span within bounds
+    &&& token.start < token.end
+    &&& token.end <= input.len()
+    // Kind-specific content constraints:
+    &&& match token.kind {
+        TokenKind::True => {
+            token.end - token.start == 4
+            && input[token.start as int] == LOWER_T()
+            && input[(token.start + 1) as int] == LOWER_R()
+            && input[(token.start + 2) as int] == LOWER_U()
+            && input[(token.start + 3) as int] == LOWER_E()
+        },
+        TokenKind::False => {
+            token.end - token.start == 5
+            && input[token.start as int] == LOWER_F()
+            && input[(token.start + 1) as int] == LOWER_A()
+            && input[(token.start + 2) as int] == LOWER_L()
+            && input[(token.start + 3) as int] == LOWER_S()
+            && input[(token.start + 4) as int] == LOWER_E()
+        },
+        TokenKind::Null => {
+            token.end - token.start == 4
+            && input[token.start as int] == LOWER_N()
+            && input[(token.start + 1) as int] == LOWER_U()
+            && input[(token.start + 2) as int] == LOWER_L()
+            && input[(token.start + 3) as int] == LOWER_L()
+        },
+        TokenKind::String => {
+            input[token.start as int] == QUOTE()
+        },
+        TokenKind::Number => {
+            input[token.start as int] == DASH()
+            || spec_is_ascii_digit(input[token.start as int])
+        },
+        TokenKind::ArrayStart  => token.end - token.start == 1 && input[token.start as int] == LBRACKET(),
+        TokenKind::ArrayEnd    => token.end - token.start == 1 && input[token.start as int] == RBRACKET(),
+        TokenKind::ObjectStart => token.end - token.start == 1 && input[token.start as int] == LBRACE(),
+        TokenKind::ObjectEnd   => token.end - token.start == 1 && input[token.start as int] == RBRACE(),
+        TokenKind::Comma       => token.end - token.start == 1 && input[token.start as int] == COMMA(),
+        TokenKind::Colon       => token.end - token.start == 1 && input[token.start as int] == COLON(),
+    }
+}
+
+// =============================================================================
 // get_token: the main tokenizer dispatch
 // =============================================================================
 
@@ -574,6 +563,8 @@ pub enum TokenResult {
 /// - **Bounded**: token.start and token.end are within [pos, input.len()]
 /// - **Non-overlapping**: token.start >= pos, so successive calls from
 ///   the previous token.end produce non-overlapping spans
+/// - **Content validity**: token kind matches the actual bytes at the span
+///   (keywords have exact bytes, strings start with `"`, etc.)
 pub fn get_token(input: &[u8], pos: usize) -> (result: TokenResult)
     requires
         pos <= input@.len(),
@@ -584,6 +575,7 @@ pub fn get_token(input: &[u8], pos: usize) -> (result: TokenResult)
                 && token.start >= pos
                 && token.end <= input@.len()
                 && token.end > token.start
+                && token_content_valid(token, input@)
             },
             TokenResult::Eof => true,
             TokenResult::ErrUnexpectedEof { .. } => true,
@@ -703,6 +695,7 @@ pub enum TokenizeError {
 /// - Terminates (position strictly increases each iteration)
 /// - All token spans are within bounds
 /// - Tokens are non-overlapping and ordered (each starts >= previous end)
+/// - Every token's content is valid for its kind (keywords match bytes, etc.)
 pub fn tokenize_all(input: &[u8]) -> (result: Result<Vec<Token>, TokenizeError>)
     ensures
         match result {
@@ -715,6 +708,10 @@ pub fn tokenize_all(input: &[u8]) -> (result: Result<Vec<Token>, TokenizeError>)
                 // Tokens are ordered and non-overlapping
                 && forall|i: int, j: int| 0 <= i && i < j && j < tokens@.len() ==> {
                     (#[trigger] tokens@[i]).end <= (#[trigger] tokens@[j]).start
+                }
+                // Every token's kind matches the actual input bytes at its span
+                && forall|i: int| 0 <= i && i < tokens@.len() ==> {
+                    token_content_valid(#[trigger] tokens@[i], input@)
                 }
             },
             Err(_) => true,
@@ -732,6 +729,9 @@ pub fn tokenize_all(input: &[u8]) -> (result: Result<Vec<Token>, TokenizeError>)
             },
             forall|i: int, j: int| 0 <= i && i < j && j < tokens@.len() ==> {
                 (#[trigger] tokens@[i]).end <= (#[trigger] tokens@[j]).start
+            },
+            forall|i: int| 0 <= i && i < tokens@.len() ==> {
+                token_content_valid(#[trigger] tokens@[i], input@)
             },
             tokens@.len() > 0 ==> tokens@[tokens@.len() - 1].end <= pos,
         decreases input.len() - pos,
