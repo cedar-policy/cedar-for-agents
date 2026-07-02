@@ -1,6 +1,6 @@
-use vstd::prelude::*;
 use crate::json_spec::*;
 use crate::tokenizer::*;
+use vstd::prelude::*;
 
 verus! {
 
