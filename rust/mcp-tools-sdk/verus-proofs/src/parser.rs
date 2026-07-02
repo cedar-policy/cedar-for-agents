@@ -49,6 +49,8 @@ enum DecodeStringResult {
 }
 
 /// Decode a string token (strip quotes, resolve escapes).
+/// Proven to match `spec_decode_string_token`: on Ok the decoded bytes equal
+/// the spec's escape-decoded content; on Err the spec also fails.
 fn decode_string_token(input: &[u8], start: usize, end: usize) -> (result: DecodeStringResult)
     requires
         start < end,
@@ -122,39 +124,32 @@ pub fn parse_value(input: &[u8], tokens: &[Token], idx: usize, gas: usize) -> (r
     let token = &tokens[idx];
     match token.kind {
         TokenKind::Null => {
-            let result = ParseResult::Ok { value: JsonValue::Null { start: token.start, end: token.end }, next: idx + 1 };
             proof {
-                let fuel: nat = 1;
-                let spec_val = JsonValueSpec::Null;
-                assert(spec_parse_value(input@, tokens@, idx as nat, fuel)
-                    == Some((spec_val, (idx + 1) as nat)));
-                assert(value_matches_spec(
-                    JsonValue::Null { start: token.start, end: token.end },
-                    spec_val, input@));
+                assert(spec_parse_value(input@, tokens@, idx as nat, gas as nat)
+                    == Some((JsonValueSpec::Null, (idx + 1) as nat)));
             }
-            result
+            ParseResult::Ok { value: JsonValue::Null { start: token.start, end: token.end }, next: idx + 1 }
         }
         TokenKind::True => {
             proof {
-                assert(spec_parse_value(input@, tokens@, idx as nat, 1nat)
+                assert(spec_parse_value(input@, tokens@, idx as nat, gas as nat)
                     == Some((JsonValueSpec::Bool { val: true }, (idx + 1) as nat)));
             }
             ParseResult::Ok { value: JsonValue::Bool { val: true, start: token.start, end: token.end }, next: idx + 1 }
         }
         TokenKind::False => {
             proof {
-                assert(spec_parse_value(input@, tokens@, idx as nat, 1nat)
+                assert(spec_parse_value(input@, tokens@, idx as nat, gas as nat)
                     == Some((JsonValueSpec::Bool { val: false }, (idx + 1) as nat)));
             }
             ParseResult::Ok { value: JsonValue::Bool { val: false, start: token.start, end: token.end }, next: idx + 1 }
         }
         TokenKind::Number => {
             proof {
-                let spec_val = JsonValueSpec::Number {
-                    bytes: input@.subrange(token.start as int, token.end as int),
-                };
-                assert(spec_parse_value(input@, tokens@, idx as nat, 1nat)
-                    == Some((spec_val, (idx + 1) as nat)));
+                assert(spec_parse_value(input@, tokens@, idx as nat, gas as nat)
+                    == Some((JsonValueSpec::Number {
+                        bytes: input@.subrange(token.start as int, token.end as int),
+                    }, (idx + 1) as nat)));
             }
             ParseResult::Ok { value: JsonValue::Number { start: token.start, end: token.end }, next: idx + 1 }
         }
@@ -252,11 +247,7 @@ fn parse_array_body(input: &[u8], tokens: &[Token], cur_start: usize, gas: usize
         match parse_value(input, tokens, cur, sub_gas) {
             ParseResult::Ok { value, next } => {
                 proof {
-                    // parse_value postcondition gives us:
-                    //   spec_parse_value(input@, tokens@, cur, sub_gas) is Some
-                    //   value_matches_spec(value, spec_parse_value(...).unwrap().0, input@)
-                    // sub_gas == gas - 1, and spec_parse_array_elements uses fuel-1 = gas-1
-                    // for spec_parse_value. So they agree.
+                    // sub_gas == gas - 1, matching the fuel-1 used by spec_parse_array_elements
                     let spec_val = spec_parse_value(input@, tokens@, cur as nat, sub_gas as nat).unwrap().0;
                     spec_acc = spec_acc + seq![spec_val];
                 }

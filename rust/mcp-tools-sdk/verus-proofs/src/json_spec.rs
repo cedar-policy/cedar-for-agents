@@ -315,6 +315,9 @@ pub proof fn lemma_parse_array_fuel_mono(input: Seq<u8>, tokens: Seq<Token>, idx
 }
 
 /// Lemma: fuel monotonicity for spec_parse_array_elements.
+///
+/// Mirrors the structure of spec_parse_array_elements, recursing into
+/// sub-cases to show the result is unchanged with more fuel.
 pub proof fn lemma_parse_array_elements_fuel_mono(
     input: Seq<u8>, tokens: Seq<Token>, idx: nat, acc: Seq<JsonValueSpec>, f: nat, f2: nat,
 )
@@ -368,6 +371,9 @@ pub proof fn lemma_parse_object_fuel_mono(input: Seq<u8>, tokens: Seq<Token>, id
 }
 
 /// Lemma: fuel monotonicity for spec_parse_object_members.
+///
+/// Mirrors the structure of spec_parse_object_members, recursing into
+/// sub-cases to show the result is unchanged with more fuel.
 pub proof fn lemma_parse_object_members_fuel_mono(
     input: Seq<u8>, tokens: Seq<Token>, idx: nat, acc: Seq<(Seq<u8>, JsonValueSpec)>, f: nat, f2: nat,
 )
