@@ -3,5 +3,6 @@ pub mod common_specs;
 pub mod decimal;
 pub mod dedup;
 pub mod escape;
+pub mod json_spec;
 pub mod parser;
 pub mod tokenizer;

@@ -1,5 +1,6 @@
 use crate::dedup::slices_equal;
-use crate::escape::{decode_json_escapes_bytes, DecodeResult};
+use crate::escape::{decode_json_escapes_bytes, DecodeResult, spec_decode, spec_decode_ok};
+use crate::json_spec::*;
 use crate::tokenizer::{tokenize_all, Token, TokenKind, TokenizeError};
 use vstd::prelude::*;
 
@@ -52,6 +53,13 @@ fn decode_string_token(input: &[u8], start: usize, end: usize) -> (result: Decod
     requires
         start < end,
         end <= input@.len(),
+    ensures
+        match result {
+            DecodeStringResult::Ok { bytes } =>
+                spec_decode_string_token(input@, start as nat, end as nat) == Some(bytes@),
+            DecodeStringResult::Err { .. } =>
+                spec_decode_string_token(input@, start as nat, end as nat) is None,
+        },
 {
     // String tokens include the quotes: input[start] == '"', input[end-1] == '"'
     if end - start < 2 {
@@ -65,15 +73,20 @@ fn decode_string_token(input: &[u8], start: usize, end: usize) -> (result: Decod
     match decode_json_escapes_bytes(input, content_start, content_end) {
         DecodeResult::Ok { bytes } => DecodeStringResult::Ok { bytes },
         DecodeResult::NoEscapes => {
+            // NoEscapes means spec_decode == Some(input[content_start..content_end])
             let mut raw: Vec<u8> = Vec::new();
             let mut k = content_start;
             while k < content_end
                 invariant
                     content_start <= k <= content_end,
                     content_end <= input@.len(),
+                    raw@ =~= input@.subrange(content_start as int, k as int),
                 decreases content_end - k,
             {
                 raw.push(input[k]);
+                proof {
+                    assert(raw@ =~= input@.subrange(content_start as int, (k + 1) as int));
+                }
                 k += 1;
             }
             DecodeStringResult::Ok { bytes: raw }
@@ -90,8 +103,13 @@ pub fn parse_value(input: &[u8], tokens: &[Token], idx: usize, gas: usize) -> (r
             tokens@[i].start < tokens@[i].end && tokens@[i].end <= input@.len(),
     ensures
         match result {
-            ParseResult::Ok { value: _, next } => {
-                next > idx && next <= tokens@.len()
+            ParseResult::Ok { value, next } => {
+                &&& next > idx && next <= tokens@.len()
+                &&& spec_parse_value(input@, tokens@, idx as nat, gas as nat) is Some
+                &&& spec_parse_value(input@, tokens@, idx as nat, gas as nat).unwrap().1 == next as nat
+                &&& value_matches_spec(value,
+                        spec_parse_value(input@, tokens@, idx as nat, gas as nat).unwrap().0,
+                        input@)
             },
             ParseResult::Err { .. } => true,
         },
@@ -104,15 +122,40 @@ pub fn parse_value(input: &[u8], tokens: &[Token], idx: usize, gas: usize) -> (r
     let token = &tokens[idx];
     match token.kind {
         TokenKind::Null => {
-            ParseResult::Ok { value: JsonValue::Null { start: token.start, end: token.end }, next: idx + 1 }
+            let result = ParseResult::Ok { value: JsonValue::Null { start: token.start, end: token.end }, next: idx + 1 };
+            proof {
+                let fuel: nat = 1;
+                let spec_val = JsonValueSpec::Null;
+                assert(spec_parse_value(input@, tokens@, idx as nat, fuel)
+                    == Some((spec_val, (idx + 1) as nat)));
+                assert(value_matches_spec(
+                    JsonValue::Null { start: token.start, end: token.end },
+                    spec_val, input@));
+            }
+            result
         }
         TokenKind::True => {
+            proof {
+                assert(spec_parse_value(input@, tokens@, idx as nat, 1nat)
+                    == Some((JsonValueSpec::Bool { val: true }, (idx + 1) as nat)));
+            }
             ParseResult::Ok { value: JsonValue::Bool { val: true, start: token.start, end: token.end }, next: idx + 1 }
         }
         TokenKind::False => {
+            proof {
+                assert(spec_parse_value(input@, tokens@, idx as nat, 1nat)
+                    == Some((JsonValueSpec::Bool { val: false }, (idx + 1) as nat)));
+            }
             ParseResult::Ok { value: JsonValue::Bool { val: false, start: token.start, end: token.end }, next: idx + 1 }
         }
         TokenKind::Number => {
+            proof {
+                let spec_val = JsonValueSpec::Number {
+                    bytes: input@.subrange(token.start as int, token.end as int),
+                };
+                assert(spec_parse_value(input@, tokens@, idx as nat, 1nat)
+                    == Some((spec_val, (idx + 1) as nat)));
+            }
             ParseResult::Ok { value: JsonValue::Number { start: token.start, end: token.end }, next: idx + 1 }
         }
         TokenKind::String => {
@@ -151,8 +194,13 @@ fn parse_array_body(input: &[u8], tokens: &[Token], cur_start: usize, gas: usize
             tokens@[i].start < tokens@[i].end && tokens@[i].end <= input@.len(),
     ensures
         match result {
-            ParseResult::Ok { value: _, next } => {
-                next > cur_start - 1 && next <= tokens@.len()
+            ParseResult::Ok { value, next } => {
+                &&& next > cur_start - 1 && next <= tokens@.len()
+                &&& spec_parse_array(input@, tokens@, cur_start as nat, gas as nat) is Some
+                &&& spec_parse_array(input@, tokens@, cur_start as nat, gas as nat).unwrap().1 == next as nat
+                &&& value_matches_spec(value,
+                        spec_parse_array(input@, tokens@, cur_start as nat, gas as nat).unwrap().0,
+                        input@)
             },
             ParseResult::Err { .. } => true,
         },
@@ -161,6 +209,11 @@ fn parse_array_body(input: &[u8], tokens: &[Token], cur_start: usize, gas: usize
     if cur_start < tokens.len() {
         match tokens[cur_start].kind {
             TokenKind::ArrayEnd => {
+                proof {
+                    // spec_parse_array with ArrayEnd at idx returns empty array
+                    assert(spec_parse_array(input@, tokens@, cur_start as nat, gas as nat)
+                        == Some((JsonValueSpec::Array { elements: Seq::empty() }, (cur_start + 1) as nat)));
+                }
                 return ParseResult::Ok {
                     value: JsonValue::Array { elements: Vec::new(), start: open_start, end: tokens[cur_start].end },
                     next: cur_start + 1,
@@ -172,6 +225,7 @@ fn parse_array_body(input: &[u8], tokens: &[Token], cur_start: usize, gas: usize
 
     let mut cur = cur_start;
     let mut elements: Vec<JsonValue> = Vec::new();
+    let ghost mut spec_acc: Seq<JsonValueSpec> = Seq::empty();
 
     loop
         invariant
@@ -180,6 +234,14 @@ fn parse_array_body(input: &[u8], tokens: &[Token], cur_start: usize, gas: usize
             gas > 0,
             forall|i: int| #![auto] 0 <= i && i < tokens@.len() ==>
                 tokens@[i].start < tokens@[i].end && tokens@[i].end <= input@.len(),
+            // The exec elements match the spec accumulator
+            elements@.len() == spec_acc.len(),
+            forall|i: int| 0 <= i && i < elements@.len() ==>
+                value_matches_spec(#[trigger] elements@[i], spec_acc[i], input@),
+            // Connection: spec from current position with accumulated elements
+            // equals the overall spec_parse_array result
+            spec_parse_array_elements(input@, tokens@, cur as nat, spec_acc, gas as nat)
+                == spec_parse_array(input@, tokens@, cur_start as nat, gas as nat),
         decreases tokens@.len() - cur,
     {
         if cur >= tokens.len() {
@@ -189,6 +251,15 @@ fn parse_array_body(input: &[u8], tokens: &[Token], cur_start: usize, gas: usize
         let sub_gas = if gas > 1 { gas - 1 } else { 0 };
         match parse_value(input, tokens, cur, sub_gas) {
             ParseResult::Ok { value, next } => {
+                proof {
+                    // parse_value postcondition gives us:
+                    //   spec_parse_value(input@, tokens@, cur, sub_gas) is Some
+                    //   value_matches_spec(value, spec_parse_value(...).unwrap().0, input@)
+                    // sub_gas == gas - 1, and spec_parse_array_elements uses fuel-1 = gas-1
+                    // for spec_parse_value. So they agree.
+                    let spec_val = spec_parse_value(input@, tokens@, cur as nat, sub_gas as nat).unwrap().0;
+                    spec_acc = spec_acc + seq![spec_val];
+                }
                 elements.push(value);
                 cur = next;
             }
@@ -236,12 +307,16 @@ fn parse_object_body(input: &[u8], tokens: &[Token], cur_start: usize, gas: usiz
     ensures
         match result {
             ParseResult::Ok { value, next } => {
-                next > cur_start - 1 && next <= tokens@.len()
-                // Object values have distinct keys
-                && (match value {
+                &&& next > cur_start - 1 && next <= tokens@.len()
+                &&& (match value {
                     JsonValue::Object { entries, .. } => keys_are_distinct(entries@),
                     _ => true,
                 })
+                &&& spec_parse_object(input@, tokens@, cur_start as nat, gas as nat) is Some
+                &&& spec_parse_object(input@, tokens@, cur_start as nat, gas as nat).unwrap().1 == next as nat
+                &&& value_matches_spec(value,
+                        spec_parse_object(input@, tokens@, cur_start as nat, gas as nat).unwrap().0,
+                        input@)
             },
             ParseResult::Err { .. } => true,
         },
@@ -252,6 +327,10 @@ fn parse_object_body(input: &[u8], tokens: &[Token], cur_start: usize, gas: usiz
             TokenKind::ObjectEnd => {
                 let empty_entries: Vec<ObjectEntry> = Vec::new();
                 assert(keys_are_distinct(empty_entries@));
+                proof {
+                    assert(spec_parse_object(input@, tokens@, cur_start as nat, gas as nat)
+                        == Some((JsonValueSpec::Object { entries: Seq::empty() }, (cur_start + 1) as nat)));
+                }
                 return ParseResult::Ok {
                     value: JsonValue::Object { entries: empty_entries, start: open_start, end: tokens[cur_start].end },
                     next: cur_start + 1,
@@ -263,6 +342,7 @@ fn parse_object_body(input: &[u8], tokens: &[Token], cur_start: usize, gas: usiz
 
     let mut cur = cur_start;
     let mut entries: Vec<ObjectEntry> = Vec::new();
+    let ghost mut spec_acc: Seq<(Seq<u8>, JsonValueSpec)> = Seq::empty();
 
     loop
         invariant
@@ -272,6 +352,17 @@ fn parse_object_body(input: &[u8], tokens: &[Token], cur_start: usize, gas: usiz
             forall|i: int| #![auto] 0 <= i && i < tokens@.len() ==>
                 tokens@[i].start < tokens@[i].end && tokens@[i].end <= input@.len(),
             keys_are_distinct(entries@),
+            // Exec entries match spec accumulator
+            entries@.len() == spec_acc.len(),
+            forall|i: int| 0 <= i && i < entries@.len() ==> {
+                let e = #[trigger] entries@[i];
+                let s = spec_acc[i];
+                e.decoded_key@ =~= s.0
+                && value_matches_spec(e.value, s.1, input@)
+            },
+            // Connection: spec from current position equals overall result
+            spec_parse_object_members(input@, tokens@, cur as nat, spec_acc, gas as nat)
+                == spec_parse_object(input@, tokens@, cur_start as nat, gas as nat),
         decreases tokens@.len() - cur,
     {
         // Key (string)
@@ -306,9 +397,13 @@ fn parse_object_body(input: &[u8], tokens: &[Token], cur_start: usize, gas: usiz
                             invariant
                                 content_start <= k <= content_end,
                                 content_end <= input@.len(),
+                                raw@ =~= input@.subrange(content_start as int, k as int),
                             decreases content_end - k,
                         {
                             raw.push(input[k]);
+                            proof {
+                                assert(raw@ =~= input@.subrange(content_start as int, (k + 1) as int));
+                            }
                             k = k + 1;
                         }
                         raw
@@ -323,6 +418,11 @@ fn parse_object_body(input: &[u8], tokens: &[Token], cur_start: usize, gas: usiz
         } else {
             Vec::new()
         };
+        proof {
+            // At this point decoded_key@ == spec_decode_string_token(input@, key_start, key_end).unwrap()
+            // (or the edge cases produce empty vec matching the spec's edge cases)
+            assert(spec_decode_string_token(input@, key_start as nat, key_end as nat) == Some(decoded_key@));
+        }
 
         // Duplicate key check: compare against all previous decoded keys
         let mut dup_idx: usize = 0;
@@ -349,6 +449,19 @@ fn parse_object_body(input: &[u8], tokens: &[Token], cur_start: usize, gas: usiz
         // At this point: decoded_key differs from all existing entries' keys
         assert(forall|k: int| #![auto] 0 <= k && k < entries@.len() ==>
             !(entries@[k].decoded_key@ =~= decoded_key@));
+        proof {
+            // Connect to spec: !spec_key_exists(spec_acc, decoded_key@)
+            // We know entries@[i].decoded_key@ =~= spec_acc[i].0 for all i (invariant)
+            // We know entries@[i].decoded_key@ != decoded_key@ for all i (from dup check)
+            // Therefore spec_acc[i].0 != decoded_key@ for all i
+            assert forall|i: int| 0 <= i && i < spec_acc.len()
+                implies !(#[trigger] spec_acc[i].0 =~= decoded_key@)
+            by {
+                assert(entries@[i].decoded_key@ =~= spec_acc[i].0);
+                assert(!(entries@[i].decoded_key@ =~= decoded_key@));
+            }
+            assert(!spec_key_exists(spec_acc, decoded_key@));
+        }
 
         // Colon
         if cur >= tokens.len() {
@@ -370,6 +483,10 @@ fn parse_object_body(input: &[u8], tokens: &[Token], cur_start: usize, gas: usiz
         let sub_gas = if gas > 1 { (gas - 1) as usize } else { 0 };
         match parse_value(input, tokens, cur, sub_gas) {
             ParseResult::Ok { value, next } => {
+                proof {
+                    let spec_val = spec_parse_value(input@, tokens@, cur as nat, sub_gas as nat).unwrap().0;
+                    spec_acc = spec_acc + seq![(decoded_key@, spec_val)];
+                }
                 entries.push(ObjectEntry { key_start, key_end, decoded_key, value });
                 cur = next;
             }
