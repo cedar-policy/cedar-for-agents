@@ -523,7 +523,11 @@ fn parse(input: &[u8], tokens: &[Token]) -> (result: ParseResult)
             tokens@[i].start < tokens@[i].end && tokens@[i].end <= input@.len(),
     ensures
         match result {
-            ParseResult::Ok { value: _, next } => next <= tokens@.len(),
+            ParseResult::Ok { value, next } => {
+                &&& next == tokens@.len()
+                &&& spec_parse_json(input@, tokens@) is Some
+                &&& value_matches_spec(value, spec_parse_json(input@, tokens@).unwrap(), input@)
+            },
             ParseResult::Err { .. } => true,
         },
 {
@@ -558,7 +562,17 @@ pub enum ParseJsonError {
 /// This is the primary entry point that combines tokenization and parsing
 /// in verified code, eliminating the need for unverified glue between the
 /// tokenizer and parser.
+///
+/// Functional correctness: on success, the returned value matches the
+/// mathematical specification `spec_parse_json` applied to the tokenized input.
 pub fn parse_json(input: &[u8]) -> (result: Result<JsonValue, ParseJsonError>)
+    ensures
+        match result {
+            Ok(value) => exists|tokens: Seq<Token>|
+                spec_parse_json(input@, tokens) is Some
+                && value_matches_spec(value, #[trigger] spec_parse_json(input@, tokens).unwrap(), input@),
+            Err(_) => true,
+        },
 {
     let tokens = match tokenize_all(input) {
         Ok(tokens) => tokens,
