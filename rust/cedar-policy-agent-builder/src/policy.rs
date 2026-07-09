@@ -1,12 +1,10 @@
 use crate::config::{CedarAgentConfig, ConsentScope};
+use cedar_policy::EntityId;
 use std::collections::BTreeSet;
 
-fn escape_cedar_string(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"")
-}
-
 fn action_ref(ns: &str, name: &str) -> String {
-    format!("action == {ns}::Action::\"{}\"", escape_cedar_string(name))
+    let eid = EntityId::new(name);
+    format!("action == {ns}::Action::\"{}\"", eid.escaped())
 }
 
 // Tools like "my-tool" and "my_tool" will collide to the same counter key.
@@ -47,7 +45,7 @@ fn generate_role_policies(config: &CedarAgentConfig) -> Vec<String> {
 
     for (role_name, tools) in roles {
         let consent_tools = get_consent_tools_for_role(config, role_name);
-        let role_ref = format!("{ns}::Role::\"{}\"", escape_cedar_string(role_name));
+        let role_ref = format!("{ns}::Role::\"{}\"", EntityId::new(role_name).escaped());
 
         if tools.contains(&"*".to_string()) {
             if consent_tools.is_empty() {
@@ -100,12 +98,15 @@ fn generate_restriction_policies(config: &CedarAgentConfig) -> Vec<String> {
                 .iter()
                 .map(|v| {
                     let formatted = format_cedar_value(v);
-                    format!("context.input.{field} == {formatted}")
+                    format!(
+                        "context.input[\"{}\"] == {formatted}",
+                        EntityId::new(field).escaped()
+                    )
                 })
                 .collect();
             policies.push(format!(
                 "forbid(\n  principal,\n  {action_clause},\n  resource\n) when {{\n  !(context.input has \"{}\" && ({}))\n}};",
-                escape_cedar_string(field),
+                EntityId::new(field).escaped(),
                 value_checks.join(" || ")
             ));
         }
@@ -176,14 +177,14 @@ fn generate_env_denial_policies(config: &CedarAgentConfig) -> Vec<String> {
         if tools.contains(&"*".to_string()) {
             policies.push(format!(
                 "forbid(\n  principal,\n  action,\n  resource\n) when {{ context.session has \"environment\" && context.session.environment == \"{}\" }};",
-                escape_cedar_string(env)
+                EntityId::new(env).escaped()
             ));
         } else {
             for tool in tools {
                 policies.push(format!(
                     "forbid(\n  principal,\n  {},\n  resource\n) when {{ context.session has \"environment\" && context.session.environment == \"{}\" }};",
                     action_ref(ns, tool),
-                    escape_cedar_string(env)
+                    EntityId::new(env).escaped()
                 ));
             }
         }
@@ -209,7 +210,7 @@ fn generate_consent_policies(config: &CedarAgentConfig) -> Vec<String> {
             ));
         } else {
             for role in &roles {
-                let role_ref = format!("{ns}::Role::\"{}\"", escape_cedar_string(role));
+                let role_ref = format!("{ns}::Role::\"{}\"", EntityId::new(role).escaped());
                 policies.push(format!(
                     "permit(\n  principal in {role_ref},\n  {action_clause},\n  resource\n) when {{ context.session has \"user_consent\" && context.session.user_consent == true }};",
                 ));
@@ -222,10 +223,10 @@ fn generate_consent_policies(config: &CedarAgentConfig) -> Vec<String> {
 
 fn format_cedar_value(v: &serde_json::Value) -> String {
     match v {
-        serde_json::Value::String(s) => format!("\"{}\"", escape_cedar_string(s)),
+        serde_json::Value::String(s) => format!("\"{}\"", EntityId::new(s).escaped()),
         serde_json::Value::Number(n) => n.to_string(),
         serde_json::Value::Bool(b) => b.to_string(),
-        _ => format!("\"{}\"", escape_cedar_string(&v.to_string())),
+        _ => format!("\"{}\"", EntityId::new(v.to_string()).escaped()),
     }
 }
 
@@ -244,16 +245,15 @@ pub fn generate_policies(config: &CedarAgentConfig) -> String {
 mod tests {
     use super::*;
     use crate::config::{PrincipalConfig, Restriction};
+    use cedar_policy::PolicySet;
     use std::collections::BTreeMap;
 
-    #[test]
-    fn test_escape_cedar_string() {
-        assert_eq!(
-            escape_cedar_string("hello \"world\""),
-            "hello \\\"world\\\""
-        );
-        assert_eq!(escape_cedar_string("back\\slash"), "back\\\\slash");
-        assert_eq!(escape_cedar_string("admin"), "admin");
+    fn assert_valid_cedar(policies: &str) {
+        if !policies.is_empty() {
+            policies.parse::<PolicySet>().unwrap_or_else(|e| {
+                panic!("generated policies are not valid Cedar:\n{policies}\nerror: {e}")
+            });
+        }
     }
 
     #[test]
@@ -270,6 +270,7 @@ mod tests {
             ..Default::default()
         };
         let policies = generate_policies(&config);
+        assert_valid_cedar(&policies);
         assert!(policies.contains(
             "permit(principal in Agent::Role::\"analyst\", action == Agent::Action::\"search\", resource);"
         ));
@@ -288,6 +289,7 @@ mod tests {
             ..Default::default()
         };
         let policies = generate_policies(&config);
+        assert_valid_cedar(&policies);
         assert!(policies.contains("permit(principal in Agent::Role::\"admin\", action, resource);"));
     }
 
@@ -309,8 +311,9 @@ mod tests {
             ..Default::default()
         };
         let policies = generate_policies(&config);
+        assert_valid_cedar(&policies);
         assert!(policies.contains(
-            "forbid(\n  principal,\n  action == Agent::Action::\"query_database\",\n  resource\n) when {\n  !(context.input has \"database\" && (context.input.database == \"analytics\" || context.input.database == \"reporting\"))\n};"
+            "forbid(\n  principal,\n  action == Agent::Action::\"query_database\",\n  resource\n) when {\n  !(context.input has \"database\" && (context.input[\"database\"] == \"analytics\" || context.input[\"database\"] == \"reporting\"))\n};"
         ));
     }
 
@@ -321,6 +324,7 @@ mod tests {
             ..Default::default()
         };
         let policies = generate_policies(&config);
+        assert_valid_cedar(&policies);
         assert!(policies.contains(
             "forbid(\n  principal,\n  action == Agent::Action::\"send_email\",\n  resource\n) when { context.session has \"call_count_send_email\" && context.session.call_count_send_email >= 3 };"
         ));
@@ -333,6 +337,7 @@ mod tests {
             ..Default::default()
         };
         let policies = generate_policies(&config);
+        assert_valid_cedar(&policies);
         assert!(policies.contains(
             "forbid(\n  principal,\n  action,\n  resource\n) when { context.session has \"call_count\" && context.session.call_count >= 100 };"
         ));
@@ -351,6 +356,7 @@ mod tests {
             ..Default::default()
         };
         let policies = generate_policies(&config);
+        assert_valid_cedar(&policies);
         assert!(policies.contains(
             "forbid(\n  principal,\n  action,\n  resource\n) when { context.session has \"hour_utc\" && (context.session.hour_utc < 9 || context.session.hour_utc >= 17) };"
         ));
@@ -369,6 +375,7 @@ mod tests {
             ..Default::default()
         };
         let policies = generate_policies(&config);
+        assert_valid_cedar(&policies);
         assert!(policies.contains(
             "forbid(\n  principal,\n  action == Agent::Action::\"deploy\",\n  resource\n) when { context.session has \"hour_utc\" && (context.session.hour_utc < 9 || context.session.hour_utc >= 17) };"
         ));
@@ -384,6 +391,7 @@ mod tests {
             ..Default::default()
         };
         let policies = generate_policies(&config);
+        assert_valid_cedar(&policies);
         assert!(policies.contains(
             "forbid(\n  principal,\n  action == Agent::Action::\"delete_record\",\n  resource\n) when { context.session has \"environment\" && context.session.environment == \"production\" };"
         ));
@@ -399,6 +407,7 @@ mod tests {
             ..Default::default()
         };
         let policies = generate_policies(&config);
+        assert_valid_cedar(&policies);
         assert!(policies.contains(
             "permit(\n  principal,\n  action == Agent::Action::\"send_email\",\n  resource\n) when { context.session has \"user_consent\" && context.session.user_consent == true };"
         ));
@@ -414,6 +423,7 @@ mod tests {
             ..Default::default()
         };
         let policies = generate_policies(&config);
+        assert_valid_cedar(&policies);
         assert!(policies.contains(
             "permit(\n  principal in Agent::Role::\"analyst\",\n  action == Agent::Action::\"send_email\",\n  resource\n) when { context.session has \"user_consent\" && context.session.user_consent == true };"
         ));
@@ -433,6 +443,7 @@ mod tests {
             ..Default::default()
         };
         let policies = generate_policies(&config);
+        assert_valid_cedar(&policies);
         // send_email should NOT appear in the role permit
         assert!(!policies.contains(
             "principal in Agent::Role::\"analyst\", action == Agent::Action::\"send_email\", resource);"
@@ -457,6 +468,7 @@ mod tests {
             ..Default::default()
         };
         let policies = generate_policies(&config);
+        assert_valid_cedar(&policies);
         assert!(policies.contains("!(action == Agent::Action::\"send_email\")"));
     }
 
@@ -487,6 +499,7 @@ mod tests {
             ..Default::default()
         };
         let policies = generate_policies(&config);
+        assert_valid_cedar(&policies);
         assert!(policies.contains("Agent::Action::\"tool\\\"inject\""));
         assert!(policies.contains("Agent::Role::\"role\\\"evil\""));
     }
@@ -506,6 +519,7 @@ mod tests {
             ..Default::default()
         };
         let policies = generate_policies(&config);
+        assert_valid_cedar(&policies);
         assert!(policies.contains("call_count_my_tool_v2"));
         assert!(!policies.contains("call_count_my.tool-v2"));
     }
@@ -531,6 +545,7 @@ mod tests {
             ..Default::default()
         };
         let policies = generate_policies(&config);
+        assert_valid_cedar(&policies);
         assert!(policies.contains(
             "forbid(\n  principal,\n  action == Agent::Action::\"dangerous_tool\",\n  resource\n);"
         ));
@@ -546,6 +561,7 @@ mod tests {
             ..Default::default()
         };
         let policies = generate_policies(&config);
+        assert_valid_cedar(&policies);
         assert!(policies.contains("action,"));
         assert!(policies.contains("\"staging\""));
     }
@@ -578,7 +594,8 @@ mod tests {
             ..Default::default()
         };
         let policies = generate_policies(&config);
-        assert!(policies.contains("context.input.limit == 100"));
-        assert!(policies.contains("context.input.limit == 500"));
+        assert_valid_cedar(&policies);
+        assert!(policies.contains("context.input[\"limit\"] == 100"));
+        assert!(policies.contains("context.input[\"limit\"] == 500"));
     }
 }

@@ -8,6 +8,14 @@ pub enum BuilderError {
     InvalidTimeWindow { start: u8, end: u8 },
     #[error("hour_end ({0}) must be <= 24")]
     HourOutOfRange(u8),
+    #[error("\"{0}\" is not a valid Cedar identifier")]
+    InvalidIdentifier(String),
+}
+
+fn validate_cedar_ident(s: &str) -> Result<(), BuilderError> {
+    s.parse::<cedar_policy_core::ast::Id>()
+        .map(|_| ())
+        .map_err(|_| BuilderError::InvalidIdentifier(s.to_string()))
 }
 
 #[derive(Debug, Clone)]
@@ -29,25 +37,28 @@ impl CedarAgentPolicyBuilder {
         }
     }
 
-    pub fn namespace(mut self, ns: &str) -> Self {
+    pub fn namespace(mut self, ns: &str) -> Result<Self, BuilderError> {
+        validate_cedar_ident(ns)?;
         self.config.namespace = ns.to_string();
-        self
+        Ok(self)
     }
 
-    pub fn principal(mut self, key: &str, principal_type: &str) -> Self {
+    pub fn principal(mut self, key: &str, principal_type: &str) -> Result<Self, BuilderError> {
+        validate_cedar_ident(principal_type)?;
         self.config.principal = PrincipalConfig {
             key: key.to_string(),
             principal_type: principal_type.to_string(),
         };
-        self
+        Ok(self)
     }
 
-    pub fn resource(mut self, resource_type: &str, id: &str) -> Self {
+    pub fn resource(mut self, resource_type: &str, id: &str) -> Result<Self, BuilderError> {
+        validate_cedar_ident(resource_type)?;
         self.config.resource = Some(ResourceConfig {
             resource_type: resource_type.to_string(),
             id: id.to_string(),
         });
-        self
+        Ok(self)
     }
 
     pub fn role(mut self, name: &str, tools: &[&str]) -> Self {
@@ -186,6 +197,7 @@ mod tests {
     fn test_builder_with_namespace() {
         let result = CedarAgentPolicyBuilder::new()
             .namespace("MyApp")
+            .unwrap()
             .role("viewer", &["read"])
             .build();
 
@@ -197,7 +209,9 @@ mod tests {
     fn test_builder_chaining() {
         let result = CedarAgentPolicyBuilder::new()
             .namespace("Agent")
+            .unwrap()
             .principal("sub", "User")
+            .unwrap()
             .role("admin", &["*"])
             .role("analyst", &["search"])
             .user("alice", &["admin"])
@@ -229,7 +243,9 @@ mod tests {
     fn test_all_policy_types_parse_as_valid_cedar() {
         let result = CedarAgentPolicyBuilder::new()
             .namespace("Agent")
+            .unwrap()
             .principal("sub", "User")
+            .unwrap()
             .role("admin", &["*"])
             .role("analyst", &["search", "query"])
             .user("alice", &["admin"])
@@ -296,6 +312,7 @@ mod tests {
     fn test_builder_resource_custom() {
         let result = CedarAgentPolicyBuilder::new()
             .resource("Gateway", "prod")
+            .unwrap()
             .role("admin", &["*"])
             .build();
 
@@ -325,5 +342,35 @@ mod tests {
 
         assert!(result.policies.contains("Action::\"deploy\""));
         assert!(result.policies.contains("hour_utc"));
+    }
+
+    #[test]
+    fn test_namespace_rejects_reserved_word() {
+        let err = CedarAgentPolicyBuilder::new().namespace("if").unwrap_err();
+        assert!(matches!(err, BuilderError::InvalidIdentifier(_)));
+    }
+
+    #[test]
+    fn test_namespace_rejects_invalid_chars() {
+        let err = CedarAgentPolicyBuilder::new()
+            .namespace("my-ns")
+            .unwrap_err();
+        assert!(matches!(err, BuilderError::InvalidIdentifier(_)));
+    }
+
+    #[test]
+    fn test_principal_type_rejects_reserved_word() {
+        let err = CedarAgentPolicyBuilder::new()
+            .principal("sub", "if")
+            .unwrap_err();
+        assert!(matches!(err, BuilderError::InvalidIdentifier(_)));
+    }
+
+    #[test]
+    fn test_resource_type_rejects_invalid() {
+        let err = CedarAgentPolicyBuilder::new()
+            .resource("123bad", "id")
+            .unwrap_err();
+        assert!(matches!(err, BuilderError::InvalidIdentifier(_)));
     }
 }
