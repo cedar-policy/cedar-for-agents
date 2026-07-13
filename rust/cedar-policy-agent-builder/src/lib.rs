@@ -349,26 +349,16 @@ fn generate_schema(config: &CedarAgentConfig) -> Result<Option<String>, SchemaEr
 
     let server_json = serde_json::json!({ "result": { "tools": tools_json } });
 
-    use cedar_policy_core::extensions::Extensions;
-    use cedar_policy_core::validator::json_schema::Fragment;
-    use cedar_policy_core::validator::RawName;
     use cedar_policy_mcp_schema_generator::{SchemaGenerator, SchemaGeneratorConfig};
     use mcp_tools_sdk::description::ServerDescription;
 
-    let fragment: Fragment<RawName> =
-        Fragment::from_cedarschema_str(&schema_stub, Extensions::all_available())
-            .map(|(f, _)| f)
-            .map_err(|e| SchemaError {
-                stage: "parse_schema_stub".to_string(),
-                message: format!("{e}"),
-            })?;
-
     let schema_config = SchemaGeneratorConfig::default();
     let mut generator =
-        SchemaGenerator::new_with_config(fragment, schema_config).map_err(|e| SchemaError {
-            stage: "init_generator".to_string(),
-            message: format!("{e}"),
-        })?;
+        SchemaGenerator::from_cedarschema_str_with_config(&schema_stub, schema_config)
+            .map_err(|e| SchemaError {
+                stage: "init_generator".to_string(),
+                message: format!("{e}"),
+            })?;
 
     let server_str = server_json.to_string();
     let server_desc = ServerDescription::from_json_str(&server_str).map_err(|e| SchemaError {

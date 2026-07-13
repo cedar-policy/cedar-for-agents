@@ -13,7 +13,7 @@ pub enum BuilderError {
 }
 
 fn validate_cedar_ident(s: &str) -> Result<(), BuilderError> {
-    s.parse::<cedar_policy_core::ast::Id>()
+    cedar_policy::pst::Id::new(s)
         .map(|_| ())
         .map_err(|_| BuilderError::InvalidIdentifier(s.to_string()))
 }

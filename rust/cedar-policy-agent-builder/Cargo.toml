@@ -14,8 +14,7 @@ repository.workspace = true
 [dependencies]
 cedar-policy-mcp-schema-generator = { path = "../cedar-policy-mcp-schema-generator" }
 mcp-tools-sdk = { path = "../mcp-tools-sdk" }
-cedar-policy = "4"
-cedar-policy-core = "=4.11.2"
+cedar-policy = ">= 4.11"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"
