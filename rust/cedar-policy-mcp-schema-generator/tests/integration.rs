@@ -178,6 +178,19 @@ mod lib {
     }
 
     #[test]
+    fn dedup_leaf_record_different_required_objects_as_records() {
+        // Same scenario but with objects_as_records: different required status
+        // should still prevent dedup even when records are common types.
+        run_integration_test(
+            "examples/dedup/dedup_leaf_record_different_required.json",
+            "examples/dedup/dedup_leaf_record_different_required_objects_as_records.cedarschema",
+            SchemaGeneratorConfig::default()
+                .deduplicate_entity_types(true)
+                .objects_as_records(true),
+        );
+    }
+
+    #[test]
     fn dedup_leaf_record() {
         // tool_a and tool_b share the same "metadata" leaf record (author: String, version?: Long).
         // tool_c has a different "metadata" (title: String, count: Long).
@@ -186,6 +199,34 @@ mod lib {
             "examples/dedup/dedup_leaf_record.json",
             "examples/dedup/dedup_leaf_record.cedarschema",
             SchemaGeneratorConfig::default().deduplicate_entity_types(true),
+        );
+    }
+
+    #[test]
+    fn dedup_leaf_record_objects_as_records() {
+        // Same scenario as dedup_leaf_record but with objects_as_records enabled.
+        // tool_a and tool_b share the same "metadata" leaf record → deduplicated as a common type.
+        // tool_c has a different "metadata" → keeps its own local common type.
+        run_integration_test(
+            "examples/dedup/dedup_leaf_record_objects_as_records.json",
+            "examples/dedup/dedup_leaf_record_objects_as_records.cedarschema",
+            SchemaGeneratorConfig::default()
+                .deduplicate_entity_types(true)
+                .objects_as_records(true),
+        );
+    }
+
+    #[test]
+    fn dedup_leaf_record_objects_as_records_flat() {
+        // Same as dedup_leaf_record_objects_as_records but with flatten_namespaces.
+        // All namespaces collapse; shared metadata keeps short name, tool_c gets flattened name.
+        run_integration_test(
+            "examples/dedup/dedup_leaf_record_objects_as_records.json",
+            "examples/dedup/dedup_leaf_record_objects_as_records_flat.cedarschema",
+            SchemaGeneratorConfig::default()
+                .deduplicate_entity_types(true)
+                .objects_as_records(true)
+                .flatten_namespaces(true),
         );
     }
 
@@ -208,6 +249,19 @@ mod lib {
             "examples/dedup/dedup_enum_record_name_conflict.json",
             "examples/dedup/dedup_enum_record_name_conflict.cedarschema",
             SchemaGeneratorConfig::default().deduplicate_entity_types(true),
+        );
+    }
+
+    #[test]
+    fn dedup_enum_record_name_conflict_objects_as_records() {
+        // Same collision scenario with objects_as_records: an enum (entity) and a record
+        // (common type) both named "status" target the same LCA. Both should be skipped.
+        run_integration_test(
+            "examples/dedup/dedup_enum_record_name_conflict.json",
+            "examples/dedup/dedup_enum_record_name_conflict_objects_as_records.cedarschema",
+            SchemaGeneratorConfig::default()
+                .deduplicate_entity_types(true)
+                .objects_as_records(true),
         );
     }
 
