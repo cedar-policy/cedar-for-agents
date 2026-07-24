@@ -1,21 +1,33 @@
+//! Entity generation for the Cedar authorizer.
+//!
+//! Produces the entity hierarchy (users, roles, resource) in Cedar's JSON entity format.
+
 use crate::config::CedarAgentConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+/// A Cedar entity UID in the JSON entity format (`{"type": "...", "id": "..."}`).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EntityUid {
+    /// Fully qualified entity type (e.g. `"Agent::User"`).
     #[serde(rename = "type")]
     pub entity_type: String,
+    /// Entity identifier (e.g. `"alice"`).
     pub id: String,
 }
 
+/// A Cedar entity in JSON format, suitable for passing to `Entities::from_json_str`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EntityJson {
+    /// The entity's unique identifier.
     pub uid: EntityUid,
+    /// Entity attributes (currently unused, reserved for future extensions).
     pub attrs: BTreeMap<String, serde_json::Value>,
+    /// Parent entities this entity belongs to (e.g. a user's roles).
     pub parents: Vec<EntityUid>,
 }
 
+/// Generate the entity hierarchy from configuration.
 pub fn generate_entities(config: &CedarAgentConfig) -> Vec<EntityJson> {
     let mut entities = Vec::new();
     let ns = &config.namespace;

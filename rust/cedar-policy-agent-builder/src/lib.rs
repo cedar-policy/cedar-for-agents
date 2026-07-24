@@ -1,3 +1,56 @@
+//! Generate [Cedar](https://www.cedarpolicy.com/) policies, entities, and schemas
+//! from a declarative agent authorization configuration.
+//!
+//! This crate provides [`CedarAgentPolicyBuilder`], a fluent builder that produces
+//! valid Cedar policy text, entity JSON, and (optionally) a Cedar schema from a
+//! high-level description of roles, users, rate limits, time windows, and other
+//! authorization constraints for AI agent tool access.
+//!
+//! # Quick start
+//!
+//! ```rust
+//! use cedar_policy_agent_builder::CedarAgentPolicyBuilder;
+//!
+//! let result = CedarAgentPolicyBuilder::new()
+//!     .namespace("MyApp").unwrap()
+//!     .principal("sub", "User").unwrap()
+//!     .role("admin", &["*"])
+//!     .role("analyst", &["search", "query"])
+//!     .user("alice", &["admin"])
+//!     .user("bob", &["analyst"])
+//!     .rate_limit("send_email", 5)
+//!     .time_window("*", (9, 17)).unwrap()
+//!     .deny_in_env("production", &["delete"])
+//!     .build();
+//!
+//! // `result.policies` is valid Cedar policy text
+//! // `result.entities` is the entity hierarchy (serialize to JSON for the authorizer)
+//! // `result.schema` is an optional Cedar schema (present when tool definitions are provided)
+//! ```
+//!
+//! # Entity model
+//!
+//! The builder produces an entity hierarchy where users are members of roles:
+//!
+//! ```text
+//! Namespace::User::"alice" in [Namespace::Role::"admin"]
+//! Namespace::Role::"admin"
+//! Namespace::Resource::"default"
+//! ```
+//!
+//! Policies use `principal in Role::"name"` to grant access based on role membership.
+//!
+//! # Policy types
+//!
+//! The builder generates the following Cedar policy patterns:
+//!
+//! - **Role permits** — `permit` policies scoped to a role and optionally to specific actions
+//! - **Rate limits** — `forbid` policies that deny when a session call counter exceeds a threshold
+//! - **Time windows** — `forbid` policies that deny outside allowed UTC hours
+//! - **Environment denials** — `forbid` policies that deny specific tools in named environments
+//! - **Consent gates** — `permit` policies that require explicit user consent before execution
+//! - **Input restrictions** — `forbid` policies that deny unless input fields match allowed values
+
 pub mod builder;
 pub mod config;
 pub mod entities;
@@ -11,32 +64,54 @@ use entities::{generate_entities, EntityJson};
 use policy::generate_policies;
 use serde::{Deserialize, Serialize};
 
+/// A single validation error or warning from Cedar's policy validator.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationError {
+    /// The policy ID that triggered this error, or empty for schema-level errors.
     pub policy_id: String,
+    /// Human-readable description of the validation issue.
     pub message: String,
+    /// Optional suggestion for how to fix the issue.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub help: Option<String>,
 }
 
+/// Result of validating generated policies against a schema.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationResult {
+    /// Whether all policies passed validation.
     pub valid: bool,
+    /// Validation errors (policies that violate the schema).
     pub errors: Vec<ValidationError>,
+    /// Validation warnings (policies that are valid but potentially problematic).
     pub warnings: Vec<ValidationError>,
 }
 
+/// The output of [`CedarAgentPolicyBuilder::build`] or [`build`].
+///
+/// Contains everything needed to configure a Cedar authorizer for agent tool access.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuildResult {
+    /// Cedar policy text (one or more `permit`/`forbid` statements).
+    /// Parse with `policies.parse::<cedar_policy::PolicySet>()`.
     pub policies: String,
+    /// Entity hierarchy in Cedar's JSON entity format.
+    /// Includes roles, users with role membership, and the resource entity.
     pub entities: Vec<EntityJson>,
+    /// Cedar schema in `.cedarschema` format, if tool definitions were provided.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub schema: Option<String>,
+    /// Errors encountered during schema generation (non-fatal — policies and entities
+    /// are still produced).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub schema_errors: Vec<SchemaError>,
 }
 
 impl BuildResult {
+    /// Validate the generated policies against the schema (if present).
+    ///
+    /// Returns [`ValidationResult::valid`] = `true` if no schema was generated
+    /// (nothing to validate against) or if all policies pass Cedar's validator.
     pub fn validate(&self) -> ValidationResult {
         let schema_str = match &self.schema {
             Some(s) => s,
@@ -108,9 +183,12 @@ impl BuildResult {
     }
 }
 
+/// An error that occurred during Cedar schema generation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SchemaError {
+    /// The generation stage where the error occurred (e.g. "init_generator", "add_actions").
     pub stage: String,
+    /// Human-readable error message.
     pub message: String,
 }
 
@@ -124,6 +202,10 @@ impl std::fmt::Display for SchemaError {
     }
 }
 
+/// Build Cedar policies, entities, and schema from a configuration struct.
+///
+/// Prefer [`CedarAgentPolicyBuilder`] for a fluent API. This function is the
+/// lower-level entry point used internally by the builder.
 pub fn build(config: &CedarAgentConfig) -> BuildResult {
     let policies = generate_policies(config);
     let entities = generate_entities(config);
@@ -354,11 +436,12 @@ fn generate_schema(config: &CedarAgentConfig) -> Result<Option<String>, SchemaEr
 
     let schema_config = SchemaGeneratorConfig::default();
     let mut generator =
-        SchemaGenerator::from_cedarschema_str_with_config(&schema_stub, schema_config)
-            .map_err(|e| SchemaError {
+        SchemaGenerator::from_cedarschema_str_with_config(&schema_stub, schema_config).map_err(
+            |e| SchemaError {
                 stage: "init_generator".to_string(),
                 message: format!("{e}"),
-            })?;
+            },
+        )?;
 
     let server_str = server_json.to_string();
     let server_desc = ServerDescription::from_json_str(&server_str).map_err(|e| SchemaError {

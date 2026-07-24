@@ -2,12 +2,16 @@ use crate::config::*;
 use crate::BuildResult;
 use std::collections::BTreeMap;
 
+/// Errors returned by [`CedarAgentPolicyBuilder`] methods that validate input.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum BuilderError {
+    /// The time window has `hour_start >= hour_end`.
     #[error("time_window requires hour_start ({start}) < hour_end ({end})")]
     InvalidTimeWindow { start: u8, end: u8 },
+    /// The `hour_end` value exceeds 24.
     #[error("hour_end ({0}) must be <= 24")]
     HourOutOfRange(u8),
+    /// The given string is not a valid Cedar identifier (e.g. reserved word, invalid characters).
     #[error("\"{0}\" is not a valid Cedar identifier")]
     InvalidIdentifier(String),
 }
@@ -18,6 +22,24 @@ fn validate_cedar_ident(s: &str) -> Result<(), BuilderError> {
         .map_err(|_| BuilderError::InvalidIdentifier(s.to_string()))
 }
 
+/// Fluent builder for generating Cedar policies, entities, and schemas for agent authorization.
+///
+/// # Example
+///
+/// ```rust
+/// use cedar_policy_agent_builder::CedarAgentPolicyBuilder;
+///
+/// let result = CedarAgentPolicyBuilder::new()
+///     .role("admin", &["*"])
+///     .role("analyst", &["search", "query"])
+///     .user("alice", &["admin"])
+///     .user("bob", &["analyst"])
+///     .rate_limit("search", 100)
+///     .time_window("*", (9, 17)).unwrap()
+///     .build();
+///
+/// assert!(!result.policies.is_empty());
+/// ```
 #[derive(Debug, Clone)]
 #[must_use]
 pub struct CedarAgentPolicyBuilder {
@@ -31,18 +53,27 @@ impl Default for CedarAgentPolicyBuilder {
 }
 
 impl CedarAgentPolicyBuilder {
+    /// Create a new builder with default configuration (namespace `"Agent"`, principal type `"User"`).
     pub fn new() -> Self {
         Self {
             config: CedarAgentConfig::default(),
         }
     }
 
+    /// Set the Cedar namespace for all generated entity types and actions.
+    ///
+    /// Defaults to `"Agent"`. Must be a valid Cedar identifier.
     pub fn namespace(mut self, ns: &str) -> Result<Self, BuilderError> {
         validate_cedar_ident(ns)?;
         self.config.namespace = ns.to_string();
         Ok(self)
     }
 
+    /// Set the principal entity type and the key used to identify principals at runtime.
+    ///
+    /// `key` is the field name in the authorization context that holds the principal ID
+    /// (e.g. `"sub"` for a JWT subject claim). `principal_type` is the Cedar entity type
+    /// name (e.g. `"User"`). Must be a valid Cedar identifier.
     pub fn principal(mut self, key: &str, principal_type: &str) -> Result<Self, BuilderError> {
         validate_cedar_ident(principal_type)?;
         self.config.principal = PrincipalConfig {
@@ -52,6 +83,9 @@ impl CedarAgentPolicyBuilder {
         Ok(self)
     }
 
+    /// Set a custom resource entity type and ID.
+    ///
+    /// Defaults to `Resource::"default"`. The `resource_type` must be a valid Cedar identifier.
     pub fn resource(mut self, resource_type: &str, id: &str) -> Result<Self, BuilderError> {
         validate_cedar_ident(resource_type)?;
         self.config.resource = Some(ResourceConfig {
@@ -61,6 +95,10 @@ impl CedarAgentPolicyBuilder {
         Ok(self)
     }
 
+    /// Define a role with access to the specified tools.
+    ///
+    /// Use `"*"` as a tool name to grant access to all actions.
+    /// Multiple calls add additional roles.
     pub fn role(mut self, name: &str, tools: &[&str]) -> Self {
         self.config.roles.get_or_insert_with(BTreeMap::new).insert(
             name.to_string(),
@@ -69,6 +107,10 @@ impl CedarAgentPolicyBuilder {
         self
     }
 
+    /// Add a user with membership in the specified roles.
+    ///
+    /// The user entity will be created with parent edges to each role entity,
+    /// enabling Cedar's `principal in Role::"name"` pattern.
     pub fn user(mut self, id: &str, roles: &[&str]) -> Self {
         self.config.users.get_or_insert_with(BTreeMap::new).insert(
             id.to_string(),
@@ -77,6 +119,11 @@ impl CedarAgentPolicyBuilder {
         self
     }
 
+    /// Restrict a tool's input fields to specific allowed values.
+    ///
+    /// Generates a `forbid` policy that denies the action unless the input field
+    /// matches one of the allowed values. The map keys are field names from
+    /// `context.input`, and the values are the permitted values for each field.
     pub fn restrict(
         mut self,
         tool: &str,
@@ -89,6 +136,10 @@ impl CedarAgentPolicyBuilder {
         self
     }
 
+    /// Add a rate limit for a tool (or `"*"` for all tools).
+    ///
+    /// Generates a `forbid` policy that denies when the session's call counter
+    /// for this tool reaches `max`. The counter is expected in `context.session`.
     pub fn rate_limit(mut self, tool: &str, max: u64) -> Self {
         self.config
             .rate_limits
@@ -97,6 +148,10 @@ impl CedarAgentPolicyBuilder {
         self
     }
 
+    /// Restrict a tool (or `"*"` for all tools) to a UTC hour window.
+    ///
+    /// `hours` is `(start, end)` where `start < end` and `end <= 24`.
+    /// Actions are denied when `context.session.hour_utc` is outside this range.
     pub fn time_window(mut self, tool: &str, hours: (u8, u8)) -> Result<Self, BuilderError> {
         if hours.0 >= hours.1 {
             return Err(BuilderError::InvalidTimeWindow {
@@ -120,6 +175,9 @@ impl CedarAgentPolicyBuilder {
         Ok(self)
     }
 
+    /// Deny specific tools (or `"*"` for all) in a named environment.
+    ///
+    /// Generates a `forbid` policy conditioned on `context.session.environment == env`.
     pub fn deny_in_env(mut self, env: &str, tools: &[&str]) -> Self {
         self.config
             .deny_in_env
@@ -131,6 +189,10 @@ impl CedarAgentPolicyBuilder {
         self
     }
 
+    /// Require explicit user consent before allowing a tool for any role.
+    ///
+    /// The tool is excluded from role `permit` policies and instead gated behind
+    /// a `context.session.user_consent == true` condition.
     pub fn consent_all(mut self, tool: &str) -> Self {
         self.config
             .consent
@@ -139,6 +201,7 @@ impl CedarAgentPolicyBuilder {
         self
     }
 
+    /// Require user consent for a tool, but only for specific roles.
     pub fn consent_for_roles(mut self, tool: &str, roles: &[&str]) -> Self {
         self.config
             .consent
@@ -150,6 +213,10 @@ impl CedarAgentPolicyBuilder {
         self
     }
 
+    /// Register an MCP tool definition for Cedar schema generation.
+    ///
+    /// When tool definitions are provided, [`BuildResult::schema`] will contain a
+    /// Cedar schema with actions derived from the tool's input/output schemas.
     pub fn tool(mut self, definition: McpToolDefinition) -> Self {
         self.config
             .tools
@@ -158,6 +225,7 @@ impl CedarAgentPolicyBuilder {
         self
     }
 
+    /// Consume the builder and generate Cedar policies, entities, and schema.
     pub fn build(self) -> BuildResult {
         crate::build(&self.config)
     }
