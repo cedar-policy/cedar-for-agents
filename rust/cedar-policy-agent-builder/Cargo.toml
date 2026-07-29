@@ -12,9 +12,9 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-cedar-policy-mcp-schema-generator = { path = "../cedar-policy-mcp-schema-generator" }
-mcp-tools-sdk = { path = "../mcp-tools-sdk" }
-cedar-policy = ">= 4.11"
+cedar-policy-mcp-schema-generator = { path = "../cedar-policy-mcp-schema-generator", version = "*" }
+mcp-tools-sdk = { path = "../mcp-tools-sdk", version = "*" }
+cedar-policy = ">= 4.12"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"
