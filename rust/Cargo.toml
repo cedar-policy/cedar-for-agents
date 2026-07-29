@@ -1,5 +1,6 @@
 [workspace]
 members = [
+	"cedar-policy-agent-builder",
 	"cedar-policy-mcp-schema-generator",
 	"cedar-policy-mcp-schema-generator-python",
 	"cedar-policy-mcp-schema-generator-wasm",

@@ -1,0 +1,23 @@
+[package]
+name = "cedar-policy-agent-builder"
+description = "Generates Cedar policies, entities, and schemas from declarative agent authorization configuration."
+version = "0.1.0"
+
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+categories.workspace = true
+keywords.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+cedar-policy-mcp-schema-generator = { path = "../cedar-policy-mcp-schema-generator" }
+mcp-tools-sdk = { path = "../mcp-tools-sdk" }
+cedar-policy = ">= 4.11"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+
+[lints]
+workspace = true
