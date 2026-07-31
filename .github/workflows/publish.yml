@@ -1,6 +1,7 @@
 # This workflow is for releasing either:
 #.    - mcp-tools-sdk
 #.    - cedar-policy-mcp-schema-generator
+#.    - cedar-policy-agent-builder
 # Notes:
 # - This workflow must be triggered from the main branch.
 # - This workflow will perform the release from the provided tag, which must be set in advance.
@@ -18,6 +19,7 @@ on:
                 options:
                     - mcp-tools-sdk
                     - cedar-policy-mcp-schema-generator
+                    - cedar-policy-agent-builder
             tag:
                 required: true
                 type: string
