@@ -22,6 +22,21 @@ fn normalize_consent_roles(scope: &ConsentScope) -> Vec<&str> {
     }
 }
 
+/// Get the roles that grant access to the given `tool`.
+/// A role grants access to a tool if either it grants access to any tool via `"*"` or it
+/// grants access to that specific tool.
+fn get_roles_granting_tool(config: &CedarAgentConfig, tool: &str) -> Vec<String> {
+    let roles = match &config.roles {
+        Some(r) => r,
+        None => return Vec::new(),
+    };
+    roles
+        .iter()
+        .filter(|(_, tools)| tools.iter().any(|t| t == "*" || t == tool))
+        .map(|(role_name, _)| role_name.clone())
+        .collect()
+}
+
 fn get_consent_tools_for_role(config: &CedarAgentConfig, role_name: &str) -> BTreeSet<String> {
     let mut tools = BTreeSet::new();
     if let Some(consent) = &config.consent {
@@ -205,9 +220,15 @@ fn generate_consent_policies(config: &CedarAgentConfig) -> Vec<String> {
         let action_clause = action_ref(ns, tool);
         let roles = normalize_consent_roles(scope);
         if roles.contains(&"*") {
-            policies.push(format!(
-                "permit(\n  principal,\n  {action_clause},\n  resource\n) when {{ context.session has \"user_consent\" && context.session.user_consent == true }};",
-            ));
+            // Collect all roles that actually grant access to this tool
+            // (either explicitly or via wildcard "*").
+            let applicable_roles = get_roles_granting_tool(config, tool);
+            for role in &applicable_roles {
+                let role_ref = format!("{ns}::Role::\"{}\"", EntityId::new(role).escaped());
+                policies.push(format!(
+                    "permit(\n  principal in {role_ref},\n  {action_clause},\n  resource\n) when {{ context.session has \"user_consent\" && context.session.user_consent == true }};",
+                ));
+            }
         } else {
             for role in &roles {
                 let role_ref = format!("{ns}::Role::\"{}\"", EntityId::new(role).escaped());
@@ -400,6 +421,13 @@ mod tests {
     #[test]
     fn test_consent_all_roles() {
         let config = CedarAgentConfig {
+            roles: Some(BTreeMap::from([
+                (
+                    "analyst".to_string(),
+                    vec!["search".to_string(), "send_email".to_string()],
+                ),
+                ("admin".to_string(), vec!["*".to_string()]),
+            ])),
             consent: Some(BTreeMap::from([(
                 "send_email".to_string(),
                 ConsentScope::AllRoles(true),
@@ -408,8 +436,16 @@ mod tests {
         };
         let policies = generate_policies(&config);
         assert_valid_cedar(&policies);
+        // The consent permit must be scoped to roles that grant the tool
         assert!(policies.contains(
-            "permit(\n  principal,\n  action == Agent::Action::\"send_email\",\n  resource\n) when { context.session has \"user_consent\" && context.session.user_consent == true };"
+            "permit(\n  principal in Agent::Role::\"analyst\",\n  action == Agent::Action::\"send_email\",\n  resource\n) when { context.session has \"user_consent\" && context.session.user_consent == true };"
+        ));
+        assert!(policies.contains(
+            "permit(\n  principal in Agent::Role::\"admin\",\n  action == Agent::Action::\"send_email\",\n  resource\n) when { context.session has \"user_consent\" && context.session.user_consent == true };"
+        ));
+        // Must NOT have an unconstrained principal permit
+        assert!(!policies.contains(
+            "permit(\n  principal,\n  action == Agent::Action::\"send_email\",\n  resource\n)"
         ));
     }
 
@@ -444,13 +480,17 @@ mod tests {
         };
         let policies = generate_policies(&config);
         assert_valid_cedar(&policies);
-        // send_email should NOT appear in the role permit
+        // send_email should NOT appear in the unconditional role permit
         assert!(!policies.contains(
             "principal in Agent::Role::\"analyst\", action == Agent::Action::\"send_email\", resource);"
         ));
         // search should still be there
         assert!(policies.contains(
             "permit(principal in Agent::Role::\"analyst\", action == Agent::Action::\"search\", resource);"
+        ));
+        // consent permit for send_email should be scoped to analyst
+        assert!(policies.contains(
+            "permit(\n  principal in Agent::Role::\"analyst\",\n  action == Agent::Action::\"send_email\",\n  resource\n) when { context.session has \"user_consent\" && context.session.user_consent == true };"
         ));
     }
 
@@ -470,6 +510,10 @@ mod tests {
         let policies = generate_policies(&config);
         assert_valid_cedar(&policies);
         assert!(policies.contains("!(action == Agent::Action::\"send_email\")"));
+        // Consent permit must be scoped to admin role (which grants * tools)
+        assert!(policies.contains(
+            "permit(\n  principal in Agent::Role::\"admin\",\n  action == Agent::Action::\"send_email\",\n  resource\n) when { context.session has \"user_consent\" && context.session.user_consent == true };"
+        ));
     }
 
     #[test]
@@ -577,6 +621,54 @@ mod tests {
         };
         let policies = generate_policies(&config);
         assert!(policies.is_empty());
+    }
+
+    #[test]
+    fn test_consent_all_roles_no_roles_defined_produces_no_policies() {
+        // If no roles are configured, AllRoles(true) should produce no consent permits
+        // rather than an unconstrained permit that any principal can satisfy.
+        let config = CedarAgentConfig {
+            consent: Some(BTreeMap::from([(
+                "send_email".to_string(),
+                ConsentScope::AllRoles(true),
+            )])),
+            ..Default::default()
+        };
+        let policies = generate_policies(&config);
+        assert!(policies.is_empty());
+    }
+
+    #[test]
+    fn test_consent_all_roles_only_grants_to_applicable_roles() {
+        // Only roles that actually list the tool should get consent access.
+        let config = CedarAgentConfig {
+            roles: Some(BTreeMap::from([
+                (
+                    "analyst".to_string(),
+                    vec!["search".to_string(), "send_email".to_string()],
+                ),
+                ("viewer".to_string(), vec!["search".to_string()]),
+            ])),
+            consent: Some(BTreeMap::from([(
+                "send_email".to_string(),
+                ConsentScope::AllRoles(true),
+            )])),
+            ..Default::default()
+        };
+        let policies = generate_policies(&config);
+        assert_valid_cedar(&policies);
+        // analyst has send_email → should get consent permit
+        assert!(policies.contains(
+            "permit(\n  principal in Agent::Role::\"analyst\",\n  action == Agent::Action::\"send_email\",\n  resource\n) when { context.session has \"user_consent\" && context.session.user_consent == true };"
+        ));
+        // viewer does NOT have send_email → must NOT get consent permit for send_email
+        assert!(!policies.contains(
+            "permit(\n  principal in Agent::Role::\"viewer\",\n  action == Agent::Action::\"send_email\",\n  resource\n) when { context.session has \"user_consent\" && context.session.user_consent == true };"
+        ));
+        // No unconstrained permit
+        assert!(!policies.contains(
+            "permit(\n  principal,\n  action == Agent::Action::\"send_email\",\n  resource\n)"
+        ));
     }
 
     #[test]

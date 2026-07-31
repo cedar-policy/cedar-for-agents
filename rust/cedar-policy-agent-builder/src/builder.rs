@@ -192,7 +192,8 @@ impl CedarAgentPolicyBuilder {
     /// Require explicit user consent before allowing a tool for any role.
     ///
     /// The tool is excluded from role `permit` policies and instead gated behind
-    /// a `context.session.user_consent == true` condition.
+    /// a `context.session.user_consent == true` condition, for each role that
+    /// grants access to the tool.
     pub fn consent_all(mut self, tool: &str) -> Self {
         self.config
             .consent
