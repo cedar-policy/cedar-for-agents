@@ -34,7 +34,8 @@ fn test_admin_allowed_any_action() {
     let result = CedarAgentPolicyBuilder::new()
         .role("admin", &["*"])
         .user("alice", &["admin"])
-        .build();
+        .build()
+        .unwrap();
 
     let decision = authorize(
         &result.policies,
@@ -52,7 +53,8 @@ fn test_unknown_user_denied() {
     let result = CedarAgentPolicyBuilder::new()
         .role("admin", &["*"])
         .user("alice", &["admin"])
-        .build();
+        .build()
+        .unwrap();
 
     let entities_json = entities_to_json(&result.entities);
     let entities_with_bob = {
@@ -81,7 +83,8 @@ fn test_role_scoped_to_specific_tools() {
     let result = CedarAgentPolicyBuilder::new()
         .role("analyst", &["search", "query"])
         .user("bob", &["analyst"])
-        .build();
+        .build()
+        .unwrap();
 
     let entities_json = entities_to_json(&result.entities);
 
@@ -112,7 +115,8 @@ fn test_rate_limit_denies_when_exceeded() {
         .role("user", &["send_email"])
         .user("alice", &["user"])
         .rate_limit("send_email", 5)
-        .build();
+        .build()
+        .unwrap();
 
     let entities_json = entities_to_json(&result.entities);
 
@@ -144,7 +148,8 @@ fn test_time_window_denies_outside_hours() {
         .user("alice", &["user"])
         .time_window("deploy", (9, 17))
         .unwrap()
-        .build();
+        .build()
+        .unwrap();
 
     let entities_json = entities_to_json(&result.entities);
 
@@ -175,7 +180,8 @@ fn test_env_denial_blocks_in_production() {
         .role("admin", &["*"])
         .user("alice", &["admin"])
         .deny_in_env("production", &["delete"])
-        .build();
+        .build()
+        .unwrap();
 
     let entities_json = entities_to_json(&result.entities);
 
@@ -206,7 +212,8 @@ fn test_consent_required_before_action() {
         .role("user", &["search", "send_email"])
         .user("alice", &["user"])
         .consent_all("send_email")
-        .build();
+        .build()
+        .unwrap();
 
     let entities_json = entities_to_json(&result.entities);
 
@@ -250,7 +257,8 @@ fn test_restriction_enforces_allowed_values() {
             "query",
             BTreeMap::from([("database".to_string(), vec![serde_json::json!("analytics")])]),
         )
-        .build();
+        .build()
+        .unwrap();
 
     let entities_json = entities_to_json(&result.entities);
 
@@ -284,7 +292,8 @@ fn test_custom_namespace_and_principal_type() {
         .unwrap()
         .role("admin", &["*"])
         .user("alice", &["admin"])
-        .build();
+        .build()
+        .unwrap();
 
     let entities_json = entities_to_json(&result.entities);
 
@@ -305,7 +314,8 @@ fn test_multi_role_user_inherits_all_permissions() {
         .role("reader", &["search"])
         .role("writer", &["create", "update"])
         .user("charlie", &["reader", "writer"])
-        .build();
+        .build()
+        .unwrap();
 
     let entities_json = entities_to_json(&result.entities);
 
@@ -362,7 +372,8 @@ fn test_combined_policies_all_interact_correctly() {
                 ],
             )]),
         )
-        .build();
+        .build()
+        .unwrap();
 
     let entities_json = entities_to_json(&result.entities);
 
@@ -465,7 +476,8 @@ fn test_consent_all_does_not_grant_to_unauthorized_roles() {
         .user("alice", &["sender"])
         .user("bob", &["viewer"])
         .consent_all("send_email")
-        .build();
+        .build()
+        .unwrap();
 
     let entities_json = entities_to_json(&result.entities);
 
@@ -499,7 +511,8 @@ fn test_consent_all_denies_unknown_principal() {
         .role("user", &["send_email"])
         .user("alice", &["user"])
         .consent_all("send_email")
-        .build();
+        .build()
+        .unwrap();
 
     let entities_json = entities_to_json(&result.entities);
 
