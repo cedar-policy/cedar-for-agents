@@ -454,3 +454,73 @@ fn test_combined_policies_all_interact_correctly() {
     );
     assert_eq!(analyst_email_over_limit, cedar_policy::Decision::Deny);
 }
+
+#[test]
+fn test_consent_all_does_not_grant_to_unauthorized_roles() {
+    // Regression test: consent_all must not allow principals without the tool
+    // in their role to invoke the tool merely by providing user_consent=true.
+    let result = CedarAgentPolicyBuilder::new()
+        .role("sender", &["send_email", "search"])
+        .role("viewer", &["search"])
+        .user("alice", &["sender"])
+        .user("bob", &["viewer"])
+        .consent_all("send_email")
+        .build();
+
+    let entities_json = entities_to_json(&result.entities);
+
+    // Alice (sender role, has send_email) with consent → allowed
+    let alice_allowed = authorize(
+        &result.policies,
+        &entities_json,
+        "Agent::User::\"alice\"",
+        "Agent::Action::\"send_email\"",
+        "Agent::Resource::\"default\"",
+        serde_json::json!({"session": {"user_consent": true}}),
+    );
+    assert_eq!(alice_allowed, cedar_policy::Decision::Allow);
+
+    // Bob (viewer role, does NOT have send_email) with consent → must be denied
+    let bob_denied = authorize(
+        &result.policies,
+        &entities_json,
+        "Agent::User::\"bob\"",
+        "Agent::Action::\"send_email\"",
+        "Agent::Resource::\"default\"",
+        serde_json::json!({"session": {"user_consent": true}}),
+    );
+    assert_eq!(bob_denied, cedar_policy::Decision::Deny);
+}
+
+#[test]
+fn test_consent_all_denies_unknown_principal() {
+    // An entity not in any role must be denied even with user_consent=true.
+    let result = CedarAgentPolicyBuilder::new()
+        .role("user", &["send_email"])
+        .user("alice", &["user"])
+        .consent_all("send_email")
+        .build();
+
+    let entities_json = entities_to_json(&result.entities);
+
+    // Add an unknown user entity to the entities
+    let entities_with_eve = {
+        let mut ents: Vec<serde_json::Value> = serde_json::from_str(&entities_json).expect("parse");
+        ents.push(serde_json::json!({
+            "uid": {"type": "Agent::User", "id": "eve"},
+            "attrs": {},
+            "parents": []
+        }));
+        serde_json::to_string(&ents).expect("serialize")
+    };
+
+    let eve_denied = authorize(
+        &result.policies,
+        &entities_with_eve,
+        "Agent::User::\"eve\"",
+        "Agent::Action::\"send_email\"",
+        "Agent::Resource::\"default\"",
+        serde_json::json!({"session": {"user_consent": true}}),
+    );
+    assert_eq!(eve_denied, cedar_policy::Decision::Deny);
+}
