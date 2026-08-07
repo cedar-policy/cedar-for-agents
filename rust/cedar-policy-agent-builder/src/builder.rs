@@ -203,6 +203,11 @@ impl CedarAgentPolicyBuilder {
     }
 
     /// Require user consent for a tool, but only for specific roles.
+    ///
+    /// Only roles that already grant access to the tool (either explicitly or via
+    /// `"*"`) will receive the consent-gated permit. Roles listed here that do not
+    /// grant the tool are silently skipped — consent restricts existing access, it
+    /// never adds new access.
     pub fn consent_for_roles(mut self, tool: &str, roles: &[&str]) -> Self {
         self.config
             .consent
@@ -399,6 +404,24 @@ mod tests {
 
         assert!(result.policies.contains("user_consent"));
         assert!(result.policies.contains("Role::\"admin\""));
+    }
+
+    #[test]
+    fn test_builder_consent_for_roles_does_not_escalate() {
+        // Bug report: .role("viewer", &["read"]).consent_for_roles("delete", &["viewer"])
+        // must NOT give viewer access to "delete". Consent is a restriction, not a grant.
+        let result = CedarAgentPolicyBuilder::new()
+            .role("viewer", &["read"])
+            .consent_for_roles("delete", &["viewer"])
+            .build();
+
+        assert_policies_parse(&result);
+        // viewer should NOT have any policy granting "delete"
+        assert!(
+            !result.policies.contains("Action::\"delete\""),
+            "consent_for_roles must not grant access to a tool the role lacks; policies:\n{}",
+            result.policies
+        );
     }
 
     #[test]
