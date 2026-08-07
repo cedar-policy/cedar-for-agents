@@ -14,6 +14,13 @@ pub enum BuilderError {
     /// The given string is not a valid Cedar identifier (e.g. reserved word, invalid characters).
     #[error("\"{0}\" is not a valid Cedar identifier")]
     InvalidIdentifier(String),
+    /// Two tool names produce the same rate-limit counter key after sanitization.
+    #[error("rate-limit counter key collision: \"{new_tool}\" and \"{existing_tool}\" both map to counter key \"{key}\"")]
+    RateLimitCounterCollision {
+        new_tool: String,
+        existing_tool: String,
+        key: String,
+    },
 }
 
 fn validate_cedar_ident(s: &str) -> Result<(), BuilderError> {
@@ -34,7 +41,7 @@ fn validate_cedar_ident(s: &str) -> Result<(), BuilderError> {
 ///     .role("analyst", &["search", "query"])
 ///     .user("alice", &["admin"])
 ///     .user("bob", &["analyst"])
-///     .rate_limit("search", 100)
+///     .rate_limit("search", 100).unwrap()
 ///     .time_window("*", (9, 17)).unwrap()
 ///     .build();
 ///
@@ -139,13 +146,39 @@ impl CedarAgentPolicyBuilder {
     /// Add a rate limit for a tool (or `"*"` for all tools).
     ///
     /// Generates a `forbid` policy that denies when the session's call counter
-    /// for this tool reaches `max`. The counter is expected in `context.session`.
-    pub fn rate_limit(mut self, tool: &str, max: u64) -> Self {
-        self.config
-            .rate_limits
-            .get_or_insert_with(BTreeMap::new)
-            .insert(tool.to_string(), max);
-        self
+    /// for this tool reaches `max`. The counter is expected in `context.session`
+    /// under the key `call_count_<sanitized_tool>`, where non-alphanumeric characters
+    /// are replaced with `_`.
+    ///
+    /// Returns an error if the sanitized counter key collides with a previously
+    /// registered rate-limit tool (e.g. `"my-tool"` and `"my.tool"` both map to
+    /// `call_count_my_tool`).
+    pub fn rate_limit(mut self, tool: &str, max: u64) -> Result<Self, BuilderError> {
+        if tool == "*" {
+            self.config
+                .rate_limits
+                .get_or_insert_with(BTreeMap::new)
+                .insert(tool.to_string(), max);
+            return Ok(self);
+        }
+
+        let key = crate::policy::sanitize_counter_key(tool);
+        let map = self.config.rate_limits.get_or_insert_with(BTreeMap::new);
+        // Check for collision with an existing tool name that maps to the same key.
+        for existing_tool in map.keys() {
+            if existing_tool == tool || existing_tool == "*" {
+                continue;
+            }
+            if crate::policy::sanitize_counter_key(existing_tool) == key {
+                return Err(BuilderError::RateLimitCounterCollision {
+                    new_tool: tool.to_string(),
+                    existing_tool: existing_tool.clone(),
+                    key: format!("call_count_{key}"),
+                });
+            }
+        }
+        map.insert(tool.to_string(), max);
+        Ok(self)
     }
 
     /// Restrict a tool (or `"*"` for all tools) to a UTC hour window.
@@ -286,6 +319,7 @@ mod tests {
             .user("alice", &["admin"])
             .user("bob", &["analyst"])
             .rate_limit("send_email", 5)
+            .unwrap()
             .time_window("*", (9, 17))
             .unwrap()
             .consent_all("send_email")
@@ -320,7 +354,9 @@ mod tests {
             .user("alice", &["admin"])
             .user("bob", &["analyst"])
             .rate_limit("send_email", 5)
+            .unwrap()
             .rate_limit("*", 100)
+            .unwrap()
             .time_window("*", (9, 17))
             .unwrap()
             .consent_all("send_email")
@@ -441,5 +477,58 @@ mod tests {
             .resource("123bad", "id")
             .unwrap_err();
         assert!(matches!(err, BuilderError::InvalidIdentifier(_)));
+    }
+
+    #[test]
+    fn test_rate_limit_rejects_counter_key_collision() {
+        // "my-tool" and "my.tool" both sanitize to "my_tool" → collision
+        let err = CedarAgentPolicyBuilder::new()
+            .rate_limit("my-tool", 5)
+            .unwrap()
+            .rate_limit("my.tool", 10)
+            .unwrap_err();
+        assert!(
+            matches!(err, BuilderError::RateLimitCounterCollision { .. }),
+            "expected RateLimitCounterCollision, got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_rate_limit_allows_distinct_counter_keys() {
+        // "search" and "deploy" produce different counter keys — no collision
+        let result = CedarAgentPolicyBuilder::new()
+            .rate_limit("search", 5)
+            .unwrap()
+            .rate_limit("deploy", 10)
+            .unwrap()
+            .build();
+        assert!(result.policies.contains("call_count_search >= 5"));
+        assert!(result.policies.contains("call_count_deploy >= 10"));
+    }
+
+    #[test]
+    fn test_rate_limit_same_tool_overwrites_without_error() {
+        // Setting the same tool twice should just overwrite, not error
+        let result = CedarAgentPolicyBuilder::new()
+            .rate_limit("search", 5)
+            .unwrap()
+            .rate_limit("search", 10)
+            .unwrap()
+            .build();
+        assert!(result.policies.contains("call_count_search >= 10"));
+        assert!(!result.policies.contains("call_count_search >= 5"));
+    }
+
+    #[test]
+    fn test_rate_limit_wildcard_does_not_collide() {
+        // "*" is the global counter and should not collide with tool-specific entries
+        let result = CedarAgentPolicyBuilder::new()
+            .rate_limit("*", 100)
+            .unwrap()
+            .rate_limit("search", 5)
+            .unwrap()
+            .build();
+        assert!(result.policies.contains("call_count >= 100"));
+        assert!(result.policies.contains("call_count_search >= 5"));
     }
 }

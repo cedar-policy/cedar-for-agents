@@ -117,6 +117,12 @@ pub struct CedarAgentConfig {
     #[serde(default)]
     pub restrictions: Option<BTreeMap<String, Restriction>>,
     /// Per-tool (or global `"*"`) invocation count limits.
+    ///
+    /// Each key is a tool name (or `"*"` for all tools). The generated `forbid`
+    /// policy references a session counter attribute named `call_count_<key>` where
+    /// non-alphanumeric characters are replaced with `_`. Tool names that collide
+    /// after this sanitization (e.g. `"my-tool"` and `"my.tool"`) will produce an
+    /// error from [`CedarAgentPolicyBuilder::rate_limit`](crate::CedarAgentPolicyBuilder::rate_limit).
     #[serde(rename = "rateLimits", default)]
     pub rate_limits: Option<BTreeMap<String, u64>>,
     /// Per-tool (or global `"*"`) allowed UTC hour windows.
