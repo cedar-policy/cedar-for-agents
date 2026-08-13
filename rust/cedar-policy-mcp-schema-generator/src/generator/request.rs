@@ -549,7 +549,7 @@ impl RequestGenerator {
                 let tags = into_pairs(additional_properties, &mut entities)?;
 
                 if tags.is_empty() && self.config.objects_as_records {
-                    Ok((RestrictedExpr::record(pairs.into_iter())?, entities))
+                    Ok((RestrictedExpr::record(pairs)?, entities))
                 } else {
                     // Check if this object was deduplicated to a different namespace.
                     let qualified_ty = self.resolved_ty(ty_name, namespace)?;

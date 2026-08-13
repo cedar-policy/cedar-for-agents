@@ -63,7 +63,7 @@ pub use config::ConfigValidationError;
 use cedar_policy::{PolicySet, Schema, ValidationMode, Validator};
 use config::CedarAgentConfig;
 use entities::{generate_entities, EntityJson};
-use policy::generate_policies;
+use policy::PolicyGenerator;
 use serde::{Deserialize, Serialize};
 
 /// A single validation error or warning from Cedar's policy validator.
@@ -214,8 +214,7 @@ impl std::fmt::Display for SchemaError {
 /// lower-level entry point used internally by the builder.
 pub fn build(config: &CedarAgentConfig) -> Result<BuildResult, ConfigValidationError> {
     config::validate_config(config)?;
-
-    let policies = generate_policies(config);
+    let policies = PolicyGenerator::generate_policies(config);
     let entities = generate_entities(config);
     let (schema, schema_errors) = match generate_schema(config) {
         Ok(s) => (s, Vec::new()),
