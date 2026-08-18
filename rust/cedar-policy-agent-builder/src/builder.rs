@@ -229,7 +229,7 @@ impl CedarAgentPolicyBuilder {
 
     /// Consume the builder and generate Cedar policies, entities, and schema.
     ///
-    /// Returns an error if configuration validation fails. In pratice, this does
+    /// Returns an error if configuration validation fails. In practice, this does
     /// not fail when using only the builder methods.
     pub fn build(self) -> Result<BuildResult, crate::ConfigValidationError> {
         crate::build(&self.config)
