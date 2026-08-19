@@ -21,7 +21,8 @@
 //!     .rate_limit("send_email", 5)
 //!     .time_window("*", (9, 17)).unwrap()
 //!     .deny_in_env("production", &["delete"])
-//!     .build();
+//!     .build()
+//!     .unwrap();
 //!
 //! // `result.policies` is valid Cedar policy text
 //! // `result.entities` is the entity hierarchy (serialize to JSON for the authorizer)
@@ -57,6 +58,7 @@ pub mod entities;
 pub mod policy;
 
 pub use builder::{BuilderError, CedarAgentPolicyBuilder};
+pub use config::ConfigValidationError;
 
 use cedar_policy::{PolicySet, Schema, ValidationMode, Validator};
 use config::CedarAgentConfig;
@@ -204,9 +206,15 @@ impl std::fmt::Display for SchemaError {
 
 /// Build Cedar policies, entities, and schema from a configuration struct.
 ///
+/// Validates all identifier-like fields (`namespace`, `principal.type`, `resource.type`)
+/// before generating policy text. Returns an error if any field contains a value that
+/// is not a valid Cedar identifier, which would otherwise allow policy injection.
+///
 /// Prefer [`CedarAgentPolicyBuilder`] for a fluent API. This function is the
 /// lower-level entry point used internally by the builder.
-pub fn build(config: &CedarAgentConfig) -> BuildResult {
+pub fn build(config: &CedarAgentConfig) -> Result<BuildResult, ConfigValidationError> {
+    config::validate_config(config)?;
+
     let policies = generate_policies(config);
     let entities = generate_entities(config);
     let (schema, schema_errors) = match generate_schema(config) {
@@ -214,12 +222,12 @@ pub fn build(config: &CedarAgentConfig) -> BuildResult {
         Err(e) => (None, vec![e]),
     };
 
-    BuildResult {
+    Ok(BuildResult {
         policies,
         entities,
         schema,
         schema_errors,
-    }
+    })
 }
 
 #[cfg(test)]
@@ -247,7 +255,7 @@ mod tests {
             }]),
             ..Default::default()
         };
-        let result = build(&config);
+        let result = build(&config).unwrap();
         assert!(result.schema.is_some());
         assert!(result.schema_errors.is_empty());
         let schema = result.schema.unwrap();
@@ -263,7 +271,7 @@ mod tests {
             )])),
             ..Default::default()
         };
-        let result = build(&config);
+        let result = build(&config).unwrap();
         assert!(result.schema.is_none());
         assert!(result.schema_errors.is_empty());
     }
@@ -279,7 +287,7 @@ mod tests {
             }]),
             ..Default::default()
         };
-        let result = build(&config);
+        let result = build(&config).unwrap();
         assert!(!result.schema_errors.is_empty());
         assert!(result.schema.is_none());
         assert!(!result.schema_errors[0].message.is_empty());
@@ -302,7 +310,7 @@ mod tests {
             }]),
             ..Default::default()
         };
-        let result = build(&config);
+        let result = build(&config).unwrap();
         assert!(result.schema.is_some());
         assert!(result.schema_errors.is_empty());
     }
@@ -363,7 +371,7 @@ mod tests {
             }]),
             ..Default::default()
         };
-        let result = build(&config);
+        let result = build(&config).unwrap();
         assert!(result.schema.is_some());
         assert!(result.schema_errors.is_empty());
         let schema = result.schema.unwrap();
@@ -376,7 +384,7 @@ mod tests {
             tools: Some(vec![]),
             ..Default::default()
         };
-        let result = build(&config);
+        let result = build(&config).unwrap();
         assert!(result.schema.is_none());
         assert!(result.schema_errors.is_empty());
     }
@@ -391,6 +399,88 @@ mod tests {
             err.to_string(),
             "schema generation failed at test_stage: something broke"
         );
+    }
+
+    #[test]
+    fn test_build_rejects_invalid_namespace() {
+        let config = CedarAgentConfig {
+            namespace: "Attack::Role::\"admin\"; permit(principal, action, resource); //"
+                .to_string(),
+            ..Default::default()
+        };
+        let result = build(&config);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(
+            err,
+            ConfigValidationError::InvalidNamespace { .. }
+        ));
+    }
+
+    #[test]
+    fn test_build_rejects_invalid_principal_type() {
+        let config = CedarAgentConfig {
+            principal: config::PrincipalConfig {
+                key: "user_id".to_string(),
+                principal_type: "Bad Type".to_string(),
+            },
+            ..Default::default()
+        };
+        let result = build(&config);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(
+            err,
+            ConfigValidationError::InvalidPrincipalType { .. }
+        ));
+    }
+
+    #[test]
+    fn test_build_rejects_invalid_resource_type() {
+        let config = CedarAgentConfig {
+            resource: Some(config::ResourceConfig {
+                resource_type: "foo bar".to_string(),
+                id: "default".to_string(),
+            }),
+            ..Default::default()
+        };
+        let result = build(&config);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(
+            err,
+            ConfigValidationError::InvalidResourceType { .. }
+        ));
+    }
+
+    #[test]
+    fn test_serde_rejects_invalid_namespace() {
+        let json = r#"{"namespace": "Bad::Ns; permit(principal, action, resource);"}"#;
+        let result: Result<CedarAgentConfig, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("not a valid Cedar identifier"));
+    }
+
+    #[test]
+    fn test_serde_rejects_invalid_principal_type() {
+        let json = r#"{"principal": {"key": "sub", "type": "has spaces"}}"#;
+        let result: Result<CedarAgentConfig, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_serde_rejects_invalid_resource_type() {
+        let json = r#"{"resource": {"type": "inject;", "id": "x"}}"#;
+        let result: Result<CedarAgentConfig, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_serde_accepts_valid_namespace() {
+        let json = r#"{"namespace": "MyAgent"}"#;
+        let config: CedarAgentConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.namespace, "MyAgent");
     }
 }
 

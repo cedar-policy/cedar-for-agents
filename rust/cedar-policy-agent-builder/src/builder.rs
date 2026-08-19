@@ -36,7 +36,8 @@ fn validate_cedar_ident(s: &str) -> Result<(), BuilderError> {
 ///     .user("bob", &["analyst"])
 ///     .rate_limit("search", 100)
 ///     .time_window("*", (9, 17)).unwrap()
-///     .build();
+///     .build()
+///     .unwrap();
 ///
 /// assert!(!result.policies.is_empty());
 /// ```
@@ -227,7 +228,10 @@ impl CedarAgentPolicyBuilder {
     }
 
     /// Consume the builder and generate Cedar policies, entities, and schema.
-    pub fn build(self) -> BuildResult {
+    ///
+    /// Returns an error if configuration validation fails. In practice, this does
+    /// not fail when using only the builder methods.
+    pub fn build(self) -> Result<BuildResult, crate::ConfigValidationError> {
         crate::build(&self.config)
     }
 }
@@ -253,7 +257,8 @@ mod tests {
         let result = CedarAgentPolicyBuilder::new()
             .role("admin", &["*"])
             .user("alice", &["admin"])
-            .build();
+            .build()
+            .unwrap();
 
         assert!(result
             .policies
@@ -268,7 +273,8 @@ mod tests {
             .namespace("MyApp")
             .unwrap()
             .role("viewer", &["read"])
-            .build();
+            .build()
+            .unwrap();
 
         assert!(result.policies.contains("MyApp::Role::\"viewer\""));
         assert!(result.policies.contains("MyApp::Action::\"read\""));
@@ -290,7 +296,8 @@ mod tests {
             .unwrap()
             .consent_all("send_email")
             .deny_in_env("production", &["delete"])
-            .build();
+            .build()
+            .unwrap();
 
         assert!(result.policies.contains("Role::\"admin\""));
         assert!(result.policies.contains("Role::\"analyst\""));
@@ -303,7 +310,7 @@ mod tests {
     #[test]
     fn test_builder_default() {
         let builder = CedarAgentPolicyBuilder::default();
-        let result = builder.build();
+        let result = builder.build().unwrap();
         assert!(result.policies.is_empty());
         assert_eq!(result.entities.len(), 1); // just the default resource
     }
@@ -330,7 +337,8 @@ mod tests {
                 "query",
                 BTreeMap::from([("db".to_string(), vec![serde_json::json!("analytics")])]),
             )
-            .build();
+            .build()
+            .unwrap();
 
         assert_policies_parse(&result);
     }
@@ -340,7 +348,8 @@ mod tests {
         let result = CedarAgentPolicyBuilder::new()
             .role("admin", &["*"])
             .user("alice", &["admin"])
-            .build();
+            .build()
+            .unwrap();
 
         assert_policies_parse(&result);
     }
@@ -371,7 +380,8 @@ mod tests {
                 input_schema: serde_json::json!({"type": "object", "properties": {"q": {"type": "string"}}}),
                 output_schema: None,
             })
-            .build();
+            .build()
+            .unwrap();
 
         assert!(result.schema.is_some());
         assert!(result.schema_errors.is_empty());
@@ -383,7 +393,8 @@ mod tests {
             .resource("Gateway", "prod")
             .unwrap()
             .role("admin", &["*"])
-            .build();
+            .build()
+            .unwrap();
 
         let resource = result.entities.iter().find(|e| e.uid.id == "prod").unwrap();
         assert_eq!(resource.uid.entity_type, "Agent::Gateway");
@@ -395,7 +406,8 @@ mod tests {
             .role("admin", &["*"])
             .role("analyst", &["search", "deploy"])
             .consent_for_roles("deploy", &["admin"])
-            .build();
+            .build()
+            .unwrap();
 
         assert!(result.policies.contains("user_consent"));
         assert!(result.policies.contains("Role::\"admin\""));
@@ -407,7 +419,8 @@ mod tests {
             .role("admin", &["*"])
             .time_window("deploy", (9, 17))
             .unwrap()
-            .build();
+            .build()
+            .unwrap();
 
         assert!(result.policies.contains("Action::\"deploy\""));
         assert!(result.policies.contains("hour_utc"));
