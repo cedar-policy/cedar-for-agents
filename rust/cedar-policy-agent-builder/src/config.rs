@@ -68,6 +68,8 @@ pub enum ConsentScope {
     /// `true` = all roles require consent; `false` = no consent required.
     AllRoles(bool),
     /// Only the listed roles require consent for this tool.
+    /// Roles that do not already grant access to the tool are ignored at policy
+    /// generation time — consent never adds access that wasn't already configured.
     SpecificRoles(Vec<String>),
 }
 

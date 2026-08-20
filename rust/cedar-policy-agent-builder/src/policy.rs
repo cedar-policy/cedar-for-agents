@@ -25,7 +25,7 @@ fn normalize_consent_roles(scope: &ConsentScope) -> Vec<&str> {
 /// Get the roles that grant access to the given `tool`.
 /// A role grants access to a tool if either it grants access to any tool via `"*"` or it
 /// grants access to that specific tool.
-fn get_roles_granting_tool(config: &CedarAgentConfig, tool: &str) -> Vec<String> {
+fn get_roles_granting_tool<'a>(config: &'a CedarAgentConfig, tool: &str) -> Vec<&'a str> {
     let roles = match &config.roles {
         Some(r) => r,
         None => return Vec::new(),
@@ -33,7 +33,7 @@ fn get_roles_granting_tool(config: &CedarAgentConfig, tool: &str) -> Vec<String>
     roles
         .iter()
         .filter(|(_, tools)| tools.iter().any(|t| t == "*" || t == tool))
-        .map(|(role_name, _)| role_name.clone())
+        .map(|(role_name, _)| role_name.as_str())
         .collect()
 }
 
@@ -219,10 +219,9 @@ fn generate_consent_policies(config: &CedarAgentConfig) -> Vec<String> {
     for (tool, scope) in consent {
         let action_clause = action_ref(ns, tool);
         let roles = normalize_consent_roles(scope);
+        let applicable_roles = get_roles_granting_tool(config, tool);
         if roles.contains(&"*") {
             // Collect all roles that actually grant access to this tool
-            // (either explicitly or via wildcard "*").
-            let applicable_roles = get_roles_granting_tool(config, tool);
             for role in &applicable_roles {
                 let role_ref = format!("{ns}::Role::\"{}\"", EntityId::new(role).escaped());
                 policies.push(format!(
@@ -230,7 +229,11 @@ fn generate_consent_policies(config: &CedarAgentConfig) -> Vec<String> {
                 ));
             }
         } else {
-            for role in &roles {
+            for role in roles {
+                if !applicable_roles.contains(&role) {
+                    // skip adding permit, role does not have access to tool
+                    continue;
+                }
                 let role_ref = format!("{ns}::Role::\"{}\"", EntityId::new(role).escaped());
                 policies.push(format!(
                     "permit(\n  principal in {role_ref},\n  {action_clause},\n  resource\n) when {{ context.session has \"user_consent\" && context.session.user_consent == true }};",
@@ -452,6 +455,10 @@ mod tests {
     #[test]
     fn test_consent_specific_role() {
         let config = CedarAgentConfig {
+            roles: Some(BTreeMap::from([(
+                "analyst".to_string(),
+                vec!["search".to_string(), "send_email".to_string()],
+            )])),
             consent: Some(BTreeMap::from([(
                 "send_email".to_string(),
                 ConsentScope::SpecificRoles(vec!["analyst".to_string()]),
@@ -668,6 +675,93 @@ mod tests {
         // No unconstrained permit
         assert!(!policies.contains(
             "permit(\n  principal,\n  action == Agent::Action::\"send_email\",\n  resource\n)"
+        ));
+    }
+
+    #[test]
+    fn test_consent_specific_roles_does_not_grant_access_to_nonexistent_tool() {
+        // Regression: consent_for_roles("delete", &["viewer"]) must NOT grant
+        // the viewer role access to "delete" when the viewer role only has "read".
+        // Consent should restrict, never escalate.
+        let config = CedarAgentConfig {
+            roles: Some(BTreeMap::from([
+                ("viewer".to_string(), vec!["read".to_string()]),
+                (
+                    "admin".to_string(),
+                    vec!["read".to_string(), "delete".to_string()],
+                ),
+            ])),
+            consent: Some(BTreeMap::from([(
+                "delete".to_string(),
+                ConsentScope::SpecificRoles(vec!["viewer".to_string(), "admin".to_string()]),
+            )])),
+            ..Default::default()
+        };
+        let policies = generate_policies(&config);
+        assert_valid_cedar(&policies);
+        // viewer does NOT have "delete" in its tools → must NOT get a consent permit for delete
+        assert!(
+            !policies.contains(
+                "principal in Agent::Role::\"viewer\",\n  action == Agent::Action::\"delete\""
+            ),
+            "viewer should NOT gain 'delete' access via consent; policies:\n{policies}"
+        );
+        // admin DOES have "delete" → should get the consent permit
+        assert!(policies.contains(
+            "permit(\n  principal in Agent::Role::\"admin\",\n  action == Agent::Action::\"delete\",\n  resource\n) when { context.session has \"user_consent\" && context.session.user_consent == true };"
+        ));
+        // admin's unconditional permit for "delete" should be excluded (consent takes over)
+        assert!(!policies.contains(
+            "permit(principal in Agent::Role::\"admin\", action == Agent::Action::\"delete\", resource);"
+        ));
+    }
+
+    #[test]
+    fn test_consent_specific_roles_no_roles_have_tool() {
+        // If none of the specified roles grant the tool, no consent policies should be emitted.
+        let config = CedarAgentConfig {
+            roles: Some(BTreeMap::from([(
+                "viewer".to_string(),
+                vec!["read".to_string()],
+            )])),
+            consent: Some(BTreeMap::from([(
+                "delete".to_string(),
+                ConsentScope::SpecificRoles(vec!["viewer".to_string()]),
+            )])),
+            ..Default::default()
+        };
+        let policies = generate_policies(&config);
+        assert_valid_cedar(&policies);
+        // No consent permit for delete should exist at all
+        assert!(
+            !policies.contains("Action::\"delete\""),
+            "no policies should reference 'delete' since no role grants it; policies:\n{policies}"
+        );
+    }
+
+    #[test]
+    fn test_consent_specific_roles_wildcard_role_grants_all_tools() {
+        // A role with "*" grants access to all tools, so consent should apply.
+        let config = CedarAgentConfig {
+            roles: Some(BTreeMap::from([
+                ("admin".to_string(), vec!["*".to_string()]),
+                ("viewer".to_string(), vec!["read".to_string()]),
+            ])),
+            consent: Some(BTreeMap::from([(
+                "deploy".to_string(),
+                ConsentScope::SpecificRoles(vec!["admin".to_string(), "viewer".to_string()]),
+            )])),
+            ..Default::default()
+        };
+        let policies = generate_policies(&config);
+        assert_valid_cedar(&policies);
+        // admin has "*" so it grants "deploy" → consent permit should exist
+        assert!(policies.contains(
+            "permit(\n  principal in Agent::Role::\"admin\",\n  action == Agent::Action::\"deploy\",\n  resource\n) when { context.session has \"user_consent\" && context.session.user_consent == true };"
+        ));
+        // viewer only has "read" → no consent permit for deploy
+        assert!(!policies.contains(
+            "principal in Agent::Role::\"viewer\",\n  action == Agent::Action::\"deploy\""
         ));
     }
 
