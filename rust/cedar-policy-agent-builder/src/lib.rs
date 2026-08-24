@@ -18,7 +18,7 @@
 //!     .role("analyst", &["search", "query"])
 //!     .user("alice", &["admin"])
 //!     .user("bob", &["analyst"])
-//!     .rate_limit("send_email", 5)
+//!     .rate_limit("send_email", 5).unwrap()
 //!     .time_window("*", (9, 17)).unwrap()
 //!     .deny_in_env("production", &["delete"])
 //!     .build()
@@ -46,7 +46,7 @@
 //! The builder generates the following Cedar policy patterns:
 //!
 //! - **Role permits** — `permit` policies scoped to a role and optionally to specific actions
-//! - **Rate limits** — `forbid` policies that deny when a session call counter exceeds a threshold
+//! - **Rate limits** — `forbid` policies that deny when a session call counter (`context.session.call_count_<tool>`) exceeds a threshold
 //! - **Time windows** — `forbid` policies that deny outside allowed UTC hours
 //! - **Environment denials** — `forbid` policies that deny specific tools in named environments
 //! - **Consent gates** — `permit` policies that require explicit user consent before execution

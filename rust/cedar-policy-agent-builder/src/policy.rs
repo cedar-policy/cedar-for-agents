@@ -8,7 +8,7 @@ fn action_ref(ns: &str, name: &str) -> String {
 }
 
 // Tools like "my-tool" and "my_tool" will collide to the same counter key.
-fn sanitize_counter_key(tool: &str) -> String {
+pub(crate) fn sanitize_counter_key(tool: &str) -> String {
     tool.chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
         .collect()
@@ -187,7 +187,6 @@ fn generate_env_denial_policies(config: &CedarAgentConfig) -> Vec<String> {
     };
     let ns = &config.namespace;
     let mut policies = Vec::new();
-
     for (env, tools) in deny_in_env {
         if tools.contains(&"*".to_string()) {
             policies.push(format!(
@@ -204,7 +203,6 @@ fn generate_env_denial_policies(config: &CedarAgentConfig) -> Vec<String> {
             }
         }
     }
-
     policies
 }
 
@@ -241,7 +239,6 @@ fn generate_consent_policies(config: &CedarAgentConfig) -> Vec<String> {
             }
         }
     }
-
     policies
 }
 

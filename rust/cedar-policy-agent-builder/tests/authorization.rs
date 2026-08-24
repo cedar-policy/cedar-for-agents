@@ -115,6 +115,7 @@ fn test_rate_limit_denies_when_exceeded() {
         .role("user", &["send_email"])
         .user("alice", &["user"])
         .rate_limit("send_email", 5)
+        .unwrap()
         .build()
         .unwrap();
 
@@ -358,6 +359,7 @@ fn test_combined_policies_all_interact_correctly() {
         .user("alice", &["admin"])
         .user("bob", &["analyst"])
         .rate_limit("send_email", 3)
+        .unwrap()
         .time_window("*", (9, 17))
         .unwrap()
         .consent_all("send_email")
