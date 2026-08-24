@@ -3,14 +3,18 @@
 //! These types define the declarative input that drives policy generation.
 //! They can be deserialized from JSON/YAML or constructed via [`CedarAgentPolicyBuilder`](crate::CedarAgentPolicyBuilder).
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::BTreeMap;
 
 /// Configuration for the principal (user/agent) entity type.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrincipalConfig {
     pub key: String,
-    #[serde(rename = "type", default = "default_principal_type")]
+    #[serde(
+        rename = "type",
+        default = "default_principal_type",
+        deserialize_with = "deserialize_cedar_ident"
+    )]
     pub principal_type: String,
 }
 
@@ -30,7 +34,11 @@ impl Default for PrincipalConfig {
 /// Configuration for the resource entity (the thing being accessed).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceConfig {
-    #[serde(rename = "type", default = "default_resource_type")]
+    #[serde(
+        rename = "type",
+        default = "default_resource_type",
+        deserialize_with = "deserialize_cedar_ident"
+    )]
     pub resource_type: String,
     #[serde(default = "default_resource_id")]
     pub id: String,
@@ -60,6 +68,8 @@ pub enum ConsentScope {
     /// `true` = all roles require consent; `false` = no consent required.
     AllRoles(bool),
     /// Only the listed roles require consent for this tool.
+    /// Roles that do not already grant access to the tool are ignored at policy
+    /// generation time — consent never adds access that wasn't already configured.
     SpecificRoles(Vec<String>),
 }
 
@@ -141,7 +151,10 @@ pub struct CedarAgentConfig {
     #[serde(default)]
     pub tools: Option<Vec<McpToolDefinition>>,
     /// Cedar namespace (default: `"Agent"`).
-    #[serde(default = "default_namespace")]
+    #[serde(
+        default = "default_namespace",
+        deserialize_with = "deserialize_namespace"
+    )]
     pub namespace: String,
 }
 
@@ -165,4 +178,76 @@ impl Default for CedarAgentConfig {
             namespace: default_namespace(),
         }
     }
+}
+
+/// Errors returned when a [`CedarAgentConfig`] contains invalid identifier fields.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ConfigValidationError {
+    /// The `namespace` field is not a valid Cedar identifier.
+    #[error("invalid namespace \"{value}\": not a valid Cedar identifier")]
+    InvalidNamespace { value: String },
+    /// The `principal.type` field is not a valid Cedar identifier.
+    #[error("invalid principal type \"{value}\": not a valid Cedar identifier")]
+    InvalidPrincipalType { value: String },
+    /// The `resource.type` field is not a valid Cedar identifier.
+    #[error("invalid resource type \"{value}\": not a valid Cedar identifier")]
+    InvalidResourceType { value: String },
+}
+
+/// Check whether a string is a valid Cedar identifier (namespace path segment or entity type name).
+///
+/// Uses the Cedar parser to reject reserved words, invalid characters, and injection attempts.
+fn is_valid_cedar_ident(s: &str) -> bool {
+    cedar_policy::pst::Id::new(s).is_ok()
+}
+
+/// Validate all identifier-like fields in a [`CedarAgentConfig`].
+///
+/// Returns the first validation error found, or `Ok(())` if all fields are valid.
+/// Call this before policy/entity generation when the config was deserialized from
+/// an untrusted source (JSON, YAML, API input).
+pub fn validate_config(config: &CedarAgentConfig) -> Result<(), ConfigValidationError> {
+    if !is_valid_cedar_ident(&config.namespace) {
+        return Err(ConfigValidationError::InvalidNamespace {
+            value: config.namespace.clone(),
+        });
+    }
+    if !is_valid_cedar_ident(&config.principal.principal_type) {
+        return Err(ConfigValidationError::InvalidPrincipalType {
+            value: config.principal.principal_type.clone(),
+        });
+    }
+    if let Some(resource) = &config.resource {
+        if !is_valid_cedar_ident(&resource.resource_type) {
+            return Err(ConfigValidationError::InvalidResourceType {
+                value: resource.resource_type.clone(),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Serde deserializer that validates a string is a valid Cedar identifier.
+///
+/// Rejects values that could enable policy injection when interpolated into Cedar text.
+fn deserialize_cedar_ident<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    if is_valid_cedar_ident(&s) {
+        Ok(s)
+    } else {
+        Err(serde::de::Error::custom(format!(
+            "\"{s}\" is not a valid Cedar identifier"
+        )))
+    }
+}
+
+/// Serde deserializer for namespace with default + validation.
+fn deserialize_namespace<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_cedar_ident(deserializer)
 }
