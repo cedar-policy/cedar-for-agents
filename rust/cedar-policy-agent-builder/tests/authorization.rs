@@ -254,7 +254,7 @@ fn test_env_denial_blocks_in_production() {
 }
 
 #[test]
-fn test_env_denial_blocks_when_not_provded() {
+fn test_env_denial_blocks_when_not_provided() {
     let result = CedarAgentPolicyBuilder::new()
         .role("admin", &["*"])
         .user("alice", &["admin"])
