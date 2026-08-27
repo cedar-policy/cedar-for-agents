@@ -143,6 +143,29 @@ fn test_rate_limit_denies_when_exceeded() {
 }
 
 #[test]
+fn test_rate_limit_denies_when_not_provided() {
+    let result = CedarAgentPolicyBuilder::new()
+        .role("user", &["send_email"])
+        .user("alice", &["user"])
+        .rate_limit("send_email", 5)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let entities_json = entities_to_json(&result.entities);
+
+    let count_not_provided = authorize(
+        &result.policies,
+        &entities_json,
+        "Agent::User::\"alice\"",
+        "Agent::Action::\"send_email\"",
+        "Agent::Resource::\"default\"",
+        serde_json::json!({"session": {}}),
+    );
+    assert_eq!(count_not_provided, cedar_policy::Decision::Deny);
+}
+
+#[test]
 fn test_time_window_denies_outside_hours() {
     let result = CedarAgentPolicyBuilder::new()
         .role("user", &["deploy"])
@@ -176,6 +199,29 @@ fn test_time_window_denies_outside_hours() {
 }
 
 #[test]
+fn test_time_window_denies_when_not_provided() {
+    let result = CedarAgentPolicyBuilder::new()
+        .role("user", &["deploy"])
+        .user("alice", &["user"])
+        .time_window("deploy", (9, 17))
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let entities_json = entities_to_json(&result.entities);
+
+    let hour_not_provided = authorize(
+        &result.policies,
+        &entities_json,
+        "Agent::User::\"alice\"",
+        "Agent::Action::\"deploy\"",
+        "Agent::Resource::\"default\"",
+        serde_json::json!({"session": {}}),
+    );
+    assert_eq!(hour_not_provided, cedar_policy::Decision::Deny);
+}
+
+#[test]
 fn test_env_denial_blocks_in_production() {
     let result = CedarAgentPolicyBuilder::new()
         .role("admin", &["*"])
@@ -205,6 +251,28 @@ fn test_env_denial_blocks_in_production() {
         serde_json::json!({"session": {"environment": "staging"}}),
     );
     assert_eq!(in_staging, cedar_policy::Decision::Allow);
+}
+
+#[test]
+fn test_env_denial_blocks_when_not_provided() {
+    let result = CedarAgentPolicyBuilder::new()
+        .role("admin", &["*"])
+        .user("alice", &["admin"])
+        .deny_in_env("production", &["delete"])
+        .build()
+        .unwrap();
+
+    let entities_json = entities_to_json(&result.entities);
+
+    let env_not_provided = authorize(
+        &result.policies,
+        &entities_json,
+        "Agent::User::\"alice\"",
+        "Agent::Action::\"delete\"",
+        "Agent::Resource::\"default\"",
+        serde_json::json!({"session": {"hour_utc": "12"}}),
+    );
+    assert_eq!(env_not_provided, cedar_policy::Decision::Deny);
 }
 
 #[test]

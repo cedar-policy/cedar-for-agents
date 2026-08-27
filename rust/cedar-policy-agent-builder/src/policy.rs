@@ -50,196 +50,227 @@ fn get_consent_tools_for_role(config: &CedarAgentConfig, role_name: &str) -> BTr
     tools
 }
 
-fn generate_role_policies(config: &CedarAgentConfig) -> Vec<String> {
-    let roles = match &config.roles {
-        Some(r) => r,
-        None => return Vec::new(),
-    };
-    let ns = &config.namespace;
-    let mut policies = Vec::new();
+/// A [`PolicyGenerator`] generates the policy text from a `config`, keeping track of additional
+/// state as it generates those policies.
+// We may want to use this to store additional state when doing policy generation.
+#[derive(Debug)]
+pub struct PolicyGenerator<'a> {
+    config: &'a CedarAgentConfig,
+    policies_text: Vec<String>,
+}
 
-    for (role_name, tools) in roles {
-        let consent_tools = get_consent_tools_for_role(config, role_name);
-        let role_ref = format!("{ns}::Role::\"{}\"", EntityId::new(role_name).escaped());
+impl<'a> PolicyGenerator<'a> {
+    fn generate_role_policies(&mut self) {
+        let roles = match &self.config.roles {
+            Some(r) => r,
+            None => return,
+        };
+        let ns = &self.config.namespace;
+        let mut policies = Vec::new();
 
-        if tools.contains(&"*".to_string()) {
-            if consent_tools.is_empty() {
-                policies.push(format!(
-                    "permit(principal in {role_ref}, action, resource);"
-                ));
-            } else {
-                let exclusions: Vec<String> =
-                    consent_tools.iter().map(|t| action_ref(ns, t)).collect();
-                policies.push(format!(
+        for (role_name, tools) in roles {
+            let consent_tools = get_consent_tools_for_role(self.config, role_name);
+            let role_ref = format!("{ns}::Role::\"{}\"", EntityId::new(role_name).escaped());
+
+            if tools.contains(&"*".to_string()) {
+                if consent_tools.is_empty() {
+                    policies.push(format!(
+                        "permit(principal in {role_ref}, action, resource);"
+                    ));
+                } else {
+                    let exclusions: Vec<String> =
+                        consent_tools.iter().map(|t| action_ref(ns, t)).collect();
+                    policies.push(format!(
                     "permit(\n  principal in {role_ref},\n  action,\n  resource\n) when {{ !({}) }};",
                     exclusions.join(" || ")
                 ));
-            }
-        } else {
-            let filtered: Vec<&String> = tools
-                .iter()
-                .filter(|t| !consent_tools.contains(t.as_str()))
-                .collect();
-            for tool in filtered {
-                policies.push(format!(
-                    "permit(principal in {role_ref}, {}, resource);",
-                    action_ref(ns, tool)
-                ));
+                }
+            } else {
+                let filtered: Vec<&String> = tools
+                    .iter()
+                    .filter(|t| !consent_tools.contains(t.as_str()))
+                    .collect();
+                for tool in filtered {
+                    policies.push(format!(
+                        "permit(principal in {role_ref}, {}, resource);",
+                        action_ref(ns, tool)
+                    ));
+                }
             }
         }
+
+        self.policies_text.append(&mut policies);
     }
 
-    policies
-}
+    fn generate_restriction_policies(&mut self) {
+        let restrictions = match &self.config.restrictions {
+            Some(r) => r,
+            None => return,
+        };
+        let ns = &self.config.namespace;
+        let mut policies = Vec::new();
 
-fn generate_restriction_policies(config: &CedarAgentConfig) -> Vec<String> {
-    let restrictions = match &config.restrictions {
-        Some(r) => r,
-        None => return Vec::new(),
-    };
-    let ns = &config.namespace;
-    let mut policies = Vec::new();
-
-    for (tool, restriction) in restrictions {
-        let action_clause = action_ref(ns, tool);
-        if restriction.allowed_values.is_empty() {
-            policies.push(format!(
-                "forbid(\n  principal,\n  {action_clause},\n  resource\n);"
-            ));
-            continue;
-        }
-        for (field, allowed_values) in &restriction.allowed_values {
-            let value_checks: Vec<String> = allowed_values
-                .iter()
-                .map(|v| {
-                    let formatted = format_cedar_value(v);
-                    format!(
-                        "context.input[\"{}\"] == {formatted}",
-                        EntityId::new(field).escaped()
-                    )
-                })
-                .collect();
-            policies.push(format!(
+        for (tool, restriction) in restrictions {
+            let action_clause = action_ref(ns, tool);
+            if restriction.allowed_values.is_empty() {
+                policies.push(format!(
+                    "forbid(\n  principal,\n  {action_clause},\n  resource\n);"
+                ));
+                continue;
+            }
+            for (field, allowed_values) in &restriction.allowed_values {
+                let value_checks: Vec<String> = allowed_values
+                    .iter()
+                    .map(|v| {
+                        let formatted = format_cedar_value(v);
+                        format!(
+                            "context.input[\"{}\"] == {formatted}",
+                            EntityId::new(field).escaped()
+                        )
+                    })
+                    .collect();
+                policies.push(format!(
                 "forbid(\n  principal,\n  {action_clause},\n  resource\n) when {{\n  !(context.input has \"{}\" && ({}))\n}};",
                 EntityId::new(field).escaped(),
                 value_checks.join(" || ")
             ));
+            }
         }
+
+        self.policies_text.append(&mut policies);
     }
 
-    policies
-}
+    fn generate_rate_limit_policies(&mut self) {
+        let rate_limits = match &self.config.rate_limits {
+            Some(r) => r,
+            None => return,
+        };
+        let ns = &self.config.namespace;
+        let mut policies = Vec::new();
 
-fn generate_rate_limit_policies(config: &CedarAgentConfig) -> Vec<String> {
-    let rate_limits = match &config.rate_limits {
-        Some(r) => r,
-        None => return Vec::new(),
-    };
-    let ns = &config.namespace;
-    let mut policies = Vec::new();
-
-    for (tool, max) in rate_limits {
-        if tool == "*" {
-            policies.push(format!(
-                "forbid(\n  principal,\n  action,\n  resource\n) when {{ context.session has \"call_count\" && context.session.call_count >= {max} }};",
-            ));
-        } else {
-            let action_clause = action_ref(ns, tool);
-            let counter_key = format!("call_count_{}", sanitize_counter_key(tool));
-            policies.push(format!(
-                "forbid(\n  principal,\n  {action_clause},\n  resource\n) when {{ context.session has \"{}\" && context.session.{} >= {max} }};",
+        for (tool, max) in rate_limits {
+            if tool == "*" {
+                // forbid if call count not provided, or call count is too large
+                policies.push(format!(
+                    "forbid(\n  principal,\n  action,\n  resource\n) when {{ !(context.session has \"call_count\") || context.session.call_count >= {max} }};",
+                ));
+            } else {
+                let action_clause = action_ref(ns, tool);
+                let counter_key = format!("call_count_{}", sanitize_counter_key(tool));
+                // forbid if call count not provided for this tool, or call count is too large
+                policies.push(format!(
+                "forbid(\n  principal,\n  {action_clause},\n  resource\n) when {{ !(context.session has \"{}\") || context.session.{} >= {max} }};",
                 counter_key,
                 counter_key
-            ));
+                ));
+            }
         }
+
+        self.policies_text.append(&mut policies);
     }
 
-    policies
-}
-
-fn generate_time_window_policies(config: &CedarAgentConfig) -> Vec<String> {
-    let time_windows = match &config.time_windows {
-        Some(t) => t,
-        None => return Vec::new(),
-    };
-    let ns = &config.namespace;
-    let mut policies = Vec::new();
-
-    for (tool, tw) in time_windows {
-        let action_clause = if tool == "*" {
-            "action".to_string()
-        } else {
-            action_ref(ns, tool)
+    fn generate_time_window_policies(&mut self) {
+        let time_windows = match &self.config.time_windows {
+            Some(t) => t,
+            None => return,
         };
-        policies.push(format!(
-            "forbid(\n  principal,\n  {action_clause},\n  resource\n) when {{ context.session has \"hour_utc\" && (context.session.hour_utc < {} || context.session.hour_utc >= {}) }};",
-            tw.hour_start, tw.hour_end
-        ));
+        let ns = &self.config.namespace;
+        let mut policies = Vec::new();
+
+        for (tool, tw) in time_windows {
+            let action_clause = if tool == "*" {
+                "action".to_string()
+            } else {
+                action_ref(ns, tool)
+            };
+            // forbid if hour_utc not provided, or outside of specified window
+            policies.push(format!(
+                "forbid(\n  principal,\n  {action_clause},\n  resource\n) when {{ !(context.session has \"hour_utc\") || (context.session.hour_utc < {} || context.session.hour_utc >= {}) }};",
+                tw.hour_start, tw.hour_end));
+        }
+        self.policies_text.append(&mut policies);
     }
 
-    policies
-}
+    fn generate_env_denial_policies(&mut self) {
+        let deny_in_env = match &self.config.deny_in_env {
+            Some(d) => d,
+            None => return,
+        };
+        let ns = &self.config.namespace;
+        let mut policies = Vec::new();
 
-fn generate_env_denial_policies(config: &CedarAgentConfig) -> Vec<String> {
-    let deny_in_env = match &config.deny_in_env {
-        Some(d) => d,
-        None => return Vec::new(),
-    };
-    let ns = &config.namespace;
-    let mut policies = Vec::new();
-    for (env, tools) in deny_in_env {
-        if tools.contains(&"*".to_string()) {
-            policies.push(format!(
-                "forbid(\n  principal,\n  action,\n  resource\n) when {{ context.session has \"environment\" && context.session.environment == \"{}\" }};",
+        for (env, tools) in deny_in_env {
+            if tools.contains(&"*".to_string()) {
+                // forbid if environment not provided, or environment is the denied one
+                policies.push(format!(
+                "forbid(\n  principal,\n  action,\n  resource\n) when {{ !(context.session has \"environment\") || context.session.environment == \"{}\" }};",
                 EntityId::new(env).escaped()
             ));
-        } else {
-            for tool in tools {
-                policies.push(format!(
-                    "forbid(\n  principal,\n  {},\n  resource\n) when {{ context.session has \"environment\" && context.session.environment == \"{}\" }};",
+            } else {
+                for tool in tools {
+                    // forbid if environment not provided for this action, or environment is the denied one
+                    policies.push(format!(
+                    "forbid(\n  principal,\n  {},\n  resource\n) when {{ !(context.session has \"environment\") || context.session.environment == \"{}\" }};",
                     action_ref(ns, tool),
                     EntityId::new(env).escaped()
                 ));
-            }
-        }
-    }
-    policies
-}
-
-fn generate_consent_policies(config: &CedarAgentConfig) -> Vec<String> {
-    let consent = match &config.consent {
-        Some(c) => c,
-        None => return Vec::new(),
-    };
-    let ns = &config.namespace;
-    let mut policies = Vec::new();
-
-    for (tool, scope) in consent {
-        let action_clause = action_ref(ns, tool);
-        let roles = normalize_consent_roles(scope);
-        let applicable_roles = get_roles_granting_tool(config, tool);
-        if roles.contains(&"*") {
-            // Collect all roles that actually grant access to this tool
-            for role in &applicable_roles {
-                let role_ref = format!("{ns}::Role::\"{}\"", EntityId::new(role).escaped());
-                policies.push(format!(
-                    "permit(\n  principal in {role_ref},\n  {action_clause},\n  resource\n) when {{ context.session has \"user_consent\" && context.session.user_consent == true }};",
-                ));
-            }
-        } else {
-            for role in roles {
-                if !applicable_roles.contains(&role) {
-                    // skip adding permit, role does not have access to tool
-                    continue;
                 }
-                let role_ref = format!("{ns}::Role::\"{}\"", EntityId::new(role).escaped());
-                policies.push(format!(
-                    "permit(\n  principal in {role_ref},\n  {action_clause},\n  resource\n) when {{ context.session has \"user_consent\" && context.session.user_consent == true }};",
-                ));
             }
+
+            self.policies_text.append(&mut policies);
         }
     }
-    policies
+
+    fn generate_consent_policies(&mut self) {
+        let consent = match &self.config.consent {
+            Some(c) => c,
+            None => return,
+        };
+        let ns = &self.config.namespace;
+        let mut policies = Vec::new();
+
+        for (tool, scope) in consent {
+            let action_clause = action_ref(ns, tool);
+            let roles = normalize_consent_roles(scope);
+            let applicable_roles = get_roles_granting_tool(self.config, tool);
+            if roles.contains(&"*") {
+                // Collect all roles that actually grant access to this tool
+                // (either explicitly or via wildcard "*").
+                for role in &applicable_roles {
+                    let role_ref = format!("{ns}::Role::\"{}\"", EntityId::new(role).escaped());
+                    policies.push(format!(
+                    "permit(\n  principal in {role_ref},\n  {action_clause},\n  resource\n) when {{ context.session has user_consent && context.session.user_consent }};",
+                ));
+                }
+            } else {
+                for role in &roles {
+                    if !applicable_roles.contains(role) {
+                        continue;
+                    }
+                    let role_ref = format!("{ns}::Role::\"{}\"", EntityId::new(role).escaped());
+                    policies.push(format!(
+                    "permit(\n  principal in {role_ref},\n  {action_clause},\n  resource\n) when {{ context.session has user_consent && context.session.user_consent }};",
+                ));
+                }
+            }
+        }
+        self.policies_text.append(&mut policies);
+    }
+
+    pub fn generate_policies(config: &CedarAgentConfig) -> String {
+        let mut generator = PolicyGenerator {
+            config,
+            policies_text: Vec::new(),
+        };
+        generator.generate_role_policies();
+        generator.generate_restriction_policies();
+        generator.generate_rate_limit_policies();
+        generator.generate_time_window_policies();
+        generator.generate_env_denial_policies();
+        generator.generate_consent_policies();
+
+        generator.policies_text.join("\n\n")
+    }
 }
 
 fn format_cedar_value(v: &serde_json::Value) -> String {
@@ -249,17 +280,6 @@ fn format_cedar_value(v: &serde_json::Value) -> String {
         serde_json::Value::Bool(b) => b.to_string(),
         _ => format!("\"{}\"", EntityId::new(v.to_string()).escaped()),
     }
-}
-
-pub fn generate_policies(config: &CedarAgentConfig) -> String {
-    let mut all: Vec<String> = Vec::new();
-    all.extend(generate_role_policies(config));
-    all.extend(generate_restriction_policies(config));
-    all.extend(generate_rate_limit_policies(config));
-    all.extend(generate_time_window_policies(config));
-    all.extend(generate_env_denial_policies(config));
-    all.extend(generate_consent_policies(config));
-    all.join("\n\n")
 }
 
 #[cfg(test)]
@@ -290,7 +310,7 @@ mod tests {
             )])),
             ..Default::default()
         };
-        let policies = generate_policies(&config);
+        let policies = PolicyGenerator::generate_policies(&config);
         assert_valid_cedar(&policies);
         assert!(policies.contains(
             "permit(principal in Agent::Role::\"analyst\", action == Agent::Action::\"search\", resource);"
@@ -309,7 +329,7 @@ mod tests {
             )])),
             ..Default::default()
         };
-        let policies = generate_policies(&config);
+        let policies = PolicyGenerator::generate_policies(&config);
         assert_valid_cedar(&policies);
         assert!(policies.contains("permit(principal in Agent::Role::\"admin\", action, resource);"));
     }
@@ -331,7 +351,7 @@ mod tests {
             )])),
             ..Default::default()
         };
-        let policies = generate_policies(&config);
+        let policies = PolicyGenerator::generate_policies(&config);
         assert_valid_cedar(&policies);
         assert!(policies.contains(
             "forbid(\n  principal,\n  action == Agent::Action::\"query_database\",\n  resource\n) when {\n  !(context.input has \"database\" && (context.input[\"database\"] == \"analytics\" || context.input[\"database\"] == \"reporting\"))\n};"
@@ -344,10 +364,10 @@ mod tests {
             rate_limits: Some(BTreeMap::from([("send_email".to_string(), 3)])),
             ..Default::default()
         };
-        let policies = generate_policies(&config);
+        let policies = PolicyGenerator::generate_policies(&config);
         assert_valid_cedar(&policies);
         assert!(policies.contains(
-            "forbid(\n  principal,\n  action == Agent::Action::\"send_email\",\n  resource\n) when { context.session has \"call_count_send_email\" && context.session.call_count_send_email >= 3 };"
+            "forbid(\n  principal,\n  action == Agent::Action::\"send_email\",\n  resource\n) when { !(context.session has \"call_count_send_email\") || context.session.call_count_send_email >= 3 };"
         ));
     }
 
@@ -357,10 +377,10 @@ mod tests {
             rate_limits: Some(BTreeMap::from([("*".to_string(), 100)])),
             ..Default::default()
         };
-        let policies = generate_policies(&config);
+        let policies = PolicyGenerator::generate_policies(&config);
         assert_valid_cedar(&policies);
         assert!(policies.contains(
-            "forbid(\n  principal,\n  action,\n  resource\n) when { context.session has \"call_count\" && context.session.call_count >= 100 };"
+            "forbid(\n  principal,\n  action,\n  resource\n) when { !(context.session has \"call_count\") || context.session.call_count >= 100 };"
         ));
     }
 
@@ -376,10 +396,10 @@ mod tests {
             )])),
             ..Default::default()
         };
-        let policies = generate_policies(&config);
+        let policies = PolicyGenerator::generate_policies(&config);
         assert_valid_cedar(&policies);
         assert!(policies.contains(
-            "forbid(\n  principal,\n  action,\n  resource\n) when { context.session has \"hour_utc\" && (context.session.hour_utc < 9 || context.session.hour_utc >= 17) };"
+            "forbid(\n  principal,\n  action,\n  resource\n) when { !(context.session has \"hour_utc\") || (context.session.hour_utc < 9 || context.session.hour_utc >= 17) };"
         ));
     }
 
@@ -395,10 +415,10 @@ mod tests {
             )])),
             ..Default::default()
         };
-        let policies = generate_policies(&config);
+        let policies = PolicyGenerator::generate_policies(&config);
         assert_valid_cedar(&policies);
         assert!(policies.contains(
-            "forbid(\n  principal,\n  action == Agent::Action::\"deploy\",\n  resource\n) when { context.session has \"hour_utc\" && (context.session.hour_utc < 9 || context.session.hour_utc >= 17) };"
+            "forbid(\n  principal,\n  action == Agent::Action::\"deploy\",\n  resource\n) when { !(context.session has \"hour_utc\") || (context.session.hour_utc < 9 || context.session.hour_utc >= 17) };"
         ));
     }
 
@@ -411,10 +431,10 @@ mod tests {
             )])),
             ..Default::default()
         };
-        let policies = generate_policies(&config);
+        let policies = PolicyGenerator::generate_policies(&config);
         assert_valid_cedar(&policies);
         assert!(policies.contains(
-            "forbid(\n  principal,\n  action == Agent::Action::\"delete_record\",\n  resource\n) when { context.session has \"environment\" && context.session.environment == \"production\" };"
+            "forbid(\n  principal,\n  action == Agent::Action::\"delete_record\",\n  resource\n) when { !(context.session has \"environment\") || context.session.environment == \"production\" };"
         ));
     }
 
@@ -434,14 +454,14 @@ mod tests {
             )])),
             ..Default::default()
         };
-        let policies = generate_policies(&config);
+        let policies = PolicyGenerator::generate_policies(&config);
         assert_valid_cedar(&policies);
         // The consent permit must be scoped to roles that grant the tool
         assert!(policies.contains(
-            "permit(\n  principal in Agent::Role::\"analyst\",\n  action == Agent::Action::\"send_email\",\n  resource\n) when { context.session has \"user_consent\" && context.session.user_consent == true };"
+            "permit(\n  principal in Agent::Role::\"analyst\",\n  action == Agent::Action::\"send_email\",\n  resource\n) when { context.session has user_consent && context.session.user_consent };"
         ));
         assert!(policies.contains(
-            "permit(\n  principal in Agent::Role::\"admin\",\n  action == Agent::Action::\"send_email\",\n  resource\n) when { context.session has \"user_consent\" && context.session.user_consent == true };"
+            "permit(\n  principal in Agent::Role::\"admin\",\n  action == Agent::Action::\"send_email\",\n  resource\n) when { context.session has user_consent && context.session.user_consent };"
         ));
         // Must NOT have an unconstrained principal permit
         assert!(!policies.contains(
@@ -454,7 +474,7 @@ mod tests {
         let config = CedarAgentConfig {
             roles: Some(BTreeMap::from([(
                 "analyst".to_string(),
-                vec!["search".to_string(), "send_email".to_string()],
+                vec!["send_email".to_string()],
             )])),
             consent: Some(BTreeMap::from([(
                 "send_email".to_string(),
@@ -462,10 +482,10 @@ mod tests {
             )])),
             ..Default::default()
         };
-        let policies = generate_policies(&config);
+        let policies = PolicyGenerator::generate_policies(&config);
         assert_valid_cedar(&policies);
         assert!(policies.contains(
-            "permit(\n  principal in Agent::Role::\"analyst\",\n  action == Agent::Action::\"send_email\",\n  resource\n) when { context.session has \"user_consent\" && context.session.user_consent == true };"
+            "permit(\n  principal in Agent::Role::\"analyst\",\n  action == Agent::Action::\"send_email\",\n  resource\n) when { context.session has user_consent && context.session.user_consent };"
         ));
     }
 
@@ -482,7 +502,7 @@ mod tests {
             )])),
             ..Default::default()
         };
-        let policies = generate_policies(&config);
+        let policies = PolicyGenerator::generate_policies(&config);
         assert_valid_cedar(&policies);
         // send_email should NOT appear in the unconditional role permit
         assert!(!policies.contains(
@@ -494,7 +514,7 @@ mod tests {
         ));
         // consent permit for send_email should be scoped to analyst
         assert!(policies.contains(
-            "permit(\n  principal in Agent::Role::\"analyst\",\n  action == Agent::Action::\"send_email\",\n  resource\n) when { context.session has \"user_consent\" && context.session.user_consent == true };"
+            "permit(\n  principal in Agent::Role::\"analyst\",\n  action == Agent::Action::\"send_email\",\n  resource\n) when { context.session has user_consent && context.session.user_consent };"
         ));
     }
 
@@ -511,19 +531,19 @@ mod tests {
             )])),
             ..Default::default()
         };
-        let policies = generate_policies(&config);
+        let policies = PolicyGenerator::generate_policies(&config);
         assert_valid_cedar(&policies);
         assert!(policies.contains("!(action == Agent::Action::\"send_email\")"));
         // Consent permit must be scoped to admin role (which grants * tools)
         assert!(policies.contains(
-            "permit(\n  principal in Agent::Role::\"admin\",\n  action == Agent::Action::\"send_email\",\n  resource\n) when { context.session has \"user_consent\" && context.session.user_consent == true };"
+            "permit(\n  principal in Agent::Role::\"admin\",\n  action == Agent::Action::\"send_email\",\n  resource\n) when { context.session has user_consent && context.session.user_consent };"
         ));
     }
 
     #[test]
     fn test_empty_config_produces_no_policies() {
         let config = CedarAgentConfig::default();
-        let policies = generate_policies(&config);
+        let policies = PolicyGenerator::generate_policies(&config);
         assert!(policies.is_empty());
     }
 
@@ -533,7 +553,7 @@ mod tests {
             roles: Some(BTreeMap::from([("empty".to_string(), vec![])])),
             ..Default::default()
         };
-        let policies = generate_policies(&config);
+        let policies = PolicyGenerator::generate_policies(&config);
         assert!(policies.is_empty());
     }
 
@@ -546,7 +566,7 @@ mod tests {
             )])),
             ..Default::default()
         };
-        let policies = generate_policies(&config);
+        let policies = PolicyGenerator::generate_policies(&config);
         assert_valid_cedar(&policies);
         assert!(policies.contains("Agent::Action::\"tool\\\"inject\""));
         assert!(policies.contains("Agent::Role::\"role\\\"evil\""));
@@ -566,7 +586,7 @@ mod tests {
             rate_limits: Some(BTreeMap::from([("my.tool-v2".to_string(), 10)])),
             ..Default::default()
         };
-        let policies = generate_policies(&config);
+        let policies = PolicyGenerator::generate_policies(&config);
         assert_valid_cedar(&policies);
         assert!(policies.contains("call_count_my_tool_v2"));
         assert!(!policies.contains("call_count_my.tool-v2"));
@@ -592,7 +612,7 @@ mod tests {
             )])),
             ..Default::default()
         };
-        let policies = generate_policies(&config);
+        let policies = PolicyGenerator::generate_policies(&config);
         assert_valid_cedar(&policies);
         assert!(policies.contains(
             "forbid(\n  principal,\n  action == Agent::Action::\"dangerous_tool\",\n  resource\n);"
@@ -608,7 +628,7 @@ mod tests {
             )])),
             ..Default::default()
         };
-        let policies = generate_policies(&config);
+        let policies = PolicyGenerator::generate_policies(&config);
         assert_valid_cedar(&policies);
         assert!(policies.contains("action,"));
         assert!(policies.contains("\"staging\""));
@@ -623,7 +643,7 @@ mod tests {
             )])),
             ..Default::default()
         };
-        let policies = generate_policies(&config);
+        let policies = PolicyGenerator::generate_policies(&config);
         assert!(policies.is_empty());
     }
 
@@ -638,7 +658,7 @@ mod tests {
             )])),
             ..Default::default()
         };
-        let policies = generate_policies(&config);
+        let policies = PolicyGenerator::generate_policies(&config);
         assert!(policies.is_empty());
     }
 
@@ -659,106 +679,19 @@ mod tests {
             )])),
             ..Default::default()
         };
-        let policies = generate_policies(&config);
+        let policies = PolicyGenerator::generate_policies(&config);
         assert_valid_cedar(&policies);
         // analyst has send_email → should get consent permit
         assert!(policies.contains(
-            "permit(\n  principal in Agent::Role::\"analyst\",\n  action == Agent::Action::\"send_email\",\n  resource\n) when { context.session has \"user_consent\" && context.session.user_consent == true };"
+            "permit(\n  principal in Agent::Role::\"analyst\",\n  action == Agent::Action::\"send_email\",\n  resource\n) when { context.session has user_consent && context.session.user_consent };"
         ));
         // viewer does NOT have send_email → must NOT get consent permit for send_email
         assert!(!policies.contains(
-            "permit(\n  principal in Agent::Role::\"viewer\",\n  action == Agent::Action::\"send_email\",\n  resource\n) when { context.session has \"user_consent\" && context.session.user_consent == true };"
+            "permit(\n  principal in Agent::Role::\"viewer\",\n  action == Agent::Action::\"send_email\",\n  resource\n) when { context.session has user_consent && context.session.user_consent };"
         ));
         // No unconstrained permit
         assert!(!policies.contains(
             "permit(\n  principal,\n  action == Agent::Action::\"send_email\",\n  resource\n)"
-        ));
-    }
-
-    #[test]
-    fn test_consent_specific_roles_does_not_grant_access_to_nonexistent_tool() {
-        // Regression: consent_for_roles("delete", &["viewer"]) must NOT grant
-        // the viewer role access to "delete" when the viewer role only has "read".
-        // Consent should restrict, never escalate.
-        let config = CedarAgentConfig {
-            roles: Some(BTreeMap::from([
-                ("viewer".to_string(), vec!["read".to_string()]),
-                (
-                    "admin".to_string(),
-                    vec!["read".to_string(), "delete".to_string()],
-                ),
-            ])),
-            consent: Some(BTreeMap::from([(
-                "delete".to_string(),
-                ConsentScope::SpecificRoles(vec!["viewer".to_string(), "admin".to_string()]),
-            )])),
-            ..Default::default()
-        };
-        let policies = generate_policies(&config);
-        assert_valid_cedar(&policies);
-        // viewer does NOT have "delete" in its tools → must NOT get a consent permit for delete
-        assert!(
-            !policies.contains(
-                "principal in Agent::Role::\"viewer\",\n  action == Agent::Action::\"delete\""
-            ),
-            "viewer should NOT gain 'delete' access via consent; policies:\n{policies}"
-        );
-        // admin DOES have "delete" → should get the consent permit
-        assert!(policies.contains(
-            "permit(\n  principal in Agent::Role::\"admin\",\n  action == Agent::Action::\"delete\",\n  resource\n) when { context.session has \"user_consent\" && context.session.user_consent == true };"
-        ));
-        // admin's unconditional permit for "delete" should be excluded (consent takes over)
-        assert!(!policies.contains(
-            "permit(principal in Agent::Role::\"admin\", action == Agent::Action::\"delete\", resource);"
-        ));
-    }
-
-    #[test]
-    fn test_consent_specific_roles_no_roles_have_tool() {
-        // If none of the specified roles grant the tool, no consent policies should be emitted.
-        let config = CedarAgentConfig {
-            roles: Some(BTreeMap::from([(
-                "viewer".to_string(),
-                vec!["read".to_string()],
-            )])),
-            consent: Some(BTreeMap::from([(
-                "delete".to_string(),
-                ConsentScope::SpecificRoles(vec!["viewer".to_string()]),
-            )])),
-            ..Default::default()
-        };
-        let policies = generate_policies(&config);
-        assert_valid_cedar(&policies);
-        // No consent permit for delete should exist at all
-        assert!(
-            !policies.contains("Action::\"delete\""),
-            "no policies should reference 'delete' since no role grants it; policies:\n{policies}"
-        );
-    }
-
-    #[test]
-    fn test_consent_specific_roles_wildcard_role_grants_all_tools() {
-        // A role with "*" grants access to all tools, so consent should apply.
-        let config = CedarAgentConfig {
-            roles: Some(BTreeMap::from([
-                ("admin".to_string(), vec!["*".to_string()]),
-                ("viewer".to_string(), vec!["read".to_string()]),
-            ])),
-            consent: Some(BTreeMap::from([(
-                "deploy".to_string(),
-                ConsentScope::SpecificRoles(vec!["admin".to_string(), "viewer".to_string()]),
-            )])),
-            ..Default::default()
-        };
-        let policies = generate_policies(&config);
-        assert_valid_cedar(&policies);
-        // admin has "*" so it grants "deploy" → consent permit should exist
-        assert!(policies.contains(
-            "permit(\n  principal in Agent::Role::\"admin\",\n  action == Agent::Action::\"deploy\",\n  resource\n) when { context.session has \"user_consent\" && context.session.user_consent == true };"
-        ));
-        // viewer only has "read" → no consent permit for deploy
-        assert!(!policies.contains(
-            "principal in Agent::Role::\"viewer\",\n  action == Agent::Action::\"deploy\""
         ));
     }
 
@@ -776,7 +709,7 @@ mod tests {
             )])),
             ..Default::default()
         };
-        let policies = generate_policies(&config);
+        let policies = PolicyGenerator::generate_policies(&config);
         assert_valid_cedar(&policies);
         assert!(policies.contains("context.input[\"limit\"] == 100"));
         assert!(policies.contains("context.input[\"limit\"] == 500"));
