@@ -1,6 +1,6 @@
 use crate::config::{CedarAgentConfig, ConsentScope};
 use cedar_policy::EntityId;
-use std::{collections::BTreeSet, io::ErrorKind::ConnectionRefused};
+use std::collections::BTreeSet;
 
 fn action_ref(ns: &str, name: &str) -> String {
     let eid = EntityId::new(name);
