@@ -1269,23 +1269,24 @@ mod cli {
     use assert_cmd::{assert::OutputAssertExt, cargo_bin_cmd};
     use tempfile::TempDir;
 
+    fn assert_stdout_snapshot(snapshot_name: &'static str, cmd: &mut assert_cmd::Command) {
+        let output = cmd.assert().success();
+        let stdout = String::from_utf8_lossy(&output.get_output().stdout);
+        insta::assert_snapshot!(snapshot_name, stdout);
+    }
+
     #[test]
     fn test_simple_default_cedar_schema() {
-        let expected = std::fs::read_to_string("examples/simple/tool_default.cedarschema").unwrap();
-
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
             .arg("generate")
             .arg("examples/stub.cedarschema")
             .arg("examples/simple/tool.json");
-        cmd.unwrap().assert().success().stdout(expected);
+        assert_stdout_snapshot("simple_default_cedar_schema", cmd);
     }
 
     #[test]
     fn test_simple_default_json_schema() {
-        let expected =
-            std::fs::read_to_string("examples/simple/tool_default.cedarschema.json").unwrap();
-
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
             .arg("generate")
@@ -1293,29 +1294,22 @@ mod cli {
             .arg("examples/simple/tool.json")
             .arg("--output-format")
             .arg("json");
-        cmd.unwrap().assert().success().stdout(expected);
+        assert_stdout_snapshot("simple_default_json_schema", cmd);
     }
 
     #[test]
     fn test_simple_keep_annotations_cedar_schema() {
-        let expected =
-            std::fs::read_to_string("examples/simple/tool_keep_annotations.cedarschema").unwrap();
-
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
             .arg("generate")
             .arg("examples/stub.cedarschema")
             .arg("examples/simple/tool.json")
             .arg("--keep-annotations");
-        cmd.unwrap().assert().success().stdout(expected);
+        assert_stdout_snapshot("simple_keep_annotations_cedar_schema", cmd);
     }
 
     #[test]
     fn test_simple_keep_annotations_json_schema() {
-        let expected =
-            std::fs::read_to_string("examples/simple/tool_keep_annotations.cedarschema.json")
-                .unwrap();
-
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
             .arg("generate")
@@ -1324,29 +1318,22 @@ mod cli {
             .arg("--keep-annotations")
             .arg("--output-format")
             .arg("json");
-        cmd.unwrap().assert().success().stdout(expected);
+        assert_stdout_snapshot("simple_keep_annotations_json_schema", cmd);
     }
 
     #[test]
     fn test_simple_object_as_records_cedar_schema() {
-        let expected =
-            std::fs::read_to_string("examples/simple/tool_objects_as_records.cedarschema").unwrap();
-
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
             .arg("generate")
             .arg("examples/stub.cedarschema")
             .arg("examples/simple/tool.json")
             .arg("--objects-as-records");
-        cmd.unwrap().assert().success().stdout(expected);
+        assert_stdout_snapshot("simple_object_as_records_cedar_schema", cmd);
     }
 
     #[test]
     fn test_simple_object_as_records_json_schema() {
-        let expected =
-            std::fs::read_to_string("examples/simple/tool_objects_as_records.cedarschema.json")
-                .unwrap();
-
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
             .arg("generate")
@@ -1355,29 +1342,22 @@ mod cli {
             .arg("--objects-as-records")
             .arg("--output-format")
             .arg("json");
-        cmd.unwrap().assert().success().stdout(expected);
+        assert_stdout_snapshot("simple_object_as_records_json_schema", cmd);
     }
 
     #[test]
     fn test_simple_include_outputs_cedar_schema() {
-        let expected =
-            std::fs::read_to_string("examples/simple/tool_include_outputs.cedarschema").unwrap();
-
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
             .arg("generate")
             .arg("examples/stub.cedarschema")
             .arg("examples/simple/tool.json")
             .arg("--include-outputs");
-        cmd.unwrap().assert().success().stdout(expected);
+        assert_stdout_snapshot("simple_include_outputs_cedar_schema", cmd);
     }
 
     #[test]
     fn test_simple_include_outputs_json_schema() {
-        let expected =
-            std::fs::read_to_string("examples/simple/tool_include_outputs.cedarschema.json")
-                .unwrap();
-
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
             .arg("generate")
@@ -1386,15 +1366,11 @@ mod cli {
             .arg("--include-outputs")
             .arg("--output-format")
             .arg("json");
-        cmd.unwrap().assert().success().stdout(expected);
+        assert_stdout_snapshot("simple_include_outputs_json_schema", cmd);
     }
 
     #[test]
     fn test_simple_flattened_namespace_cedar_schema() {
-        let expected =
-            std::fs::read_to_string("examples/simple/tool_flattened_namespace.cedarschema")
-                .unwrap();
-
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
             .arg("generate")
@@ -1403,15 +1379,11 @@ mod cli {
             .arg("--flatten-namespaces")
             .arg("--error-format")
             .arg("plain");
-        cmd.unwrap().assert().success().stdout(expected);
+        assert_stdout_snapshot("simple_flattened_namespace_cedar_schema", cmd);
     }
 
     #[test]
     fn test_simple_flattened_namespace_json_schema() {
-        let expected =
-            std::fs::read_to_string("examples/simple/tool_flattened_namespace.cedarschema.json")
-                .unwrap();
-
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
             .arg("generate")
@@ -1422,31 +1394,22 @@ mod cli {
             .arg("json")
             .arg("--error-format")
             .arg("json");
-        cmd.unwrap().assert().success().stdout(expected);
+        assert_stdout_snapshot("simple_flattened_namespace_json_schema", cmd);
     }
 
     #[test]
     fn test_simple_encode_numbers_as_decimal_cedar_schema() {
-        let expected =
-            std::fs::read_to_string("examples/simple/tool_encode_numbers_as_decimal.cedarschema")
-                .unwrap();
-
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
             .arg("generate")
             .arg("examples/stub.cedarschema")
             .arg("examples/simple/tool.json")
             .arg("--encode-numbers-as-decimal");
-        cmd.unwrap().assert().success().stdout(expected);
+        assert_stdout_snapshot("simple_encode_numbers_as_decimal_cedar_schema", cmd);
     }
 
     #[test]
     fn test_simple_encode_numbers_as_decimal_json_schema() {
-        let expected = std::fs::read_to_string(
-            "examples/simple/tool_encode_numbers_as_decimal.cedarschema.json",
-        )
-        .unwrap();
-
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
             .arg("generate")
@@ -1455,19 +1418,16 @@ mod cli {
             .arg("--encode-numbers-as-decimal")
             .arg("--output-format")
             .arg("json");
-        cmd.unwrap().assert().success().stdout(expected);
+        assert_stdout_snapshot("simple_encode_numbers_as_decimal_json_schema", cmd);
     }
     #[test]
     fn test_nullable_objects_cedar_schema() {
-        let expected =
-            std::fs::read_to_string("examples/simple/tool_nullable_objects.cedarschema").unwrap();
-
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
             .arg("generate")
             .arg("examples/stub.cedarschema")
             .arg("examples/simple/tool_nullable_objects.json");
-        cmd.unwrap().assert().success().stdout(expected);
+        assert_stdout_snapshot("nullable_objects_cedar_schema", cmd);
     }
 
     #[test]
@@ -1503,14 +1463,12 @@ mod cli {
         let input_file = temp_dir.path().join("stub.json");
         std::fs::write(&input_file, serde_json::to_string(&schema).unwrap()).unwrap();
 
-        let expected = std::fs::read_to_string("examples/simple/tool_default.cedarschema").unwrap();
-
         let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
         let cmd = cmd
             .arg("generate")
             .arg(input_file)
             .arg("examples/simple/tool.json");
-        cmd.unwrap().assert().success().stdout(expected);
+        assert_stdout_snapshot("default_with_json_schema", cmd);
     }
 
     #[test]
@@ -1527,9 +1485,8 @@ mod cli {
             .arg(&output_file);
         cmd.unwrap().assert().success();
 
-        let expected = std::fs::read_to_string("examples/simple/tool_default.cedarschema").unwrap();
         let actual = std::fs::read_to_string(output_file).unwrap();
-        assert_eq!(expected, actual);
+        insta::assert_snapshot!("default_write_to_file", actual);
     }
 
     #[test]
