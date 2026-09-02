@@ -85,8 +85,8 @@ pub enum CliError {
     MissingPrincipal,
     #[error("Missing required resource argument")]
     #[diagnostic(
-        code(cli_error::missing_principal),
-        help("Provide a principal, e.g., using `--resource ResourceType::\"resource_id\".")
+        code(cli_error::missing_resource),
+        help("provide a resource with `--resource ResourceType::\"resource_id\"`")
     )]
     MissingResource,
     #[error("Could not open cedar context file `{}`: {}", .0.file.display(), .0.error)]
@@ -142,5 +142,24 @@ impl CliError {
 
     pub(crate) fn request_json_file_open(file: PathBuf, error: std::io::Error) -> Self {
         Self::RequestFileOpen(FileOpenError { file, error })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CliError;
+    use miette::Diagnostic;
+
+    #[test]
+    fn missing_resource_has_resource_specific_diagnostic() {
+        let error = CliError::MissingResource;
+        let code = error.code().map(|code| code.to_string());
+        let help = error.help().map(|help| help.to_string());
+
+        assert_eq!(code.as_deref(), Some("cli_error::missing_resource"));
+        assert_eq!(
+            help.as_deref(),
+            Some("provide a resource with `--resource ResourceType::\"resource_id\"`")
+        );
     }
 }
