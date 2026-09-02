@@ -1,0 +1,84 @@
+---
+source: cedar-policy-mcp-schema-generator/tests/integration.rs
+expression: stdout
+---
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type alert_toolInput = {
+    alert?: {
+      typeChoice0?: MyMcpServer::Null,
+      typeChoice1?: MyMcpServer::alert_tool::Input::alert::TypeChoice1
+    }
+  };
+
+  entity McpServer;
+
+  entity Null;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  action "alert_tool" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: alert_toolInput,
+      session: CommonContext
+    }
+  };
+
+  action "call_tool";
+}
+
+namespace MyMcpServer::alert_tool::Input::alert::TypeChoice1::activeOn {
+  entity TypeChoice1 = {
+    dayOfWeek?: {
+      typeChoice0?: MyMcpServer::Null,
+      typeChoice1?: Set<String>
+    },
+    startTime?: {
+      typeChoice0?: MyMcpServer::Null,
+      typeChoice1?: MyMcpServer::alert_tool::Input::alert::TypeChoice1::activeOn::TypeChoice1::startTime::TypeChoice1
+    }
+  };
+}
+
+namespace MyMcpServer::alert_tool::Input::alert {
+  entity TypeChoice1 = {
+    activeOn?: {
+      typeChoice0?: MyMcpServer::Null,
+      typeChoice1?: MyMcpServer::alert_tool::Input::alert::TypeChoice1::activeOn::TypeChoice1
+    },
+    enabled?: {
+      typeChoice0?: MyMcpServer::Null,
+      typeChoice1?: Bool
+    },
+    groupByKeys?: {
+      typeChoice0?: MyMcpServer::Null,
+      typeChoice1?: Set<String>
+    },
+    phantomMode?: {
+      typeChoice0?: MyMcpServer::Null,
+      typeChoice1?: Bool
+    }
+  };
+}
+
+namespace MyMcpServer::alert_tool::Input::alert::TypeChoice1::activeOn::TypeChoice1::startTime {
+  entity TypeChoice1 = {
+    hours?: {
+      typeChoice0?: MyMcpServer::Null,
+      typeChoice1?: Long
+    },
+    minutes?: {
+      typeChoice0?: MyMcpServer::Null,
+      typeChoice1?: Long
+    }
+  };
+}
