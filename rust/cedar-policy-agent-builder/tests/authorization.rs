@@ -607,3 +607,70 @@ fn test_consent_all_denies_unknown_principal() {
     );
     assert_eq!(eve_denied, cedar_policy::Decision::Deny);
 }
+
+#[test]
+fn test_consent_all_wildcard_tool_gates_every_tool() {
+    // Regression: consent_all("*") must require user_consent for EVERY tool the
+    // role grants, not silently fail open. Covers both a wildcard-tool role and a
+    // role with an explicit tool list.
+    let result = CedarAgentPolicyBuilder::new()
+        .role("admin", &["*"])
+        .role("analyst", &["search", "send_email"])
+        .user("alice", &["admin"])
+        .user("bob", &["analyst"])
+        .consent_all("*")
+        .build()
+        .unwrap();
+
+    let entities_json = entities_to_json(&result.entities);
+
+    // Without consent, every tool is denied for both roles.
+    let admin_no_consent = authorize(
+        &result.policies,
+        &entities_json,
+        "Agent::User::\"alice\"",
+        "Agent::Action::\"anything\"",
+        "Agent::Resource::\"default\"",
+        serde_json::json!({}),
+    );
+    assert_eq!(
+        admin_no_consent,
+        cedar_policy::Decision::Deny,
+        "wildcard-tool role must be gated without consent"
+    );
+
+    let analyst_no_consent = authorize(
+        &result.policies,
+        &entities_json,
+        "Agent::User::\"bob\"",
+        "Agent::Action::\"search\"",
+        "Agent::Resource::\"default\"",
+        serde_json::json!({}),
+    );
+    assert_eq!(
+        analyst_no_consent,
+        cedar_policy::Decision::Deny,
+        "explicit-tool role must be gated without consent"
+    );
+
+    // With consent, the granted tools are allowed.
+    let admin_with_consent = authorize(
+        &result.policies,
+        &entities_json,
+        "Agent::User::\"alice\"",
+        "Agent::Action::\"anything\"",
+        "Agent::Resource::\"default\"",
+        serde_json::json!({"session": {"user_consent": true}}),
+    );
+    assert_eq!(admin_with_consent, cedar_policy::Decision::Allow);
+
+    let analyst_with_consent = authorize(
+        &result.policies,
+        &entities_json,
+        "Agent::User::\"bob\"",
+        "Agent::Action::\"send_email\"",
+        "Agent::Resource::\"default\"",
+        serde_json::json!({"session": {"user_consent": true}}),
+    );
+    assert_eq!(analyst_with_consent, cedar_policy::Decision::Allow);
+}
