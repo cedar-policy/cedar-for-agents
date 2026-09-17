@@ -1,0 +1,69 @@
+{
+  "result": {
+    "tools": [
+      {
+        "name": "tool_a",
+        "description": "Tool A",
+        "inputSchema": {
+          "json": {
+            "type": "object",
+            "properties": {
+              "metadata": {
+                "type": "object",
+                "properties": {
+                  "author": { "type": "string" },
+                  "version": { "type": "integer" }
+                },
+                "required": [ "author" ]
+              },
+              "query": { "type": "string" }
+            },
+            "required": [ "query" ]
+          }
+        }
+      },
+      {
+        "name": "tool_b",
+        "description": "Tool B",
+        "inputSchema": {
+          "json": {
+            "type": "object",
+            "properties": {
+              "metadata": {
+                "type": "object",
+                "properties": {
+                  "author": { "type": "string" },
+                  "version": { "type": "integer" }
+                },
+                "required": [ "author" ]
+              },
+              "data": { "type": "string" }
+            },
+            "required": [ "data" ]
+          }
+        }
+      },
+      {
+        "name": "tool_c",
+        "description": "Tool C with different metadata",
+        "inputSchema": {
+          "json": {
+            "type": "object",
+            "properties": {
+              "metadata": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string" },
+                  "count": { "type": "integer" }
+                },
+                "required": [ "title", "count" ]
+              },
+              "input": { "type": "string" }
+            },
+            "required": [ "input" ]
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,75 @@
+// This test verifies deduplication of leaf record types when objects_as_records is enabled.
+// tool_a and tool_b share identical "metadata" (author: String, version?: Long).
+// tool_c has a different "metadata" (title: String, count: Long).
+// The shared metadata is deduplicated to MyMcpServer as a common type (not entity type).
+// tool_c keeps its own local common type.
+
+namespace MyMcpServer::tool_c::Input {
+  type metadata = {
+    count: Long,
+    title: String
+  };
+}
+
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type metadata = {
+    author: String,
+    version?: Long
+  };
+
+  type tool_aInput = {
+    metadata?: MyMcpServer::metadata,
+    query: String
+  };
+
+  type tool_bInput = {
+    data: String,
+    metadata?: MyMcpServer::metadata
+  };
+
+  type tool_cInput = {
+    input: String,
+    metadata?: MyMcpServer::tool_c::Input::metadata
+  };
+
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  action "call_tool";
+
+  action "tool_a" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      session: CommonContext
+    }
+  };
+
+  action "tool_b" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_bInput,
+      session: CommonContext
+    }
+  };
+
+  action "tool_c" in [Action::"call_tool"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_cInput,
+      session: CommonContext
+    }
+  };
+}
