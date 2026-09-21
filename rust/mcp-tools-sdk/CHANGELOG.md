@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.4.1] - Coming soon
+## [0.4.1] - 2026-09-21
 
 ### Fixed
 - `tools/call` request deserializer now accepts the MCP-standard field names `name`/`arguments` in addition to the legacy `tool`/`args`. Mixing conventions (e.g. `name` with `args`) is rejected.
