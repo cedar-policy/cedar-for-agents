@@ -87,9 +87,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.102"
+version = "1.0.104"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
+checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "ar_archive_writer"
@@ -312,9 +312,9 @@ dependencies = [
 
 [[package]]
 name = "cedar-policy-mcp-schema-generator"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd1b5200e93a0f3512bcf3f4e93268c56aebb458649ad2ef366bdc505f6b7b24"
+checksum = "3d47dc3b97e136a8df308701ea8a671355220aabf285cac16c46db2e91e1c287"
 dependencies = [
  "cedar-policy-core",
  "chrono",
@@ -331,9 +331,9 @@ dependencies = [
 
 [[package]]
 name = "cedar-policy-mcp-schema-generator-python"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
- "cedar-policy-mcp-schema-generator 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cedar-policy-mcp-schema-generator 0.6.1",
  "mcp-tools-sdk 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "pyo3",
  "serde",
