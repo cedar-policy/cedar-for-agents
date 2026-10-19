@@ -93,6 +93,12 @@ pub(crate) struct ConfigOptions {
     /// names and types.
     #[arg(long, default_value_t = false)]
     pub(crate) deduplicate_entity_types: bool,
+    /// Whether to encode an object property whose shape is an empty record inline as the Cedar
+    /// record type `{}`, instead of emitting a named type declaration and referencing it (default: false).
+    /// An empty record has no attributes, so inlining does not lose modeling information;
+    /// it only removes an otherwise-unused declaration, which reduces schema size.
+    #[arg(long, default_value_t = false)]
+    pub(crate) inline_empty_records: bool,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug, Serialize)]

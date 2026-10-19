@@ -1262,6 +1262,134 @@ namespace MyMcpServer {
                 .deduplicate_entity_types(true),
         );
     }
+
+    #[test]
+    fn inline_empty_records_inlines_empty_record() {
+        // A field whose shape is an empty record (no properties, no additionalProperties).
+        // With `inline_empty_records`, it is encoded inline as the Cedar record type `{}`
+        // rather than as a named entity type declaration that is referenced.
+        let tools_json = r#"{
+            "result": {
+                "tools": [
+                    {
+                        "name": "tool_a",
+                        "description": "Tool A",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "metadata": { "type": "object", "properties": {} }
+                                },
+                                "required": ["metadata"]
+                            }
+                        }
+                    }
+                ]
+            }
+        }"#;
+
+        let expected_schema = "namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type tool_aInput = {
+    metadata: {    }
+  };
+
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  action \"call_tool\";
+
+  action \"tool_a\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      session: CommonContext
+    }
+  };
+}
+";
+
+        run_inline_test(
+            tools_json,
+            expected_schema,
+            SchemaGeneratorConfig::default().inline_empty_records(true),
+        );
+    }
+
+    #[test]
+    fn inline_empty_records_default_emits_named_type() {
+        // Same tool as `inline_empty_records_inlines_empty_record`, but with the default
+        // config. The empty record is emitted as a named entity type and referenced,
+        // confirming the inlining only happens when the option is enabled.
+        let tools_json = r#"{
+            "result": {
+                "tools": [
+                    {
+                        "name": "tool_a",
+                        "description": "Tool A",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "metadata": { "type": "object", "properties": {} }
+                                },
+                                "required": ["metadata"]
+                            }
+                        }
+                    }
+                ]
+            }
+        }"#;
+
+        let expected_schema = "namespace MyMcpServer::tool_a::Input {
+  entity metadata;
+}
+
+namespace MyMcpServer {
+  type CommonContext = {
+    currentTimestamp: datetime,
+    ipaddr: ipaddr
+  };
+
+  type tool_aInput = {
+    metadata: MyMcpServer::tool_a::Input::metadata
+  };
+
+  entity McpServer;
+
+  entity User = {
+    id: String,
+    username: String
+  };
+
+  action \"call_tool\";
+
+  action \"tool_a\" in [Action::\"call_tool\"] appliesTo {
+    principal: [User],
+    resource: [McpServer],
+    context: {
+      input: tool_aInput,
+      session: CommonContext
+    }
+  };
+}
+";
+
+        run_inline_test(
+            tools_json,
+            expected_schema,
+            SchemaGeneratorConfig::default(),
+        );
+    }
 }
 
 #[cfg(feature = "cli")]

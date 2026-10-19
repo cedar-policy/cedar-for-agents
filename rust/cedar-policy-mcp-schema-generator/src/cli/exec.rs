@@ -37,6 +37,7 @@ fn get_config(config_options: &ConfigOptions) -> SchemaGeneratorConfig {
         .flatten_namespaces(config_options.flatten_namespaces)
         .encode_numbers_as_decimal(config_options.encode_numbers_as_decimal)
         .deduplicate_entity_types(config_options.deduplicate_entity_types)
+        .inline_empty_records(config_options.inline_empty_records)
 }
 
 fn read_schema(file: impl AsRef<Path>) -> Result<Fragment<RawName>, CliError> {
