@@ -990,6 +990,7 @@ impl SchemaGenerator {
                         )]
                         let choices = NonEmpty::from_slice(variants).unwrap();
                         let ty = EntityType {
+                            external: false,
                             kind: EntityTypeKind::Enum { choices },
                             annotations: Annotations::new(),
                             loc: None,
@@ -1020,6 +1021,7 @@ impl SchemaGenerator {
                             })
                             .collect::<Result<_, SchemaGeneratorError>>()?;
                         let ty = EntityType {
+                            external: false,
                             kind: EntityTypeKind::Standard(StandardEntityType {
                                 member_of_types: Vec::new(),
                                 shape: AttributesOrContext(Type::Type {
@@ -1169,6 +1171,7 @@ impl SchemaGenerator {
         }
 
         let action = ActionType {
+            external: false,
             attributes: None,
             applies_to: Some(ApplySpec {
                 resource_types: self.resources.clone(),
@@ -1392,6 +1395,7 @@ impl SchemaGenerator {
         ty_name: UnreservedId,
     ) -> Result<(), SchemaGeneratorError> {
         let ty = EntityType {
+            external: false,
             kind: EntityTypeKind::Standard(StandardEntityType {
                 member_of_types: Vec::new(),
                 shape: AttributesOrContext::default(),
@@ -1568,6 +1572,7 @@ impl SchemaGenerator {
                 } else {
                     // Original behavior: place locally
                     let ty = EntityType {
+                        external: false,
                         kind: EntityTypeKind::Enum { choices },
                         annotations: Annotations::new(),
                         loc: None,
@@ -1752,6 +1757,7 @@ impl SchemaGenerator {
                 } else {
                     // otherwise encode as EntityType
                     let ty = EntityType {
+                        external: false,
                         kind: EntityTypeKind::Standard(StandardEntityType {
                             member_of_types: Vec::new(),
                             shape: AttributesOrContext(Type::Type {
