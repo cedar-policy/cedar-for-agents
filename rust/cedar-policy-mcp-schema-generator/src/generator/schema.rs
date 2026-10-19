@@ -46,6 +46,7 @@ pub struct SchemaGeneratorConfig {
     pub(crate) flatten_namespaces: bool,
     pub(crate) numbers_as_decimal: bool,
     pub(crate) deduplicate_entity_types: bool,
+    pub(crate) inline_empty_records: bool,
 }
 
 impl SchemaGeneratorConfig {
@@ -138,6 +139,22 @@ impl SchemaGeneratorConfig {
             ..self
         }
     }
+
+    /// Updates config to set `inline_empty_records` to `val` (default: false)
+    ///
+    /// If `inline_empty_records` is set to `true`, then any object property whose
+    /// shape is an empty record---no `properties` and no `additionalProperties`---is
+    /// encoded inline as the Cedar record type `{}` at its use site, instead of
+    /// emitting a named entity (or common) type declaration and referencing it.
+    ///
+    /// An empty record carries no attributes, so inlining does not lose any modeling
+    /// information.
+    pub fn inline_empty_records(self, val: bool) -> Self {
+        Self {
+            inline_empty_records: val,
+            ..self
+        }
+    }
 }
 
 impl Default for SchemaGeneratorConfig {
@@ -149,6 +166,7 @@ impl Default for SchemaGeneratorConfig {
             flatten_namespaces: false,
             numbers_as_decimal: false,
             deduplicate_entity_types: false,
+            inline_empty_records: false,
         }
     }
 }
@@ -1647,6 +1665,20 @@ impl SchemaGenerator {
                 properties,
                 additional_properties,
             } => {
+                // Return early and just inline an empty record (no tags, no attributes) if the option is set
+                if self.config.inline_empty_records
+                    && properties.is_empty()
+                    && additional_properties.is_none()
+                {
+                    return Ok(Type::Type {
+                        ty: TypeVariant::Record(RecordType {
+                            attributes: BTreeMap::new(),
+                            additional_attributes: false,
+                        }),
+                        loc: None,
+                    });
+                }
+
                 // Check if this is a leaf record and it was deduplicated (placed in LCA namespace during Pass 1)
                 if !self.config.objects_as_records && is_leaf_record(property_type) {
                     let fingerprint =
