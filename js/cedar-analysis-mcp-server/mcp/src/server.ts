@@ -7,8 +7,8 @@ import { registerAllPrompts } from "./prompts.js";
  * Cedar Analysis MCP Server
  * 
  * This server provides tools for analyzing Cedar authorization policies:
- * - verify-policy-changes: Compare two Cedar policy sets to verify that policy changes maintain intended authorization behavior
- * - detect-policy-issues: Analyze a Cedar policy set to detect common policy issues such as shadowed permits and logical errors
+ * - analyze-policies: Analyze a Cedar policy set against a schema to validate policy structure and detect common policy issues such as shadowed permits and logical errors
+ * - compare-policy-sets: Compare two Cedar policy sets to verify that policy changes maintain intended authorization behavior
  * 
  * Prompts:
  * - add-and-verify-new-policy-workflow: Analyzes the impact of adding new Cedar policies to your existing policy set
