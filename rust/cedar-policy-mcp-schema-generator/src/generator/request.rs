@@ -519,6 +519,15 @@ impl RequestGenerator {
                 properties,
                 additional_properties,
             } => {
+                // Depending on whether we inline empty records, the request contains an empty
+                // record or an entity reference.
+                if self.config.inline_empty_records
+                    && properties.is_empty()
+                    && additional_properties.is_empty()
+                {
+                    return Ok((RestrictedExpr::record(std::iter::empty())?, Entities::new()));
+                }
+
                 let sub_namespace: Name = ty_name.parse::<UnreservedId>()?.into();
                 let sub_namespace = sub_namespace.qualify_with_name(namespace);
 
@@ -1559,6 +1568,72 @@ mod test {
             let map = &**kvs;
             map.len() == 1 &&
             matches!(map.get("input").map(Value::value_kind), Some(ValueKind::Record(ikvs)) if ikvs.len() == 0)
+        });
+    }
+
+    #[test]
+    fn test_generate_request_inline_empty_records() {
+        // With `inline_empty_records`, an empty-object parameter is the inline record type `{}`
+        // in the schema, so its request value must be a record `{}`, not an entity reference.
+        // `generate_request` validates the request against the schema, so a mismatch errors here.
+        let request_generator = get_request_generator(
+            SchemaGeneratorConfig::default().inline_empty_records(true),
+            r#"{
+    "name": "test_tool",
+    "description": "test_description",
+    "parameters": {
+        "properties": {
+            "metadata": { "type": "object", "properties": {} }
+        },
+        "required": ["metadata"]
+    }
+}"#,
+        );
+
+        let input = Input::from_json_str(
+            r#"{
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "metadata": {}
+        }
+    }
+}"#,
+        )
+        .expect("Failed to parse input");
+
+        let principal = r#"Test::user::"""#.parse::<EntityUID>().unwrap();
+        let resource = r#"Test::resource::"""#.parse::<EntityUID>().unwrap();
+
+        let (request, entities) = request_generator
+            .generate_request(
+                principal.clone(),
+                resource.clone(),
+                Context::empty(),
+                Entities::new(),
+                &input,
+                None,
+            )
+            .expect("Failed to generate request");
+
+        assert_eq!(request.principal().uid().unwrap(), &principal);
+        assert_eq!(
+            request.action().uid().unwrap(),
+            &r#"Test::Action::"test_tool""#.parse::<EntityUID>().unwrap()
+        );
+        assert_eq!(request.resource().uid().unwrap(), &resource);
+        // An empty record has no attributes, so it needs no backing entity.
+        assert_eq!(entities, Entities::new());
+
+        // `context.input.metadata` is the empty record `{}`, not an entity UID.
+        assert_matches!(request.context(), Some(Context::Value(kvs)) if {
+            let map = &**kvs;
+            map.len() == 1 &&
+            matches!(map.get("input").map(Value::value_kind), Some(ValueKind::Record(ikvs)) if {
+                let map = &**ikvs;
+                map.len() == 1 &&
+                matches!(map.get("metadata").map(Value::value_kind), Some(ValueKind::Record(mkvs)) if mkvs.is_empty())
+            })
         });
     }
 
