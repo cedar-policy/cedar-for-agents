@@ -8,8 +8,8 @@ import { registerCedarAnalysisTools } from "./tools.js";
  * It registers all Cedar-related tools with the provided MCP server instance.
  * 
  * Currently registered tools:
- * - verify-policy-changes: Compare two Cedar policy sets to verify that policy changes maintain intended authorization behavior
- * - detect-policy-issues: Analyze a Cedar policy set to detect common policy issues such as shadowed permits and logical errors
+ * - analyze-policies: Analyze a Cedar policy set against a schema to validate policy structure and detect common policy issues such as shadowed permits and logical errors
+ * - compare-policy-sets: Compare two Cedar policy sets to verify that policy changes maintain intended authorization behavior
  * 
  * @param server - The MCP server instance to register tools with
  */
