@@ -518,12 +518,16 @@ impl RequestGenerator {
             TypedValue::Object {
                 properties,
                 additional_properties,
+                declared_shape,
             } => {
-                // Depending on whether we inline empty records, the request contains an empty
-                // record or an entity reference.
+                // The encoding must match what the schema generator declared for this
+                // object, not what keys the runtime value happens to carry. Both decisions
+                // below mirror `SchemaGenerator::cedar_type_from_property_type`: it inlines
+                // when `properties.is_empty() && additional_properties.is_none()`, and emits
+                // a record (vs. entity-with-tags) when `objects_as_records && tags.is_none()`.
                 if self.config.inline_empty_records
-                    && properties.is_empty()
-                    && additional_properties.is_empty()
+                    && declared_shape.properties_empty
+                    && !declared_shape.has_additional_properties
                 {
                     return Ok((RestrictedExpr::record(std::iter::empty())?, Entities::new()));
                 }
@@ -557,7 +561,7 @@ impl RequestGenerator {
                 let pairs = into_pairs(properties, &mut entities)?;
                 let tags = into_pairs(additional_properties, &mut entities)?;
 
-                if tags.is_empty() && self.config.objects_as_records {
+                if !declared_shape.has_additional_properties && self.config.objects_as_records {
                     Ok((RestrictedExpr::record(pairs)?, entities))
                 } else {
                     // Check if this object was deduplicated to a different namespace.
@@ -1633,6 +1637,243 @@ mod test {
                 let map = &**ikvs;
                 map.len() == 1 &&
                 matches!(map.get("metadata").map(Value::value_kind), Some(ValueKind::Record(mkvs)) if mkvs.is_empty())
+            })
+        });
+    }
+
+    /// Regression: `inline_empty_records` decides from the *declared* shape, not the
+    /// runtime value. An object declaring `additionalProperties` is an entity-with-tags
+    /// in the schema, so an empty `{}` value must still be an entity UID. Deciding from
+    /// the runtime maps (both empty here) would inline a record `{}` and fail schema
+    /// validation in `generate_request`.
+    #[test]
+    fn test_generate_request_inline_empty_records_declares_additional_properties() {
+        let request_generator = get_request_generator(
+            SchemaGeneratorConfig::default().inline_empty_records(true),
+            r#"{
+    "name": "test_tool",
+    "description": "test_description",
+    "parameters": {
+        "properties": {
+            "metadata": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": { "type": "string" }
+            }
+        },
+        "required": ["metadata"]
+    }
+}"#,
+        );
+
+        let input = Input::from_json_str(
+            r#"{
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "metadata": {}
+        }
+    }
+}"#,
+        )
+        .expect("Failed to parse input");
+
+        let principal = r#"Test::user::"""#.parse::<EntityUID>().unwrap();
+        let resource = r#"Test::resource::"""#.parse::<EntityUID>().unwrap();
+
+        let (request, _entities) = request_generator
+            .generate_request(
+                principal,
+                resource,
+                Context::empty(),
+                Entities::new(),
+                &input,
+                None,
+            )
+            .expect("Failed to generate request");
+
+        // `metadata` is an entity UID, not an inlined record.
+        assert_matches!(request.context(), Some(Context::Value(kvs)) if {
+            let map = &**kvs;
+            matches!(map.get("input").map(Value::value_kind), Some(ValueKind::Record(ikvs)) if {
+                matches!((**ikvs).get("metadata").map(Value::value_kind), Some(ValueKind::Lit(Literal::EntityUID(..))))
+            })
+        });
+    }
+
+    /// Regression: `inline_empty_records` must test the *declared* properties, not the
+    /// runtime ones. An object declaring an optional property and no `additionalProperties`
+    /// is an entity in the schema; passing `{}` leaves both runtime maps empty, but the
+    /// declaration is not empty, so the request must emit an entity UID, not inline `{}`.
+    #[test]
+    fn test_generate_request_inline_empty_records_declares_optional_property() {
+        let request_generator = get_request_generator(
+            SchemaGeneratorConfig::default().inline_empty_records(true),
+            r#"{
+    "name": "test_tool",
+    "description": "test_description",
+    "parameters": {
+        "properties": {
+            "metadata": {
+                "type": "object",
+                "properties": { "a": { "type": "string" } }
+            }
+        },
+        "required": ["metadata"]
+    }
+}"#,
+        );
+
+        let input = Input::from_json_str(
+            r#"{
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "metadata": {}
+        }
+    }
+}"#,
+        )
+        .expect("Failed to parse input");
+
+        let principal = r#"Test::user::"""#.parse::<EntityUID>().unwrap();
+        let resource = r#"Test::resource::"""#.parse::<EntityUID>().unwrap();
+
+        let (request, _entities) = request_generator
+            .generate_request(
+                principal,
+                resource,
+                Context::empty(),
+                Entities::new(),
+                &input,
+                None,
+            )
+            .expect("Failed to generate request");
+
+        assert_matches!(request.context(), Some(Context::Value(kvs)) if {
+            let map = &**kvs;
+            matches!(map.get("input").map(Value::value_kind), Some(ValueKind::Record(ikvs)) if {
+                matches!((**ikvs).get("metadata").map(Value::value_kind), Some(ValueKind::Lit(Literal::EntityUID(..))))
+            })
+        });
+    }
+
+    /// Regression (sibling of the inline bug): with `objects_as_records`, the record-vs-
+    /// entity-with-tags choice must come from the declaration. An object declaring
+    /// `additionalProperties` is an entity-with-tags even under `objects_as_records`, so a
+    /// value that happens to carry no extra keys must still be an entity UID, not a record.
+    #[test]
+    fn test_generate_request_objects_as_records_declares_additional_properties() {
+        let request_generator = get_request_generator(
+            SchemaGeneratorConfig::default().objects_as_records(true),
+            r#"{
+    "name": "test_tool",
+    "description": "test_description",
+    "parameters": {
+        "properties": {
+            "metadata": {
+                "type": "object",
+                "properties": { "a": { "type": "string" } },
+                "additionalProperties": { "type": "string" }
+            }
+        },
+        "required": ["metadata"]
+    }
+}"#,
+        );
+
+        let input = Input::from_json_str(
+            r#"{
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "metadata": { "a": "x" }
+        }
+    }
+}"#,
+        )
+        .expect("Failed to parse input");
+
+        let principal = r#"Test::user::"""#.parse::<EntityUID>().unwrap();
+        let resource = r#"Test::resource::"""#.parse::<EntityUID>().unwrap();
+
+        let (request, _entities) = request_generator
+            .generate_request(
+                principal,
+                resource,
+                Context::empty(),
+                Entities::new(),
+                &input,
+                None,
+            )
+            .expect("Failed to generate request");
+
+        // No extra keys at runtime, but the declaration has `additionalProperties`, so
+        // `metadata` is an entity-with-tags UID rather than a record.
+        assert_matches!(request.context(), Some(Context::Value(kvs)) if {
+            let map = &**kvs;
+            matches!(map.get("input").map(Value::value_kind), Some(ValueKind::Record(ikvs)) if {
+                matches!((**ikvs).get("metadata").map(Value::value_kind), Some(ValueKind::Lit(Literal::EntityUID(..))))
+            })
+        });
+    }
+
+    /// `additionalProperties: true` (an open object) deserializes to `None` in the current
+    /// two-state model (see issue #222), so with `inline_empty_records` the schema inlines
+    /// it as `{}` and the request must do the same. This asserts request and schema agree:
+    /// `generate_request` validates against the schema, so a mismatch would error here.
+    /// When open vs. closed objects are distinguished, both sides should stop inlining the
+    /// open case and this test's expectation should change with them.
+    #[test]
+    fn test_generate_request_inline_empty_records_open_object_matches_schema() {
+        let request_generator = get_request_generator(
+            SchemaGeneratorConfig::default().inline_empty_records(true),
+            r#"{
+    "name": "test_tool",
+    "description": "test_description",
+    "parameters": {
+        "properties": {
+            "metadata": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": true
+            }
+        },
+        "required": ["metadata"]
+    }
+}"#,
+        );
+
+        let input = Input::from_json_str(
+            r#"{
+    "params": {
+        "tool": "test_tool",
+        "args": {
+            "metadata": {}
+        }
+    }
+}"#,
+        )
+        .expect("Failed to parse input");
+
+        let principal = r#"Test::user::"""#.parse::<EntityUID>().unwrap();
+        let resource = r#"Test::resource::"""#.parse::<EntityUID>().unwrap();
+
+        let (request, _entities) = request_generator
+            .generate_request(
+                principal,
+                resource,
+                Context::empty(),
+                Entities::new(),
+                &input,
+                None,
+            )
+            .expect("Failed to generate request");
+
+        assert_matches!(request.context(), Some(Context::Value(kvs)) if {
+            let map = &**kvs;
+            matches!(map.get("input").map(Value::value_kind), Some(ValueKind::Record(ikvs)) if {
+                matches!((**ikvs).get("metadata").map(Value::value_kind), Some(ValueKind::Record(mkvs)) if mkvs.is_empty())
             })
         });
     }
@@ -2967,6 +3208,10 @@ mod test {
                 TypedValue::Object {
                     properties: HashMap::new(),
                     additional_properties: HashMap::new(),
+                    declared_shape: mcp_tools_sdk::data::DeclaredObjectShape {
+                        properties_empty: true,
+                        has_additional_properties: false,
+                    },
                 },
             ),
             ("Enum", TypedValue::Enum("variant".into())),

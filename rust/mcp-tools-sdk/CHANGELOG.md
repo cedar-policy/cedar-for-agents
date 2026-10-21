@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- `TypedValue::Object` now carries a `declared_shape: DeclaredObjectShape` field recording the object's declared schema (whether it declared any properties and whether it declared `additionalProperties`), so consumers can encode the object consistently with its declaration rather than inspecting which keys the runtime value happens to carry.
+
 ## [0.4.1] - 2026-09-21
 
 ### Fixed

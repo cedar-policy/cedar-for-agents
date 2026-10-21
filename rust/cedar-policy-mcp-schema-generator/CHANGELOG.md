@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Adds `inline_empty_records` option (CLI flag `--inline-empty-records`) to encode object properties whose shape is an empty record (no `properties` and no `additionalProperties`) inline as the Cedar record type `{}`, instead of emitting a named type declaration and referencing it. An empty record has no attributes, so this does not lose modeling information; it only reduces the size of the generated schema.
 
+### Fixed
+- The request generator now encodes an object the same way the schema generator declared it. The encoding decision (inline record, record, or entity-with-tags) is made from the declared schema, not from whether the runtime value happens to carry properties or additional keys. Previously, with `inline_empty_records` or `objects_as_records`, a tool whose parameter declared `additionalProperties` (or only optional properties) was rejected by request validation when the caller supplied an empty object, because the schema declared a named type while the request emitted a record `{}`.
+
 ## [0.6.1] - 2026-09-22
 
 ### Fixed
