@@ -94,6 +94,8 @@ cargo release version <minor|patch> --package cedar-policy-mcp-schema-generator-
 cargo release version <minor|patch> --package cedar-policy-mcp-schema-generator-python --execute
 ```
 
+> **Important:** `cargo release version` only edits `Cargo.toml`, not `pyproject.toml`. Also bump `version` in `rust/cedar-policy-mcp-schema-generator-python/pyproject.toml` by hand to the same version, otherwise the PyPI publish workflow's version check fails.
+
 > We may automate the version bump with a script or GitHub Action in the future.
 
 Stage the manifest changes and push:
@@ -166,10 +168,14 @@ mcp-tools-sdk = { version = "x.y.z" }
 
 For `cedar-policy-mcp-schema-generator`, also update the WASM and Python binding Cargo.toml files (`rust/cedar-policy-mcp-schema-generator-wasm/Cargo.toml` and `rust/cedar-policy-mcp-schema-generator-python/Cargo.toml`) the same way.
 
+Any other workspace member that depends on a pinned crate must be pinned to the same version too, even if it is not itself published (e.g. `cedar-policy-agent-builder` depends on `mcp-tools-sdk`). Otherwise the workspace resolves two copies of that crate and CI on the release branch fails to compile. Verify with `cargo check --workspace` before pushing.
+
 ```bash
 git add rust/cedar-policy-mcp-schema-generator/Cargo.toml
 git add rust/cedar-policy-mcp-schema-generator-wasm/Cargo.toml
 git add rust/cedar-policy-mcp-schema-generator-python/Cargo.toml
+git add rust/cedar-policy-agent-builder/Cargo.toml  # and any other pinned member
+git add rust/Cargo.lock
 git diff --staged --name-only  # verify
 git commit --signoff -m "Pin <CRATE> dependencies for release"
 git push origin update-dependencies/<CRATE>-<MAJOR>.<MINOR>.<PATCH>
