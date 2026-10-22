@@ -114,6 +114,12 @@ pub enum TypedValue {
         /// properties that were not explicitly defined by object's type schema
         /// but matched the object's `additionalProperty` type
         additional_properties: HashMap<SmolStr, TypedValue>,
+        /// The declared shape of the object's schema, as opposed to the runtime
+        /// value above. Consumers that encode an object differently depending on
+        /// its declaration (record vs. entity-with-tags vs. inlined empty record)
+        /// must decide from this, not from whether the runtime maps happen to be
+        /// empty. See `DeclaredObjectShape`.
+        declared_shape: DeclaredObjectShape,
     },
     /// A value validated against a named type definition (`$ref`)
     Ref {
@@ -124,6 +130,27 @@ pub enum TypedValue {
     },
     /// A value whose type is unknown or unrecognized
     Unknown(Value),
+}
+
+/// The declared shape of an object's schema (`PropertyType::Object`).
+///
+/// A consumer uses this to encode the object consistently with its declaration,
+/// independent of which keys the runtime value happens to carry. Both fields
+/// mirror the predicates the schema generator keys on when it chooses an
+/// encoding: `properties.is_empty()` and `additional_properties.is_none()`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeclaredObjectShape {
+    /// Whether the declaration listed no properties.
+    pub properties_empty: bool,
+    /// Whether the declaration had an `additionalProperties` *schema*, i.e.
+    /// `PropertyType::Object::additional_properties` is `Some`.
+    ///
+    /// This tracks the current two-state model, where `additionalProperties`
+    /// absent, `true`, and `false` all deserialize to `None`. Once open vs.
+    /// closed objects are distinguished (issue #222), the inline-empty-records
+    /// guard must key on the *closed* case specifically, not on this boolean:
+    /// an open object (`additionalProperties: true`) must not be inlined.
+    pub has_additional_properties: bool,
 }
 
 #[doc(hidden)]

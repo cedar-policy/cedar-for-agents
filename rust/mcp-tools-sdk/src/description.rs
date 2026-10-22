@@ -1930,6 +1930,63 @@ mod test {
         )
     }
 
+    /// `declared_shape` on a validated object must reflect the declaration, not the
+    /// supplied value. Each case passes `{}` but declares a different object shape.
+    #[test]
+    fn test_validate_input_object_declared_shape() {
+        let cases = [
+            // (additionalProperties clause, declared properties, expected shape)
+            (
+                r#""additionalProperties": { "type": "string" },"#,
+                "",
+                data::DeclaredObjectShape {
+                    properties_empty: true,
+                    has_additional_properties: true,
+                },
+            ),
+            (
+                "",
+                r#""a": { "type": "string" }"#,
+                data::DeclaredObjectShape {
+                    properties_empty: false,
+                    has_additional_properties: false,
+                },
+            ),
+            (
+                "",
+                "",
+                data::DeclaredObjectShape {
+                    properties_empty: true,
+                    has_additional_properties: false,
+                },
+            ),
+        ];
+
+        for (additional, props, expected) in cases {
+            let tool_description = format!(
+                r#"{{
+    "name": "test_tool",
+    "inputSchema": {{
+        "type": "object",
+        "properties": {{
+            "attr": {{ "type": "object", {additional} "properties": {{ {props} }} }}
+        }}
+    }}
+}}"#
+            );
+            let tools = ServerDescription::from_json_str(&tool_description).unwrap();
+            let input = Input::from_json_str(
+                r#"{ "params": { "tool": "test_tool", "args": { "attr": {} } } }"#,
+            )
+            .unwrap();
+            let typed = tools.validate_input(&input).unwrap();
+            assert_matches!(
+                typed.get_arg("attr"),
+                Some(data::TypedValue::Object { declared_shape, .. }) if *declared_shape == expected
+            );
+        }
+    }
+
     #[test]
     fn test_validate_input_object_missing_required_attr_errors() {
         let tool_description = r#"{

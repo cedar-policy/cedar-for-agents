@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 
-use crate::data::{self, Input, Output, TypedInput, TypedOutput, TypedValue, Value};
+use crate::data::{
+    self, DeclaredObjectShape, Input, Output, TypedInput, TypedOutput, TypedValue, Value,
+};
 use crate::description::{self, PropertyType, ToolDescription};
 use crate::err::ValidationError;
 use itertools::Itertools;
@@ -210,6 +212,10 @@ fn validate_property_type(
             Ok(TypedValue::Object {
                 properties: props,
                 additional_properties: additional_props,
+                declared_shape: DeclaredObjectShape {
+                    properties_empty: properties.is_empty(),
+                    has_additional_properties: additional_properties.is_some(),
+                },
             })
         }
         (PropertyType::Ref { name }, val) => match type_defs.get(name) {
