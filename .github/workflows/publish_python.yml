@@ -53,8 +53,14 @@ jobs:
         env:
           TAG_NAME: ${{ inputs.tag }}
 
-  build-wheels:
+  test:
     needs: [validate]
+    uses: ./.github/workflows/build_and_test_python.yml
+    with:
+      ref: refs/tags/${{ inputs.tag }}
+
+  build-wheels:
+    needs: [test]
     name: Build wheels (${{ matrix.os }} / ${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -96,7 +102,7 @@ jobs:
           path: rust/cedar-policy-mcp-schema-generator-python/dist/
 
   build-sdist:
-    needs: [validate]
+    needs: [test]
     name: Build source distribution
     runs-on: ubuntu-latest
     steps:
