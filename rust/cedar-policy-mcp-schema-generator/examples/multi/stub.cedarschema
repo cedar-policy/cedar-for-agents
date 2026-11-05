@@ -1,0 +1,59 @@
+// A schema stub for a gateway in front of two MCP servers.
+// The main namespace is the only namespace without `@mcp_server`.
+namespace Main {
+    @mcp_principal("User")
+    entity OAuthUser {
+        id: String,
+    } tags String;
+
+    @mcp_principal("IamEntity")
+    entity IamEntity {
+        id: String,
+    };
+
+    // Parent of the resource type of every server
+    entity Gateway;
+
+    @mcp_context("sessionId")
+    type SessionId = String;
+
+    @mcp_context("system")
+    type SystemContext = {
+        now: datetime,
+    };
+
+    // Parent of the generated `AllActions` actions
+    @mcp_action("Mcp")
+    action Mcp appliesTo {
+        principal: [OAuthUser, IamEntity],
+        resource: [Gateway],
+        context: {
+            sessionId: SessionId,
+            system: SystemContext,
+        }
+    };
+}
+
+// No `@mcp_action`: the generator adds `action AllActions in [Main::Action::"Mcp"]`.
+// The `system` context key is overridden for the tools of this server.
+@mcp_server("weather-api")
+namespace Main::Weather {
+    @mcp_resource("Target")
+    entity Target in [Main::Gateway];
+
+    @mcp_context("system")
+    type SystemContext = {
+        now: datetime,
+        region: String,
+    };
+}
+
+// The `ReadOnly` action is the parent of every tool of this server.
+@mcp_server("billing")
+namespace Main::Billing {
+    @mcp_resource("Target")
+    entity Target in [Main::Gateway];
+
+    @mcp_action("ReadOnly")
+    action ReadOnly in [Main::Action::"Mcp"];
+}

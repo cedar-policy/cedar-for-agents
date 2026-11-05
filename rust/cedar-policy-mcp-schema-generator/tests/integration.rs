@@ -14,13 +14,31 @@
  * limitations under the License.
  */
 
-mod lib {
-    use std::io::Read;
+/// Read an expected schema file. The expected files have comments in them to make it
+/// nicer to read the examples, but they need to be stripped before comparison.
+fn read_expected_schema(schema_fname: &str) -> String {
+    let raw_schema =
+        std::fs::read_to_string(schema_fname).expect("Failed to read expected schema file");
+    raw_schema
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+        + "\n"
+}
 
-    use cedar_policy_mcp_schema_generator::{SchemaGenerator, SchemaGeneratorConfig};
+mod lib {
+    use std::collections::BTreeMap;
+
+    use cedar_policy_mcp_schema_generator::{
+        SchemaGenerator, SchemaGeneratorConfig, SchemaGeneratorError, StubBuilder,
+    };
 
     use cedar_policy_core::extensions::Extensions;
     use cedar_policy_core::validator::json_schema::Fragment;
+    use cedar_policy_core::validator::{ValidationMode, Validator, ValidatorSchema};
 
     use mcp_tools_sdk::description::ServerDescription;
 
@@ -39,23 +57,12 @@ mod lib {
             .add_actions_from_server_description(&description)
             .expect("Failed to add tool actions to schema generator");
 
-        // The expected files have comments in them to make it nicer to read the examples,
-        // but they need to be stripped before comparison.
-        let mut schema_file =
-            std::fs::File::open(schema_fname).expect("Failed to read expected output file");
-        let mut raw_schema = String::new();
-        let _ = schema_file
-            .read_to_string(&mut raw_schema)
-            .expect("Failed to read expected schema file");
-        let expected_schema: String = raw_schema
-            .lines()
-            .filter(|line| !line.trim_start().starts_with("//"))
-            .collect::<Vec<_>>()
-            .join("\n")
-            .trim()
-            .to_string()
-            + "\n";
+        assert_schema_matches_file(&generator, schema_fname);
+    }
 
+    /// Assert that the schema of `generator` is the schema of file `schema_fname`.
+    fn assert_schema_matches_file(generator: &SchemaGenerator, schema_fname: &str) {
+        let expected_schema = super::read_expected_schema(schema_fname);
         let actual_schema = generator
             .get_schema()
             .to_cedarschema()
@@ -66,6 +73,151 @@ mod lib {
             expected_schema,
             actual_schema
         );
+    }
+
+    fn multi_namespace_generator(config: SchemaGeneratorConfig) -> SchemaGenerator {
+        let stub = std::fs::read_to_string("examples/multi/stub.cedarschema")
+            .expect("Failed to read schema file");
+        SchemaGenerator::from_cedarschema_str_with_config(&stub, config)
+            .expect("input schema file is malformed")
+    }
+
+    fn multi_namespace_servers() -> BTreeMap<String, ServerDescription> {
+        BTreeMap::from([
+            (
+                "weather-api".to_string(),
+                ServerDescription::from_json_file("examples/multi/weather.json")
+                    .expect("Failed to read tools file"),
+            ),
+            (
+                "billing".to_string(),
+                ServerDescription::from_json_file("examples/multi/billing.json")
+                    .expect("Failed to read tools file"),
+            ),
+        ])
+    }
+
+    fn run_multi_namespace_test(schema_fname: &str, config: SchemaGeneratorConfig) {
+        let mut generator = multi_namespace_generator(config);
+        generator
+            .add_actions_from_named_server_descriptions(&multi_namespace_servers())
+            .expect("Failed to add tool actions to schema generator");
+        assert_schema_matches_file(&generator, schema_fname);
+
+        let policies = std::fs::read_to_string("examples/multi/policies.cedar")
+            .expect("Failed to read policies file");
+        let policies = cedar_policy_core::parser::parse_policyset(&policies)
+            .expect("Failed to parse policies");
+        let schema = ValidatorSchema::try_from(generator.get_schema().clone())
+            .expect("Failed to resolve generated schema");
+        let result = Validator::new(schema).validate(&policies, ValidationMode::Strict);
+        assert!(
+            result.validation_passed(),
+            "{:?}",
+            result.validation_errors().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn multi_namespace_default() {
+        run_multi_namespace_test(
+            "examples/multi/multi_default.cedarschema",
+            SchemaGeneratorConfig::default(),
+        );
+    }
+
+    #[test]
+    fn multi_namespace_deduplicate() {
+        run_multi_namespace_test(
+            "examples/multi/multi_deduplicate.cedarschema",
+            SchemaGeneratorConfig::default().deduplicate_entity_types(true),
+        );
+    }
+
+    #[test]
+    fn multi_namespace_objects_as_records() {
+        run_multi_namespace_test(
+            "examples/multi/multi_objects_as_records.cedarschema",
+            SchemaGeneratorConfig::default().objects_as_records(true),
+        );
+    }
+
+    #[test]
+    fn multi_namespace_include_outputs() {
+        run_multi_namespace_test(
+            "examples/multi/multi_include_outputs.cedarschema",
+            SchemaGeneratorConfig::default().include_outputs(true),
+        );
+    }
+
+    #[test]
+    fn multi_namespace_one_server_at_a_time() {
+        let mut generator = multi_namespace_generator(SchemaGeneratorConfig::default());
+        for (server, description) in multi_namespace_servers() {
+            generator
+                .add_actions_from_named_server_description(&server, &description)
+                .expect("Failed to add tool actions to schema generator");
+        }
+        assert_schema_matches_file(&generator, "examples/multi/multi_default.cedarschema");
+    }
+
+    #[test]
+    fn multi_namespace_failure_adds_no_server() {
+        let mut generator = multi_namespace_generator(SchemaGeneratorConfig::default());
+        let before = generator.get_schema_as_str();
+        let mut servers = multi_namespace_servers();
+        let weather = servers["weather-api"].clone();
+        servers.insert("unknown".to_string(), weather);
+        assert!(generator
+            .add_actions_from_named_server_descriptions(&servers)
+            .is_err());
+        assert_eq!(generator.get_schema_as_str(), before);
+
+        // Each server still accepts its tools after the failure
+        generator
+            .add_actions_from_named_server_descriptions(&multi_namespace_servers())
+            .expect("Failed to add tool actions to schema generator");
+        assert_schema_matches_file(&generator, "examples/multi/multi_default.cedarschema");
+    }
+
+    #[test]
+    fn stub_builder() {
+        let main = std::fs::read_to_string("examples/multi/main.cedarschema")
+            .expect("Failed to read schema file");
+        let builder = StubBuilder::from_cedarschema_str(&main)
+            .and_then(|builder| builder.add_server("weather-api"))
+            .and_then(|builder| builder.add_server_with_namespace("billing", "Billing"))
+            .expect("Failed to build stub");
+        assert_eq!(
+            builder.get_stub().to_cedarschema().unwrap(),
+            super::read_expected_schema("examples/multi/built_stub.cedarschema")
+        );
+
+        let mut generator =
+            SchemaGenerator::new(builder.into_stub()).expect("built stub is malformed");
+        generator
+            .add_actions_from_named_server_descriptions(&multi_namespace_servers())
+            .expect("Failed to add tool actions to schema generator");
+        generator
+            .new_request_generator()
+            .expect("Failed to resolve generated schema");
+    }
+
+    #[test]
+    fn multi_namespace_server_tools_added_once() {
+        let mut generator = multi_namespace_generator(SchemaGeneratorConfig::default());
+        let servers = multi_namespace_servers();
+        generator
+            .add_actions_from_named_server_description("billing", &servers["billing"])
+            .expect("Failed to add tool actions to schema generator");
+        assert!(matches!(
+            generator.add_actions_from_named_server_description("billing", &servers["billing"]),
+            Err(SchemaGeneratorError::ServerDescriptionMerge)
+        ));
+        assert!(matches!(
+            generator.add_actions_from_named_server_descriptions(&servers),
+            Err(SchemaGeneratorError::ServerDescriptionMerge)
+        ));
     }
 
     fn run_inline_test(tools_json: &str, expected_schema: &str, config: SchemaGeneratorConfig) {
@@ -1619,6 +1771,18 @@ mod cli {
 
     #[test]
     fn test_authorize_simple_default_allow() {
+        authorize_simple_default_allow("permit(principal, action, resource);");
+    }
+
+    #[test]
+    fn test_authorize_simple_default_action_in_allow() {
+        authorize_simple_default_allow(
+            r#"permit(principal, action in MyMcpServer::Action::"call_tool", resource);"#,
+        );
+    }
+
+    /// Assert that `policy` allows a call to `test_tool` of `examples/simple/tool.json`
+    fn authorize_simple_default_allow(policy: &str) {
         let temp_dir = TempDir::new().unwrap();
         let entities_fname = temp_dir.path().join("entities.json");
         std::fs::write(&entities_fname, "[]").unwrap();
@@ -1647,7 +1811,7 @@ mod cli {
         std::fs::write(&request_fname, request_json).unwrap();
 
         let policy_fname = temp_dir.path().join("policies.cedar");
-        std::fs::write(&policy_fname, "permit(principal, action, resource);").unwrap();
+        std::fs::write(&policy_fname, policy).unwrap();
 
         let input = r#"{
     "params": {
@@ -2165,5 +2329,164 @@ mod cli {
             .arg("--mcp-tool-input")
             .arg(&input_fname);
         cmd.unwrap().assert().success().stdout("DENY\n").stderr("");
+    }
+
+    fn multi_namespace_generate_cmd() -> assert_cmd::Command {
+        let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
+        cmd.arg("generate")
+            .arg("examples/multi/stub.cedarschema")
+            .arg("--server")
+            .arg("weather-api=examples/multi/weather.json")
+            .arg("--server")
+            .arg("billing=examples/multi/billing.json");
+        cmd
+    }
+
+    #[test]
+    fn test_multi_namespace_generate() {
+        multi_namespace_generate_cmd()
+            .assert()
+            .success()
+            .stdout(super::read_expected_schema(
+                "examples/multi/multi_default.cedarschema",
+            ));
+    }
+
+    #[test]
+    fn test_multi_namespace_generate_deduplicate() {
+        multi_namespace_generate_cmd()
+            .arg("--deduplicate-entity-types")
+            .assert()
+            .success()
+            .stdout(super::read_expected_schema(
+                "examples/multi/multi_deduplicate.cedarschema",
+            ));
+    }
+
+    #[test]
+    fn test_stub() {
+        let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
+        cmd.arg("stub")
+            .arg("examples/multi/main.cedarschema")
+            .arg("--server")
+            .arg("weather-api")
+            .arg("--server")
+            .arg("billing=Billing")
+            .assert()
+            .success()
+            .stdout(super::read_expected_schema(
+                "examples/multi/built_stub.cedarschema",
+            ));
+    }
+
+    #[test]
+    fn test_stub_invalid_namespace() {
+        let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
+        let assert = cmd
+            .arg("stub")
+            .arg("examples/multi/main.cedarschema")
+            .arg("--server")
+            .arg("in")
+            .arg("--error-format")
+            .arg("plain")
+            .assert()
+            .failure();
+        assert_stderr_contains(
+            assert,
+            "`in` is not a valid namespace identifier for server `in`.",
+        );
+    }
+
+    #[test]
+    fn test_multi_namespace_generate_duplicate_server() {
+        let assert = multi_namespace_generate_cmd()
+            .arg("--server")
+            .arg("billing=examples/multi/billing.json")
+            .arg("--error-format")
+            .arg("plain")
+            .assert()
+            .failure();
+        assert_stderr_contains(
+            assert,
+            "Server `billing` is given more than once with `--server`",
+        );
+    }
+
+    #[test]
+    fn test_multi_namespace_generate_without_server() {
+        let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
+        let assert = cmd
+            .arg("generate")
+            .arg("examples/multi/stub.cedarschema")
+            .arg("examples/multi/weather.json")
+            .arg("--error-format")
+            .arg("plain")
+            .assert()
+            .failure();
+        assert_stderr_contains(
+            assert,
+            "The schema stub declares `@mcp_server` namespaces, so a server name is required.",
+        );
+    }
+
+    #[test]
+    fn test_single_namespace_generate_with_server() {
+        let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
+        let assert = cmd
+            .arg("generate")
+            .arg("examples/stub.cedarschema")
+            .arg("--server")
+            .arg("weather-api=examples/multi/weather.json")
+            .arg("--error-format")
+            .arg("plain")
+            .assert()
+            .failure();
+        assert_stderr_contains(
+            assert,
+            "The schema stub declares no `@mcp_server` namespace, so a server name cannot be used.",
+        );
+    }
+
+    fn assert_stderr_contains(assert: assert_cmd::assert::Assert, expected: &str) {
+        let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+        assert!(stderr.contains(expected), "{expected} not in {stderr}");
+    }
+
+    /// `authorize` a call to server `server`, using the files `examples/multi/{prefix}*`
+    fn multi_namespace_authorize_cmd(server: &str, prefix: &str) -> assert_cmd::Command {
+        let mut cmd = cargo_bin_cmd!("cedar-policy-mcp-schema-generator");
+        cmd.arg("authorize")
+            .arg("examples/multi/stub.cedarschema")
+            .arg(format!("examples/multi/{prefix}.json"))
+            .arg("--server")
+            .arg(server)
+            .arg("--policies")
+            .arg("examples/multi/policies.cedar")
+            .arg("--entities")
+            .arg("examples/multi/entities.json")
+            .arg("--request-json")
+            .arg(format!("examples/multi/{prefix}_request.json"))
+            .arg("--mcp-tool-input")
+            .arg(format!("examples/multi/{prefix}_input.json"));
+        cmd
+    }
+
+    #[test]
+    fn test_multi_namespace_authorize_allow() {
+        multi_namespace_authorize_cmd("weather-api", "weather")
+            .assert()
+            .success()
+            .stdout("ALLOW\n")
+            .stderr("");
+    }
+
+    #[test]
+    fn test_multi_namespace_authorize_deny() {
+        // The billing policy only permits `account_id == "acct2"`
+        multi_namespace_authorize_cmd("billing", "billing")
+            .assert()
+            .success()
+            .stdout("DENY\n")
+            .stderr("");
     }
 }

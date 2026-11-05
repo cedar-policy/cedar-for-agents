@@ -113,6 +113,12 @@ pub enum CliError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     RequestGeneration(#[from] crate::RequestGeneratorError),
+    #[error("Server `{0}` is given more than once with `--server`")]
+    #[diagnostic(
+        code(cli_error::duplicate_server_argument),
+        help("Give the tool descriptions of each server once, e.g., `--server NAME=FILE`.")
+    )]
+    DuplicateServerArgument(String),
 }
 
 impl CliError {

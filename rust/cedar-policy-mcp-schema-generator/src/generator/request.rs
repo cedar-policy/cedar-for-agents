@@ -28,11 +28,11 @@ use cedar_policy_core::validator::ValidatorSchema;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
 
 use super::identifiers;
-use super::schema::{DeduplicatedEntityType, EntityTypeFingerprint};
-use crate::{RequestGeneratorError, SchemaGeneratorConfig};
+use super::target::{ToolTarget, ToolTargets};
+use crate::{RequestGeneratorError, SchemaGeneratorConfig, ServerLookupError};
 
 use mcp_tools_sdk::data::{Input, Output, TypedValue};
-use mcp_tools_sdk::description::{PropertyTypeDef, ServerDescription};
+use mcp_tools_sdk::description::PropertyTypeDef;
 use smol_str::{SmolStr, ToSmolStr};
 use uuid::Uuid;
 
@@ -60,11 +60,23 @@ pub struct AuthorizationComponents {
 /// `SchemaGenerator`.
 pub struct RequestGenerator {
     config: SchemaGeneratorConfig,
-    tools: ServerDescription,
-    root_namespace: Option<Name>,
+    /// The main namespace of the schema stub.
+    main_namespace: Option<Name>,
     schema: ValidatorSchema,
-    /// Resolved deduplication decisions from the schema generator.
-    resolved_dedup: Option<HashMap<EntityTypeFingerprint, DeduplicatedEntityType>>,
+    /// The tools added to the schema generator, with their namespaces and deduplication
+    /// decisions.
+    targets: ToolTargets,
+}
+
+/// Generates requests for the tools of one `ToolTarget` of a `RequestGenerator`.
+#[derive(Clone, Copy, Debug)]
+struct TargetRequestGenerator<'a> {
+    config: &'a SchemaGeneratorConfig,
+    /// The main namespace of the schema stub. It contains the opaque entity types
+    /// (`Float`, `Number`, `Null`, `Unknown`) shared by all targets.
+    main_namespace: &'a Option<Name>,
+    schema: &'a ValidatorSchema,
+    target: &'a ToolTarget,
 }
 
 #[derive(Clone, Debug)]
@@ -106,18 +118,30 @@ impl TypeDefsInfo {
 impl RequestGenerator {
     pub(crate) fn new(
         config: SchemaGeneratorConfig,
-        tools: ServerDescription,
-        root_namespace: Option<Name>,
+        main_namespace: Option<Name>,
         schema: ValidatorSchema,
-        resolved_dedup: Option<HashMap<EntityTypeFingerprint, DeduplicatedEntityType>>,
+        targets: ToolTargets,
     ) -> Self {
         Self {
             config,
-            tools,
-            root_namespace,
+            main_namespace,
             schema,
-            resolved_dedup,
+            targets,
         }
+    }
+
+    /// Get a `TargetRequestGenerator` for the tools of `server`, or for the tools of the only
+    /// namespace of the schema stub if `server` is `None`.
+    fn target_generator(
+        &self,
+        server: Option<&str>,
+    ) -> Result<TargetRequestGenerator<'_>, ServerLookupError> {
+        Ok(TargetRequestGenerator {
+            config: &self.config,
+            main_namespace: &self.main_namespace,
+            schema: &self.schema,
+            target: self.targets.get(server)?,
+        })
     }
 
     /// Generate an authorization request & entities necessary to call the Cedar authorization engine.
@@ -129,7 +153,184 @@ impl RequestGenerator {
     ///
     /// The function will then return a Cedar Request and entities necessary to determine if the principal is
     /// authorized to use (or receive the oputout of) the requested tool.
+    ///
+    /// Only for schema stubs without `@mcp_server` namespaces.
     pub fn generate_request(
+        &self,
+        principal: EntityUID,
+        resource: EntityUID,
+        context: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
+        entities: Entities,
+        input: &Input,
+        output: Option<&Output>,
+    ) -> Result<(Request, Entities), RequestGeneratorError> {
+        self.generate_optionally_named_request(
+            None, principal, resource, context, entities, input, output,
+        )
+    }
+
+    /// Same as `generate_request`, for a tool of the namespace annotated with
+    /// `@mcp_server("{server}")`.
+    ///
+    /// Only for schema stubs with `@mcp_server` namespaces.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Mirrors generate_request, with the server name."
+    )]
+    pub fn generate_named_request(
+        &self,
+        server: &str,
+        principal: EntityUID,
+        resource: EntityUID,
+        context: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
+        entities: Entities,
+        input: &Input,
+        output: Option<&Output>,
+    ) -> Result<(Request, Entities), RequestGeneratorError> {
+        self.generate_optionally_named_request(
+            Some(server),
+            principal,
+            resource,
+            context,
+            entities,
+            input,
+            output,
+        )
+    }
+
+    /// `generate_named_request` if `server` is given, and `generate_request` otherwise.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Mirrors generate_request, with the server name."
+    )]
+    pub(crate) fn generate_optionally_named_request(
+        &self,
+        server: Option<&str>,
+        principal: EntityUID,
+        resource: EntityUID,
+        context: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
+        entities: Entities,
+        input: &Input,
+        output: Option<&Output>,
+    ) -> Result<(Request, Entities), RequestGeneratorError> {
+        self.target_generator(server)?
+            .generate_request(principal, resource, context, entities, input, output)
+    }
+
+    /// Generate authorization request components as JSON-serializable values.
+    ///
+    /// This is a convenience method for environments that need string/JSON
+    /// representations of Cedar authorization requests rather than the Rust
+    /// types directly — for example, WASM bindings or REST API bridges.
+    ///
+    /// Returns the principal, action, and resource as Cedar EntityUID strings,
+    /// and the entities as a JSON array. The caller is responsible for
+    /// constructing context from the MCP tool input.
+    ///
+    /// Only for schema stubs without `@mcp_server` namespaces.
+    pub fn generate_request_components(
+        &self,
+        input: &Input,
+        principal: EntityUID,
+        resource: EntityUID,
+        context: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
+        entities: Entities,
+        output: Option<&Output>,
+    ) -> Result<AuthorizationComponents, RequestGeneratorError> {
+        self.target_generator(None)?
+            .generate_request_components(input, principal, resource, context, entities, output)
+    }
+
+    /// Same as `generate_request_components`, for a tool of the namespace annotated with
+    /// `@mcp_server("{server}")`.
+    ///
+    /// Only for schema stubs with `@mcp_server` namespaces.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Mirrors generate_request_components, with the server name."
+    )]
+    pub fn generate_named_request_components(
+        &self,
+        server: &str,
+        input: &Input,
+        principal: EntityUID,
+        resource: EntityUID,
+        context: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
+        entities: Entities,
+        output: Option<&Output>,
+    ) -> Result<AuthorizationComponents, RequestGeneratorError> {
+        self.target_generator(Some(server))?
+            .generate_request_components(input, principal, resource, context, entities, output)
+    }
+
+    /// String-in / string-out convenience wrapper around
+    /// [`Self::generate_request_components`] for FFI consumers (WASM, Python, C).
+    ///
+    /// Builds principal and resource [`EntityUID`]s from plain strings
+    /// (qualified against the schema's namespace) so the caller does not
+    /// need a `cedar_policy_core` dependency.  Starting entities and context
+    /// are empty; use [`Self::generate_request_components`] directly if you need
+    /// to supply either. In particular, this fails for schema stubs with `@mcp_context`.
+    ///
+    /// # Arguments
+    /// * `input` — the MCP tool-call input
+    /// * `principal_type` — e.g. `"User"`
+    /// * `principal_id` — e.g. `"alice"`
+    /// * `resource_type` — e.g. `"McpServer"`
+    /// * `resource_id` — e.g. `"server1"`
+    ///
+    /// # Returns
+    /// [`AuthorizationComponents`] — the four Cedar strings ready for JSON
+    /// serialization. `entities_json` is the real entity set produced by the
+    /// generator from the input (including any entities derived from nulls,
+    /// floats, or nested objects per the schema config).
+    ///
+    /// Only for schema stubs without `@mcp_server` namespaces.
+    pub fn generate_request_components_from_strings(
+        &self,
+        input: &Input,
+        principal_type: &str,
+        principal_id: &str,
+        resource_type: &str,
+        resource_id: &str,
+    ) -> Result<AuthorizationComponents, RequestGeneratorError> {
+        self.target_generator(None)?
+            .generate_request_components_from_strings(
+                input,
+                principal_type,
+                principal_id,
+                resource_type,
+                resource_id,
+            )
+    }
+
+    /// Same as `generate_request_components_from_strings`, for a tool of the namespace
+    /// annotated with `@mcp_server("{server}")`. The principal type is qualified with the
+    /// main namespace of the schema stub, and the resource type with the server namespace.
+    ///
+    /// Only for schema stubs with `@mcp_server` namespaces.
+    pub fn generate_named_request_components_from_strings(
+        &self,
+        server: &str,
+        input: &Input,
+        principal_type: &str,
+        principal_id: &str,
+        resource_type: &str,
+        resource_id: &str,
+    ) -> Result<AuthorizationComponents, RequestGeneratorError> {
+        self.target_generator(Some(server))?
+            .generate_request_components_from_strings(
+                input,
+                principal_type,
+                principal_id,
+                resource_type,
+                resource_id,
+            )
+    }
+}
+
+impl TargetRequestGenerator<'_> {
+    fn generate_request(
         &self,
         principal: EntityUID,
         resource: EntityUID,
@@ -138,26 +339,30 @@ impl RequestGenerator {
         input: &Input,
         output: Option<&Output>,
     ) -> Result<(Request, Entities), RequestGeneratorError> {
-        let input = self.tools.validate_input(input)?;
+        let input = self.target.tools.validate_input(input)?;
         #[expect(
             clippy::unwrap_used,
             reason = "Validation ensures there is a tool in with the same name that the input validates against"
         )]
         let tool = self
+            .target
             .tools
             .tool_descriptions()
             .find(|t| t.name() == input.name())
             .unwrap();
 
         let output = output
-            .map(|output| self.tools.validate_output(tool.name(), output))
+            .map(|output| self.target.tools.validate_output(tool.name(), output))
             .transpose()?;
 
         let mut type_defs = TypeDefsInfo::new();
-        type_defs.extend(self.tools.type_definitions(), self.root_namespace.clone());
+        type_defs.extend(
+            self.target.tools.type_definitions(),
+            self.target.namespace.clone(),
+        );
 
         let tool_ns: Name = tool.name().parse()?;
-        let tool_ns = tool_ns.qualify_with_name(self.root_namespace.as_ref());
+        let tool_ns = tool_ns.qualify_with_name(self.target.namespace.as_ref());
 
         // Extend with tool specific type definitions
         type_defs.extend(tool.type_definitions(), Some(tool_ns.clone()));
@@ -191,22 +396,31 @@ impl RequestGenerator {
                     cedar_policy_core::extensions::Extensions::all_available(),
                 )?;
                 context.into_iter().chain(vec![
-                    ("input".to_smolstr(), inputs),
-                    ("output".to_smolstr(), outputs),
+                    (identifiers::INPUT_KEY.to_smolstr(), inputs),
+                    (identifiers::OUTPUT_KEY.to_smolstr(), outputs),
                 ])
             }
             _ => context
                 .into_iter()
-                .chain(vec![("input".to_smolstr(), inputs)]),
+                .chain(vec![(identifiers::INPUT_KEY.to_smolstr(), inputs)]),
         };
         let context = Context::from_pairs(
             context,
             cedar_policy_core::extensions::Extensions::all_available(),
         )?;
 
+        // Policies use the action hierarchy (`action in ...`) of the schema through these entities.
+        // An action entity of `entities` must be equal to the one of the schema.
+        entities = entities.add_entities(
+            self.schema.action_entities()?.into_iter().map(Arc::new),
+            None::<&cedar_policy_core::validator::CoreSchema<'_>>,
+            cedar_policy_core::entities::TCComputation::AssumeAlreadyComputed,
+            cedar_policy_core::extensions::Extensions::all_available(),
+        )?;
+
         let action_name = Eid::new(tool.name());
         let action = EntityUID::from_components(
-            identifiers::ACTION.qualify_with(self.root_namespace.as_ref()),
+            identifiers::ACTION.qualify_with(self.target.namespace.as_ref()),
             action_name,
             None,
         );
@@ -218,23 +432,14 @@ impl RequestGenerator {
             (action, None),
             (resource, None),
             context,
-            Some(&self.schema),
+            Some(self.schema),
             cedar_policy_core::extensions::Extensions::all_available(),
         )?;
 
         Ok((request, entities))
     }
 
-    /// Generate authorization request components as JSON-serializable values.
-    ///
-    /// This is a convenience method for environments that need string/JSON
-    /// representations of Cedar authorization requests rather than the Rust
-    /// types directly — for example, WASM bindings or REST API bridges.
-    ///
-    /// Returns the principal, action, and resource as Cedar EntityUID strings,
-    /// and the entities as a JSON array. The caller is responsible for
-    /// constructing context from the MCP tool input.
-    pub fn generate_request_components(
+    fn generate_request_components(
         &self,
         input: &Input,
         principal: EntityUID,
@@ -280,28 +485,9 @@ impl RequestGenerator {
         })
     }
 
-    /// String-in / string-out convenience wrapper around
-    /// [`generate_request_components`] for FFI consumers (WASM, Python, C).
-    ///
-    /// Builds principal and resource [`EntityUID`]s from plain strings
-    /// (qualified against the schema's namespace) so the caller does not
-    /// need a `cedar_policy_core` dependency.  Starting entities and context
-    /// are empty; use [`generate_request_components`] directly if you need
-    /// to supply either.
-    ///
-    /// # Arguments
-    /// * `input` — the MCP tool-call input
-    /// * `principal_type` — e.g. `"User"`
-    /// * `principal_id` — e.g. `"alice"`
-    /// * `resource_type` — e.g. `"McpServer"`
-    /// * `resource_id` — e.g. `"server1"`
-    ///
-    /// # Returns
-    /// [`AuthorizationComponents`] — the four Cedar strings ready for JSON
-    /// serialization. `entities_json` is the real entity set produced by the
-    /// generator from the input (including any entities derived from nulls,
-    /// floats, or nested objects per the schema config).
-    pub fn generate_request_components_from_strings(
+    /// The principal type is qualified with the main namespace, and the resource type with
+    /// the target namespace.
+    fn generate_request_components_from_strings(
         &self,
         input: &Input,
         principal_type: &str,
@@ -310,7 +496,7 @@ impl RequestGenerator {
         resource_id: &str,
     ) -> Result<AuthorizationComponents, RequestGeneratorError> {
         let principal_ns: Name = principal_type.parse()?;
-        let principal_ns = principal_ns.qualify_with_name(self.root_namespace.as_ref());
+        let principal_ns = principal_ns.qualify_with_name(self.main_namespace.as_ref());
         let principal = EntityUID::from_components(
             EntityType::from(principal_ns),
             Eid::new(principal_id),
@@ -318,7 +504,7 @@ impl RequestGenerator {
         );
 
         let resource_ns: Name = resource_type.parse()?;
-        let resource_ns = resource_ns.qualify_with_name(self.root_namespace.as_ref());
+        let resource_ns = resource_ns.qualify_with_name(self.target.namespace.as_ref());
         let resource =
             EntityUID::from_components(EntityType::from(resource_ns), Eid::new(resource_id), None);
 
@@ -363,7 +549,7 @@ impl RequestGenerator {
         match val {
             TypedValue::Null => {
                 let ty = EntityType::from(Name::from(identifiers::NULL_TYPE.clone()));
-                let ty = ty.qualify_with(self.root_namespace.as_ref());
+                let ty = ty.qualify_with(self.main_namespace.as_ref());
                 let eid = Eid::new("null");
                 let euid = EntityUID::from_components(ty, eid, None);
                 Ok((RestrictedExpr::val(euid), Entities::new()))
@@ -382,7 +568,7 @@ impl RequestGenerator {
                     ))
                 } else {
                     let ty = EntityType::from(Name::from(identifiers::FLOAT_TYPE.clone()));
-                    let ty = ty.qualify_with(self.root_namespace.as_ref());
+                    let ty = ty.qualify_with(self.main_namespace.as_ref());
                     let eid = Eid::new(format!("{:?}", f));
                     let euid = EntityUID::from_components(ty, eid, None);
                     Ok((RestrictedExpr::val(euid), Entities::new()))
@@ -408,7 +594,7 @@ impl RequestGenerator {
                     ))
                 } else {
                     let ty = EntityType::from(Name::from(identifiers::NUMBER_TYPE.clone()));
-                    let ty = ty.qualify_with(self.root_namespace.as_ref());
+                    let ty = ty.qualify_with(self.main_namespace.as_ref());
                     let eid = Eid::new(n.as_str());
                     let euid = EntityUID::from_components(ty, eid, None);
                     Ok((RestrictedExpr::val(euid), Entities::new()))
@@ -451,7 +637,7 @@ impl RequestGenerator {
             }
             TypedValue::Unknown(_) => {
                 let ty = EntityType::from(Name::from(identifiers::UNKNOWN_TYPE.clone()));
-                let ty = ty.qualify_with(self.root_namespace.as_ref());
+                let ty = ty.qualify_with(self.main_namespace.as_ref());
                 // Generate a unique EID for all Unknown values
                 // with the implication being that any unkonwn value is different from any other
                 // unknown value even if they were the same JSON value.
@@ -614,7 +800,7 @@ impl RequestGenerator {
         let id: UnreservedId = ty_name.parse()?;
         let ty = EntityType::from(Name::from(id));
 
-        if let Some(ref resolved) = self.resolved_dedup {
+        if let Some(ref resolved) = self.target.resolved_dedup {
             let dedup_info = resolved.iter().find(|(fp, info)| {
                 fp.base_name().to_string() == ty_name
                     && info.source_namespaces.contains(&namespace.cloned())
@@ -842,11 +1028,16 @@ mod test {
     use cool_asserts::assert_matches;
     use std::str::FromStr;
 
-    use mcp_tools_sdk::description::ToolDescription;
+    use mcp_tools_sdk::description::{ServerDescription, ToolDescription};
 
     use crate::SchemaGenerator;
 
     use super::*;
+
+    /// The entities generated from the tool input or output, i.e., not the action entities
+    pub(super) fn generated_entities(entities: &Entities) -> impl Iterator<Item = &Entity> {
+        entities.iter().filter(|entity| !entity.uid().is_action())
+    }
 
     fn test_reformat_datetime_passes_cedar(input: &str, expected: &str) {
         assert_eq!(reformat_datestr(input), expected);
@@ -1263,6 +1454,8 @@ mod test {
         let type_defs = TypeDefsInfo::new();
         let namespace = Some("Test".parse().unwrap());
         let (expr, entities) = request_generator
+            .target_generator(None)
+            .unwrap()
             .val_to_cedar(val, &type_defs, namespace.as_ref(), "test_type")
             .expect(&format!(
                 "Failed to convert {:?} to Cedar expression and entities",
@@ -1387,6 +1580,8 @@ mod test {
             let namespace: Option<Name> = Some("Test".parse().unwrap());
 
             let (expr_a, _) = request_generator
+                .target_generator(None)
+                .unwrap()
                 .val_to_cedar(
                     &TypedValue::Float(1.0000000000000002),
                     &type_defs,
@@ -1395,6 +1590,8 @@ mod test {
                 )
                 .unwrap();
             let (expr_b, _) = request_generator
+                .target_generator(None)
+                .unwrap()
                 .val_to_cedar(
                     &TypedValue::Float(1.0000000000000004),
                     &type_defs,
@@ -1566,7 +1763,7 @@ mod test {
             &r#"Test::Action::"test_tool""#.parse::<EntityUID>().unwrap()
         );
         assert_eq!(request.resource().uid().unwrap(), &resource);
-        assert_eq!(entities, Entities::new());
+        assert_eq!(generated_entities(&entities).count(), 0);
 
         assert_matches!(request.context(), Some(Context::Value(kvs)) if {
             let map = &**kvs;
@@ -1627,7 +1824,7 @@ mod test {
         );
         assert_eq!(request.resource().uid().unwrap(), &resource);
         // An empty record has no attributes, so it needs no backing entity.
-        assert_eq!(entities, Entities::new());
+        assert_eq!(generated_entities(&entities).count(), 0);
 
         // `context.input.metadata` is the empty record `{}`, not an entity UID.
         assert_matches!(request.context(), Some(Context::Value(kvs)) if {
@@ -1939,7 +2136,7 @@ mod test {
             &r#"Test::Action::"test_tool""#.parse::<EntityUID>().unwrap()
         );
         assert_eq!(request.resource().uid().unwrap(), &resource);
-        assert_eq!(entities, Entities::new());
+        assert_eq!(generated_entities(&entities).count(), 0);
 
         assert_matches!(request.context(), Some(Context::Value(kvs)) if {
             let map = &**kvs;
@@ -1984,6 +2181,8 @@ mod test {
             let num = str_to_number(input);
             let val = TypedValue::Number(num);
             let (expr, _) = request_gen
+                .target_generator(None)
+                .unwrap()
                 .val_to_cedar(&val, &type_defs, namespace.as_ref(), "test_type")
                 .unwrap_or_else(|_| panic!("Failed to convert Number({}) to Cedar", input));
             let expected_expr = RestrictedExpr::from_str(expected).unwrap();
@@ -2045,7 +2244,7 @@ mod test {
             &r#"Test::Action::"test_tool""#.parse::<EntityUID>().unwrap()
         );
         assert_eq!(request.resource().uid().unwrap(), &resource);
-        assert_eq!(entities, Entities::new());
+        assert_eq!(generated_entities(&entities).count(), 0);
         assert_matches!(request.context(), Some(Context::Value(kvs)) if {
             let map = &**kvs;
             map.len() == 1 &&
@@ -2112,7 +2311,7 @@ mod test {
             &r#"Test::Action::"test_tool""#.parse::<EntityUID>().unwrap()
         );
         assert_eq!(request.resource().uid().unwrap(), &resource);
-        assert_eq!(entities, Entities::new());
+        assert_eq!(generated_entities(&entities).count(), 0);
         assert_matches!(request.context(), Some(Context::Value(kvs)) if {
             let map = &**kvs;
             map.len() == 1 &&
@@ -2167,7 +2366,7 @@ mod test {
                 &r#"Test::Action::"test_tool""#.parse::<EntityUID>().unwrap()
             );
             assert_eq!(request.resource().uid().unwrap(), &resource);
-            assert_eq!(entities, Entities::new());
+            assert_eq!(generated_entities(&entities).count(), 0);
             assert_matches!(request.context(), Some(Context::Value(kvs)) if {
                 let map = &**kvs;
                 map.len() == 1 &&
@@ -2264,7 +2463,7 @@ mod test {
             &r#"Test::Action::"test_tool""#.parse::<EntityUID>().unwrap()
         );
         assert_eq!(request.resource().uid().unwrap(), &resource);
-        assert_eq!(entities, Entities::new());
+        assert_eq!(generated_entities(&entities).count(), 0);
         assert_matches!(request.context(), Some(Context::Value(kvs)) if {
             let map = &**kvs;
             map.len() == 1 &&
@@ -2343,7 +2542,7 @@ mod test {
         );
         assert_eq!(request.resource().uid().unwrap(), &resource);
         assert!(
-            entities.len() == 1,
+            generated_entities(&entities).count() == 1,
             "{:?}\n{:?}",
             entities,
             request.context()
@@ -2432,7 +2631,7 @@ mod test {
         );
         assert_eq!(request.resource().uid().unwrap(), &resource);
         assert!(
-            entities.len() == 1,
+            generated_entities(&entities).count() == 1,
             "{:?}\n{:?}",
             entities,
             request.context()
@@ -2522,7 +2721,7 @@ mod test {
             &r#"Test::Action::"test_tool""#.parse::<EntityUID>().unwrap()
         );
         assert_eq!(request.resource().uid().unwrap(), &resource);
-        assert_eq!(entities, Entities::new());
+        assert_eq!(generated_entities(&entities).count(), 0);
         assert_matches!(request.context(), Some(Context::Value(kvs)) if {
             let map = &**kvs;
             map.len() == 1 &&
@@ -2607,7 +2806,7 @@ mod test {
             &r#"Test::Action::"test_tool""#.parse::<EntityUID>().unwrap()
         );
         assert_eq!(request.resource().uid().unwrap(), &resource);
-        assert_eq!(entities, Entities::new());
+        assert_eq!(generated_entities(&entities).count(), 0);
         assert_matches!(request.context(), Some(Context::Value(kvs)) if {
             let map = &**kvs;
             map.len() == 2 &&
@@ -3174,6 +3373,8 @@ mod test {
 
         let val = TypedValue::Tuple(vec![TypedValue::Bool(true), TypedValue::Integer(42)]);
         let (expr, _entities) = request_generator
+            .target_generator(None)
+            .unwrap()
             .val_to_cedar(&val, &type_defs, namespace.as_ref(), "myTuple")
             .expect("Failed to convert Tuple to Cedar");
 
@@ -3218,12 +3419,322 @@ mod test {
         ];
 
         for (label, val) in vals {
-            let result =
-                request_generator.val_to_cedar(val, &type_defs, namespace.as_ref(), "foo::bar");
+            let result = request_generator
+                .target_generator(None)
+                .unwrap()
+                .val_to_cedar(val, &type_defs, namespace.as_ref(), "foo::bar");
             assert!(
                 result.is_err(),
                 "ty_name with `::` should be rejected in {label}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod multi_namespace_tests {
+    use super::*;
+    use crate::SchemaGenerator;
+    use cedar_policy_core::entities::Dereference;
+    use cool_asserts::assert_matches;
+    use mcp_tools_sdk::description::ServerDescription;
+
+    const STUB: &str = include_str!("../../examples/multi/stub.cedarschema");
+    const WEATHER: &str = include_str!("../../examples/multi/weather.json");
+    const BILLING: &str = include_str!("../../examples/multi/billing.json");
+    const WEATHER_INPUT: &str = include_str!("../../examples/multi/weather_input.json");
+    const BILLING_INPUT: &str = include_str!("../../examples/multi/billing_input.json");
+    const WEATHER_TARGET: &str = r#"Main::Weather::Target::"weather""#;
+    const BILLING_TARGET: &str = r#"Main::Billing::Target::"billing""#;
+
+    fn request_generator(config: SchemaGeneratorConfig) -> RequestGenerator {
+        let mut gen = SchemaGenerator::from_cedarschema_str_with_config(STUB, config).unwrap();
+        for (server, tools) in [("weather-api", WEATHER), ("billing", BILLING)] {
+            gen.add_actions_from_named_server_description(
+                server,
+                &ServerDescription::from_json_str(tools).unwrap(),
+            )
+            .unwrap();
+        }
+        gen.new_request_generator().unwrap()
+    }
+
+    /// The session context, with a `system.region` if `region` is given
+    fn context(region: Option<&str>) -> Vec<(SmolStr, RestrictedExpr)> {
+        let now = RestrictedExpr::call_extension_fn(
+            identifiers::DATETIME_CTOR.clone(),
+            vec![RestrictedExpr::val("2026-11-04")],
+        );
+        let system = std::iter::once(("now".to_smolstr(), now))
+            .chain(region.map(|region| ("region".to_smolstr(), RestrictedExpr::val(region))));
+        vec![
+            ("sessionId".to_smolstr(), RestrictedExpr::val("session1")),
+            (
+                "system".to_smolstr(),
+                RestrictedExpr::record(system).unwrap(),
+            ),
+        ]
+    }
+
+    /// A request from `alice` to `resource` of `server`
+    fn request(
+        gen: &RequestGenerator,
+        server: &str,
+        resource: &str,
+        region: Option<&str>,
+        input: &str,
+        output: Option<&str>,
+    ) -> Result<(Request, Entities), RequestGeneratorError> {
+        gen.generate_named_request(
+            server,
+            r#"Main::OAuthUser::"alice""#.parse().unwrap(),
+            resource.parse().unwrap(),
+            context(region),
+            Entities::new(),
+            &Input::from_json_str(input).unwrap(),
+            output
+                .map(|output| Output::from_json_str(output).unwrap())
+                .as_ref(),
+        )
+    }
+
+    fn assert_contains(request: &Request, expected: &str) {
+        let request = request.to_string();
+        assert!(request.contains(expected), "{expected} not in {request}");
+    }
+
+    #[test]
+    fn weather_request() {
+        let gen = request_generator(SchemaGeneratorConfig::default());
+        let (request, entities) = request(
+            &gen,
+            "weather-api",
+            WEATHER_TARGET,
+            Some("us-east-1"),
+            WEATHER_INPUT,
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            request.action().uid().unwrap().to_string(),
+            r#"Main::Weather::Action::"get_forecast""#
+        );
+        assert_contains(&request, r#"Main::Weather::get_forecast::Input::unit::"C""#);
+        let location = super::test::generated_entities(&entities).next().unwrap();
+        assert_eq!(
+            location.uid().entity_type().to_string(),
+            "Main::Weather::get_forecast::Input::location"
+        );
+        // The opaque types of all servers are in the main namespace
+        assert_eq!(
+            location.get("latitude").unwrap().to_string(),
+            r#"Main::Number::"48.85""#
+        );
+    }
+
+    #[test]
+    fn requests_include_the_action_hierarchy() {
+        let gen = request_generator(SchemaGeneratorConfig::default());
+        let (request, entities) = request(
+            &gen,
+            "weather-api",
+            WEATHER_TARGET,
+            Some("us-east-1"),
+            WEATHER_INPUT,
+            None,
+        )
+        .unwrap();
+        let Dereference::Data(action) = entities.entity(request.action().uid().unwrap()) else {
+            panic!("no entity for the action of {request}");
+        };
+        let mut ancestors = action
+            .ancestors()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+        ancestors.sort();
+        assert_eq!(
+            ancestors,
+            [
+                r#"Main::Action::"Mcp""#,
+                r#"Main::Weather::Action::"AllActions""#
+            ]
+        );
+    }
+
+    #[test]
+    fn weather_request_with_objects_as_records() {
+        let gen = request_generator(SchemaGeneratorConfig::default().objects_as_records(true));
+        let (request, entities) = request(
+            &gen,
+            "weather-api",
+            WEATHER_TARGET,
+            Some("us-east-1"),
+            WEATHER_INPUT,
+            None,
+        )
+        .unwrap();
+        // `location` is a record, not an entity
+        assert_eq!(super::test::generated_entities(&entities).count(), 0);
+        assert_contains(&request, r#"location: {latitude: Main::Number::"48.85"}"#);
+    }
+
+    #[test]
+    fn weather_request_with_deduplicated_types() {
+        let gen =
+            request_generator(SchemaGeneratorConfig::default().deduplicate_entity_types(true));
+        let (request, _) = request(
+            &gen,
+            "weather-api",
+            WEATHER_TARGET,
+            Some("us-east-1"),
+            WEATHER_INPUT,
+            None,
+        )
+        .unwrap();
+        assert_contains(&request, r#"Main::Weather::unit::"C""#);
+    }
+
+    #[test]
+    fn weather_request_with_output() {
+        let gen = request_generator(SchemaGeneratorConfig::default().include_outputs(true));
+        let output = r#"{"result": {"structuredContent": {"temperature": 12, "unit": "C"}}}"#;
+        let (request, _) = request(
+            &gen,
+            "weather-api",
+            WEATHER_TARGET,
+            Some("us-east-1"),
+            WEATHER_INPUT,
+            Some(output),
+        )
+        .unwrap();
+        assert_contains(
+            &request,
+            r#"Main::Weather::get_forecast::Output::unit::"C""#,
+        );
+    }
+
+    #[test]
+    fn billing_request_for_tool_with_same_name() {
+        let gen = request_generator(SchemaGeneratorConfig::default());
+        let (request, _) =
+            request(&gen, "billing", BILLING_TARGET, None, BILLING_INPUT, None).unwrap();
+        assert_eq!(
+            request.action().uid().unwrap().to_string(),
+            r#"Main::Billing::Action::"get_forecast""#
+        );
+        // `Currency` is a type definition of the billing server
+        assert_contains(&request, r#"Main::Billing::Currency::"EUR""#);
+    }
+
+    #[test]
+    fn requests_are_validated_against_the_server() {
+        let gen = request_generator(SchemaGeneratorConfig::default());
+        // Input of the weather-api tool with the same name
+        assert_matches!(
+            request(&gen, "billing", BILLING_TARGET, None, WEATHER_INPUT, None),
+            Err(RequestGeneratorError::MCPValidationError(_))
+        );
+        // Resource of another server
+        assert_matches!(
+            request(
+                &gen,
+                "weather-api",
+                BILLING_TARGET,
+                Some("us-east-1"),
+                WEATHER_INPUT,
+                None
+            ),
+            Err(RequestGeneratorError::MalformedRequest(_))
+        );
+        // The weather-api `system` context requires a `region`
+        assert_matches!(
+            request(
+                &gen,
+                "weather-api",
+                WEATHER_TARGET,
+                None,
+                WEATHER_INPUT,
+                None
+            ),
+            Err(RequestGeneratorError::MalformedRequest(_))
+        );
+    }
+
+    #[test]
+    fn wrong_api_or_unknown_server() {
+        let gen = request_generator(SchemaGeneratorConfig::default());
+        let input = Input::from_json_str(WEATHER_INPUT).unwrap();
+        assert_matches!(
+            gen.generate_request(
+                r#"Main::OAuthUser::"alice""#.parse().unwrap(),
+                WEATHER_TARGET.parse().unwrap(),
+                context(Some("us-east-1")),
+                Entities::new(),
+                &input,
+                None,
+            ),
+            Err(RequestGeneratorError::ServerLookup(
+                ServerLookupError::ServerNameRequired
+            ))
+        );
+        assert_matches!(
+            request(&gen, "unknown", WEATHER_TARGET, None, WEATHER_INPUT, None),
+            Err(RequestGeneratorError::ServerLookup(ServerLookupError::UnknownServer(name))) if name == "unknown"
+        );
+
+        let mut gen = SchemaGenerator::from_cedarschema_str(
+            r#"namespace Main { @mcp_principal("User") entity User; @mcp_resource("Target") entity Target; }"#,
+        )
+        .unwrap();
+        gen.add_actions_from_server_description(
+            &ServerDescription::from_json_str(WEATHER).unwrap(),
+        )
+        .unwrap();
+        assert_matches!(
+            gen.new_request_generator()
+                .unwrap()
+                .generate_named_request_components_from_strings(
+                    "weather-api",
+                    &input,
+                    "User",
+                    "alice",
+                    "Target",
+                    "weather"
+                ),
+            Err(RequestGeneratorError::ServerLookup(
+                ServerLookupError::NoServerNamespaces
+            ))
+        );
+    }
+
+    #[test]
+    fn named_request_components_from_strings() {
+        // These requests have an empty context, so the stub has no `@mcp_context`
+        let stub = r#"namespace Main { @mcp_principal("User") entity User; }
+            @mcp_server("weather-api") namespace Main::Weather { @mcp_resource("Target") entity Target; }"#;
+        let mut gen = SchemaGenerator::from_cedarschema_str(stub).unwrap();
+        gen.add_actions_from_named_server_description(
+            "weather-api",
+            &ServerDescription::from_json_str(WEATHER).unwrap(),
+        )
+        .unwrap();
+        let components = gen
+            .new_request_generator()
+            .unwrap()
+            .generate_named_request_components_from_strings(
+                "weather-api",
+                &Input::from_json_str(WEATHER_INPUT).unwrap(),
+                "User",
+                "alice",
+                "Target",
+                "weather",
+            )
+            .unwrap();
+        assert_eq!(components.principal, r#"Main::User::"alice""#);
+        assert_eq!(components.resource, r#"Main::Weather::Target::"weather""#);
+        assert_eq!(
+            components.action,
+            r#"Main::Weather::Action::"get_forecast""#
+        );
     }
 }

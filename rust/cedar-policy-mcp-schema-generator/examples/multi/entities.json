@@ -1,0 +1,6 @@
+[
+    {"uid": {"type": "Main::OAuthUser", "id": "alice"}, "attrs": {"id": "alice"}, "parents": []},
+    {"uid": {"type": "Main::Gateway", "id": "gw1"}, "attrs": {}, "parents": []},
+    {"uid": {"type": "Main::Weather::Target", "id": "weather"}, "attrs": {}, "parents": [{"type": "Main::Gateway", "id": "gw1"}]},
+    {"uid": {"type": "Main::Billing::Target", "id": "billing"}, "attrs": {}, "parents": [{"type": "Main::Gateway", "id": "gw1"}]}
+]

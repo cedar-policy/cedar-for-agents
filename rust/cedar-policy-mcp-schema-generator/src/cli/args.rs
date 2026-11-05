@@ -128,8 +128,14 @@ pub(crate) enum Command {
         #[clap(required = true)]
         schema_stub: PathBuf,
         /// A file containing the MCP Tool Descriptions to add as actions to schema stub file.
-        #[clap(required = true)]
-        tool_descriptions: PathBuf,
+        /// Only for schema stubs without `@mcp_server` namespaces.
+        #[clap(required_unless_present = "servers", conflicts_with = "servers")]
+        tool_descriptions: Option<PathBuf>,
+        /// The MCP Tool Descriptions of a server, as `NAME=FILE`, to add as actions to the
+        /// namespace annotated with `@mcp_server("NAME")`. Can be repeated, once per server.
+        /// Only for schema stubs with `@mcp_server` namespaces. `NAME` cannot contain `=`.
+        #[arg(long = "server", value_name = "NAME=FILE", value_parser = parse_server_tools)]
+        servers: Vec<(String, String)>,
         /// The location to save the output Cedar Schema (default: stdout).
         #[arg(long, value_name = "OUTPUT_FILE")]
         output: Option<PathBuf>,
@@ -139,6 +145,25 @@ pub(crate) enum Command {
         error_format: ErrorFormat,
         #[clap(flatten)]
         config: ConfigOptions,
+    },
+    /// Build a Cedar Schema stub by adding a namespace for each MCP server to a Cedar Schema stub
+    /// file, which may have only its main namespace.
+    Stub {
+        /// A Cedar Schema stub file with the main namespace.
+        #[clap(required = true)]
+        schema_stub: PathBuf,
+        /// A server to add a namespace for, as `NAME` or `NAME=IDENTIFIER`. By default, the
+        /// namespace identifier is derived from the server name. Can be repeated, once per server.
+        /// `NAME` cannot contain `=`. Comments of the input stub are not kept.
+        #[arg(long = "server", value_name = "NAME[=IDENTIFIER]", required = true, value_parser = parse_server_namespace)]
+        servers: Vec<(String, Option<String>)>,
+        /// The location to save the output Cedar Schema stub (default: stdout).
+        #[arg(long, value_name = "OUTPUT_FILE")]
+        output: Option<PathBuf>,
+        #[arg(long, default_value = "human")]
+        output_format: OutputFormat,
+        #[arg(long, default_value = "human")]
+        error_format: ErrorFormat,
     },
     /// Convert MCP tool Input & Output to a Cedar Authorization Request and check authorization
     /// against a set of policies.
@@ -155,6 +180,11 @@ pub(crate) enum Command {
         /// A file containing the MCP Tool Descriptions to add as actions to schema stub file.
         #[clap(required = true)]
         tool_descriptions: PathBuf,
+        /// The server of the MCP tool call. The MCP Tool Descriptions are added as actions to
+        /// the namespace annotated with `@mcp_server("NAME")`, without the tools of the other
+        /// servers. Only for schema stubs with `@mcp_server` namespaces.
+        #[arg(long = "server", value_name = "NAME")]
+        server: Option<String>,
         #[arg(long, default_value = "human")]
         output_format: OutputFormat,
         #[arg(long, default_value = "human")]
@@ -172,6 +202,25 @@ pub(crate) enum Command {
         #[clap(flatten)]
         config: ConfigOptions,
     },
+}
+
+/// Parse a `--server NAME=FILE` argument
+fn parse_server_tools(arg: &str) -> Result<(String, String), String> {
+    match parse_server_namespace(arg)? {
+        (name, Some(file)) => Ok((name, file)),
+        _ => Err(format!("expected `NAME=FILE`, found `{arg}`")),
+    }
+}
+
+/// Parse a `--server NAME[=IDENTIFIER]` argument
+fn parse_server_namespace(arg: &str) -> Result<(String, Option<String>), String> {
+    match arg.split_once('=') {
+        None if !arg.is_empty() => Ok((arg.to_string(), None)),
+        Some((name, value)) if !name.is_empty() && !value.is_empty() => {
+            Ok((name.to_string(), Some(value.to_string())))
+        }
+        _ => Err(format!("expected `NAME` or `NAME=VALUE`, found `{arg}`")),
+    }
 }
 
 /// Command Line Interface for Cedar MCP Schema Generator

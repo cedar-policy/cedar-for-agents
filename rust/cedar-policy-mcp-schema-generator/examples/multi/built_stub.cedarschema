@@ -1,0 +1,51 @@
+// Expected output of `stub main.cedarschema --server weather-api --server billing=Billing`
+@mcp_server("billing")
+namespace Main::Billing {
+  @mcp_resource("Target")
+  entity Target in [Main::Gateway];
+
+  @mcp_action("AllActions")
+  action "AllActions" in [Main::Action::"Mcp"];
+}
+
+namespace Main {
+  @mcp_context("sessionId")
+  type SessionId = String;
+
+  @mcp_context("system")
+  type SystemContext = {
+    now: datetime
+  };
+
+  @mcp_resource_parent("Gateway")
+  entity Gateway;
+
+  @mcp_principal("IamEntity")
+  entity IamEntity = {
+    id: String
+  };
+
+  @mcp_principal("User")
+  entity OAuthUser = {
+    id: String
+  } tags String;
+
+  @mcp_action("Mcp")
+  action "Mcp" appliesTo {
+    principal: [OAuthUser, IamEntity],
+    resource: [Gateway],
+    context: {
+      sessionId: SessionId,
+      system: SystemContext
+    }
+  };
+}
+
+@mcp_server("weather-api")
+namespace Main::weather_api {
+  @mcp_resource("Target")
+  entity Target in [Main::Gateway];
+
+  @mcp_action("AllActions")
+  action "AllActions" in [Main::Action::"Mcp"];
+}
