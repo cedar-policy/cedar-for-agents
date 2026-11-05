@@ -17,7 +17,7 @@
 use crate::cli::{
     CliArgs, CliError, Command, ConfigOptions, ErrorFormat, OutputFormat, PoliciesArgs, RequestArgs,
 };
-use crate::{SchemaGenerator, SchemaGeneratorConfig};
+use crate::{SchemaGenerator, SchemaGeneratorConfig, StubBuilder};
 
 use cedar_policy_core::ast::{Context, EntityUID, PolicySet};
 use cedar_policy_core::entities::Entities;
@@ -27,6 +27,7 @@ use cedar_policy_core::validator::{json_schema::Fragment, RawName};
 use mcp_tools_sdk::data::{Input, Output};
 use mcp_tools_sdk::description::ServerDescription;
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 fn get_config(config_options: &ConfigOptions) -> SchemaGeneratorConfig {
@@ -97,6 +98,7 @@ impl CliArgs {
             Command::Generate {
                 schema_stub,
                 tool_descriptions,
+                servers,
                 output,
                 output_format,
                 config,
@@ -104,14 +106,51 @@ impl CliArgs {
             } => {
                 let config = get_config(config);
                 let schema_stub = read_schema(schema_stub)?;
-                let tool_descriptions = ServerDescription::from_json_file(tool_descriptions)?;
                 let mut schema_generator = SchemaGenerator::new_with_config(schema_stub, config)?;
-                schema_generator.add_actions_from_server_description(&tool_descriptions)?;
+                match tool_descriptions {
+                    Some(tool_descriptions) => {
+                        let tool_descriptions =
+                            ServerDescription::from_json_file(tool_descriptions)?;
+                        schema_generator.add_actions_from_server_description(&tool_descriptions)?;
+                    }
+                    None => {
+                        let mut server_descriptions = BTreeMap::new();
+                        for (server, tool_descriptions) in servers {
+                            let tool_descriptions =
+                                ServerDescription::from_json_file(tool_descriptions)?;
+                            if server_descriptions
+                                .insert(server.clone(), tool_descriptions)
+                                .is_some()
+                            {
+                                return Err(CliError::DuplicateServerArgument(server.clone()));
+                            }
+                        }
+                        schema_generator
+                            .add_actions_from_named_server_descriptions(&server_descriptions)?;
+                    }
+                }
                 output_schema(schema_generator.get_schema(), output, *output_format)
+            }
+            Command::Stub {
+                schema_stub,
+                servers,
+                output,
+                output_format,
+                ..
+            } => {
+                let mut builder = StubBuilder::new(read_schema(schema_stub)?)?;
+                for (server, namespace) in servers {
+                    builder = match namespace {
+                        Some(namespace) => builder.add_server_with_namespace(server, namespace)?,
+                        None => builder.add_server(server)?,
+                    };
+                }
+                output_schema(builder.get_stub(), output, *output_format)
             }
             Command::Authorize {
                 schema_stub,
                 tool_descriptions,
+                server,
                 config,
                 request,
                 policies,
@@ -124,7 +163,10 @@ impl CliArgs {
                 let schema_stub = read_schema(schema_stub)?;
                 let tool_descriptions = ServerDescription::from_json_file(tool_descriptions)?;
                 let mut schema_generator = SchemaGenerator::new_with_config(schema_stub, config)?;
-                schema_generator.add_actions_from_server_description(&tool_descriptions)?;
+                schema_generator.add_actions_from_optionally_named_server_description(
+                    server.as_deref(),
+                    &tool_descriptions,
+                )?;
                 let request_generator = schema_generator.new_request_generator()?;
                 let policies = read_policies(policies)?;
                 let entities = read_entities(entities)?;
@@ -134,10 +176,11 @@ impl CliArgs {
                     .as_ref()
                     .map(Output::from_json_file)
                     .transpose()?;
-                let (request, entities) = request_generator.generate_request(
+                let (request, entities) = request_generator.generate_optionally_named_request(
+                    server.as_deref(),
                     principal,
                     resource,
-                    context.into_iter(),
+                    context,
                     entities,
                     &input,
                     output.as_ref(),
@@ -158,6 +201,7 @@ impl CliArgs {
     pub fn get_error_format(&self) -> ErrorFormat {
         match &self.command {
             Command::Generate { error_format, .. } => *error_format,
+            Command::Stub { error_format, .. } => *error_format,
             Command::Authorize { error_format, .. } => *error_format,
         }
     }

@@ -17,7 +17,7 @@
 mod generator;
 pub use generator::{
     AuthorizationComponents, RequestGenerator, RequestGeneratorError, SchemaGenerator,
-    SchemaGeneratorConfig, SchemaGeneratorError,
+    SchemaGeneratorConfig, SchemaGeneratorError, ServerLookupError, StubBuilder,
 };
 
 #[cfg(feature = "cli")]

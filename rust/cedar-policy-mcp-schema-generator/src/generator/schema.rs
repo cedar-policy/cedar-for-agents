@@ -15,9 +15,10 @@
  */
 
 use super::identifiers;
-use crate::{RequestGenerator, SchemaGeneratorError};
+use super::target::{ToolTarget, ToolTargets};
+use crate::{RequestGenerator, SchemaGeneratorError, ServerLookupError};
 
-use cedar_policy_core::ast::{Eid, Id, InternalName, Name, UnreservedId};
+use cedar_policy_core::ast::{Annotation, AnyId, Eid, Id, InternalName, Name, UnreservedId};
 use cedar_policy_core::est::Annotations;
 use cedar_policy_core::validator::{
     json_schema::{
@@ -366,20 +367,18 @@ fn compute_lca(namespaces: &[Option<Name>]) -> Option<Name> {
 /// The Generator can then be populated with a number of tool / server
 /// descriptions to auto-generate Cedar actions corresponding one-to-one
 /// with each tool description.
+///
+/// If the schema stub has namespaces annotated with `@mcp_server("name")`, then
+/// the tools of each server are added to the namespace of that server, using the
+/// methods taking a server name (e.g., `add_actions_from_named_server_description`).
 #[derive(Debug, Clone)]
 pub struct SchemaGenerator {
     fragment: Fragment<RawName>,
+    /// The main namespace of the schema stub, i.e., its only namespace without `@mcp_server`.
     namespace: Option<Name>,
     users: Vec<RawName>,
-    resources: Vec<RawName>,
-    contexts: BTreeMap<SmolStr, RawName>,
-    actions: Option<Vec<ActionEntityUID<RawName>>>,
     config: SchemaGeneratorConfig,
-    tools: ServerDescription,
-    /// Resolved deduplication decisions, populated during pass 1
-    /// (only when deduplicate_entity_types is true).
-    /// Maps fingerprint → placement info for entity types that appear in multiple tools.
-    resolved_dedup: Option<HashMap<EntityTypeFingerprint, DeduplicatedEntityType>>,
+    targets: ToolTargets,
 }
 
 impl SchemaGenerator {
@@ -404,12 +403,7 @@ impl SchemaGenerator {
         schema_stub: &str,
         config: SchemaGeneratorConfig,
     ) -> Result<Self, SchemaGeneratorError> {
-        use cedar_policy_core::extensions::Extensions;
-        let extensions = Extensions::all_available();
-        let (fragment, _warnings) =
-            Fragment::<RawName>::from_cedarschema_str(schema_stub, extensions)
-                .map_err(|e| SchemaGeneratorError::SchemaParseError(e.to_string()))?;
-        Self::new_with_config(fragment, config)
+        Self::new_with_config(parse_stub(schema_stub)?, config)
     }
 
     /// Create a `SchemaGenerator` from a Cedar Schema Fragment using specified configuration
@@ -417,109 +411,114 @@ impl SchemaGenerator {
         schema_stub: Fragment<RawName>,
         config: SchemaGeneratorConfig,
     ) -> Result<Self, SchemaGeneratorError> {
-        let (ns, namespace) = match schema_stub.0.iter().next() {
-            Some((None, _)) => return Err(SchemaGeneratorError::GlobalNamespaceUsed),
-            Some((Some(namespace), ns)) => (ns, namespace.clone()),
-            None => return Err(SchemaGeneratorError::WrongNumberOfNamespaces),
-        };
-        if schema_stub.0.len() > 1 {
-            return Err(SchemaGeneratorError::WrongNumberOfNamespaces);
-        }
+        let (namespace, ns, servers) = split_stub(&schema_stub)?;
 
-        let users = ns
-            .entity_types
-            .iter()
-            .filter_map(|(tyname, ty)| {
-                ty.annotations.0.get(&*identifiers::MCP_PRINCIPAL).map(|_| {
-                    RawName::from_name(InternalName::unqualified_name(tyname.clone().into(), None))
-                })
-            })
-            .collect::<Vec<_>>();
+        // With `@mcp_server` namespaces, actions are generated in the server namespaces,
+        // so the names they use from the main namespace must be qualified.
+        let main_qualifier = (!servers.is_empty()).then_some(namespace);
+        let users = annotated_entity_types(ns, &identifiers::MCP_PRINCIPAL, main_qualifier);
         if users.is_empty() {
             return Err(SchemaGeneratorError::NoPrincipalTypes);
         }
+        let resources = annotated_entity_types(ns, &identifiers::MCP_RESOURCE, None);
+        let contexts = annotated_contexts(ns, main_qualifier);
+        let actions = annotated_actions(ns, main_qualifier);
 
-        let resources = ns
-            .entity_types
-            .iter()
-            .filter_map(|(tyname, ty)| {
-                ty.annotations.0.get(&*identifiers::MCP_RESOURCE).map(|_| {
-                    RawName::from_name(InternalName::unqualified_name(tyname.clone().into(), None))
-                })
-            })
-            .collect::<Vec<_>>();
-        if resources.is_empty() {
-            return Err(SchemaGeneratorError::NoResourceTypes);
-        }
-
-        let contexts = ns
-            .entity_types
-            .iter()
-            .filter_map(|(tyname, ty)| {
-                ty.annotations
-                    .0
-                    .get(&*identifiers::MCP_CONTEXT)
-                    .and_then(|anno| anno.as_ref())
-                    .map(|anno| {
-                        (
-                            anno.val.clone(),
-                            RawName::from_name(InternalName::unqualified_name(
-                                tyname.clone().into(),
-                                None,
-                            )),
-                        )
-                    })
-            })
-            .chain(ns.common_types.iter().filter_map(|(tyname, ty)| {
-                ty.annotations
-                    .0
-                    .get(&*identifiers::MCP_CONTEXT)
-                    .and_then(|anno| anno.as_ref())
-                    .map(|anno| {
-                        (
-                            anno.val.clone(),
-                            RawName::from_name(InternalName::unqualified_name(
-                                tyname.as_ref().clone().into(),
-                                None,
-                            )),
-                        )
-                    })
-            }))
-            .collect();
-
-        let actions = ns
-            .actions
-            .iter()
-            .filter_map(|(name, action)| {
-                action
-                    .annotations
-                    .0
-                    .get(&*identifiers::MCP_ACTION)
-                    .map(|_| ActionEntityUID::new(None, name.clone()))
-            })
-            .collect::<Vec<_>>();
-        let actions = if actions.is_empty() {
-            None
+        // Server namespaces that get a generated `AllActions` action
+        let mut all_actions_namespaces = Vec::new();
+        let targets = if servers.is_empty() {
+            if resources.is_empty() {
+                return Err(SchemaGeneratorError::NoResourceTypes);
+            }
+            ToolTargets::Single(ToolTarget::new(
+                Some(namespace.clone()),
+                resources,
+                contexts,
+                actions.clone(),
+            ))
         } else {
-            Some(actions)
+            if config.flatten_namespaces {
+                return Err(SchemaGeneratorError::FlattenWithServerNamespaces);
+            }
+            if !resources.is_empty() {
+                return Err(SchemaGeneratorError::ResourceInMainNamespace(
+                    namespace.to_string(),
+                ));
+            }
+            let mut targets = BTreeMap::new();
+            for (server_ns, server, ns) in servers {
+                let server_name = server
+                    .as_ref()
+                    .map(|anno| anno.val.clone())
+                    .filter(|name| !name.is_empty())
+                    .ok_or_else(|| {
+                        SchemaGeneratorError::MissingServerName(server_ns.to_string())
+                    })?;
+                // Otherwise, a tool `Y` of server `Main::X` would generate the namespace of
+                // server `Main::X::Y`
+                if server_ns.as_ref().namespace() != namespace.to_string() {
+                    return Err(SchemaGeneratorError::ServerNamespaceNotChildOfMain {
+                        namespace: server_ns.to_string(),
+                        main: namespace.to_string(),
+                    });
+                }
+                if !annotated_entity_types(ns, &identifiers::MCP_PRINCIPAL, None).is_empty() {
+                    return Err(SchemaGeneratorError::PrincipalInServerNamespace(
+                        server_ns.to_string(),
+                    ));
+                }
+                let resources = annotated_entity_types(ns, &identifiers::MCP_RESOURCE, None);
+                if resources.len() != 1 {
+                    return Err(SchemaGeneratorError::WrongNumberOfServerResources {
+                        namespace: server_ns.to_string(),
+                        count: resources.len(),
+                    });
+                }
+                // Server contexts override main contexts with the same key
+                let mut server_contexts = contexts.clone();
+                server_contexts.extend(annotated_contexts(ns, None));
+                if let Some(key) = server_contexts
+                    .keys()
+                    .find(|key| *key == identifiers::INPUT_KEY || *key == identifiers::OUTPUT_KEY)
+                {
+                    return Err(SchemaGeneratorError::ReservedContextKey(key.clone()));
+                }
+                // The parents of these actions are the ones written in the stub
+                let mut server_actions = annotated_actions(ns, None);
+                if server_actions.is_empty() {
+                    all_actions_namespaces.push(server_ns.clone());
+                    server_actions
+                        .push(ActionEntityUID::new(None, identifiers::ALL_ACTIONS.into()));
+                }
+                let target = ToolTarget::new(
+                    Some(server_ns.clone()),
+                    resources,
+                    server_contexts,
+                    server_actions,
+                );
+                if targets.insert(server_name.clone(), target).is_some() {
+                    return Err(SchemaGeneratorError::DuplicateServerName(server_name));
+                }
+            }
+            ToolTargets::Multi(targets)
         };
+        let namespace = namespace.clone();
 
-        let fragment = if config.erase_annotations {
+        let mut fragment = if config.erase_annotations {
             erase_mcp_annotations(schema_stub)
         } else {
             schema_stub
         };
+        for server_ns in all_actions_namespaces {
+            add_all_actions(&mut fragment, &server_ns, &actions)?;
+        }
 
         Ok(Self {
             fragment,
             namespace: Some(namespace),
             users,
-            resources,
-            contexts,
-            actions,
             config,
-            tools: ServerDescription::new(Vec::new().into_iter(), HashMap::new()),
-            resolved_dedup: None,
+            targets,
         })
     }
 
@@ -541,13 +540,126 @@ impl SchemaGenerator {
             cedar_policy_core::validator::ValidatorSchema::try_from(self.fragment.clone())?;
         Ok(RequestGenerator::new(
             self.config.clone(),
-            self.tools.clone(),
             self.namespace.clone(),
             schema,
-            self.resolved_dedup.clone(),
+            self.targets.clone(),
         ))
     }
 
+    /// Add a new action to the generated Cedar Schema
+    /// that corresponds to the input `ToolDescription`
+    ///
+    /// Only for schema stubs without `@mcp_server` namespaces.
+    pub fn add_action_from_tool_description(
+        &mut self,
+        description: &ToolDescription,
+    ) -> Result<(), SchemaGeneratorError> {
+        self.transaction(|generator| {
+            generator
+                .target_generator(None)?
+                .add_action_from_tool_description(description)
+        })
+    }
+
+    /// Add a new action to the generated Cedar Schema
+    /// for each tool description within the `ServerDescription`
+    ///
+    /// Only for schema stubs without `@mcp_server` namespaces.
+    pub fn add_actions_from_server_description(
+        &mut self,
+        description: &ServerDescription,
+    ) -> Result<(), SchemaGeneratorError> {
+        self.add_actions_from_optionally_named_server_description(None, description)
+    }
+
+    /// Add a new action to the generated Cedar Schema for each tool description within
+    /// the `ServerDescription`, in the namespace annotated with `@mcp_server("{server}")`.
+    /// The tools of a server can only be added once.
+    ///
+    /// Only for schema stubs with `@mcp_server` namespaces.
+    pub fn add_actions_from_named_server_description(
+        &mut self,
+        server: &str,
+        description: &ServerDescription,
+    ) -> Result<(), SchemaGeneratorError> {
+        self.add_actions_from_optionally_named_server_description(Some(server), description)
+    }
+
+    /// `add_actions_from_named_server_description` if `server` is given, and
+    /// `add_actions_from_server_description` otherwise.
+    pub(crate) fn add_actions_from_optionally_named_server_description(
+        &mut self,
+        server: Option<&str>,
+        description: &ServerDescription,
+    ) -> Result<(), SchemaGeneratorError> {
+        self.transaction(|generator| {
+            generator
+                .target_generator(server)?
+                .add_actions_from_server_description(description)
+        })
+    }
+
+    /// Call `add_actions_from_named_server_description` for each server name and
+    /// `ServerDescription` of `servers`. If one of them fails, then no actions are added.
+    ///
+    /// Only for schema stubs with `@mcp_server` namespaces.
+    pub fn add_actions_from_named_server_descriptions(
+        &mut self,
+        servers: &BTreeMap<String, ServerDescription>,
+    ) -> Result<(), SchemaGeneratorError> {
+        self.transaction(|generator| {
+            servers.iter().try_for_each(|(server, description)| {
+                generator
+                    .target_generator(Some(server))?
+                    .add_actions_from_server_description(description)
+            })
+        })
+    }
+
+    /// Run `f`, and restore the generator to its current state if `f` fails.
+    fn transaction(
+        &mut self,
+        f: impl FnOnce(&mut Self) -> Result<(), SchemaGeneratorError>,
+    ) -> Result<(), SchemaGeneratorError> {
+        let snapshot = self.clone();
+        let result = f(self);
+        if result.is_err() {
+            *self = snapshot;
+        }
+        result
+    }
+
+    /// Get a `TargetGenerator` adding tools to the namespace of `server`, or to the only
+    /// namespace of the schema stub if `server` is `None`.
+    fn target_generator(
+        &mut self,
+        server: Option<&str>,
+    ) -> Result<TargetGenerator<'_>, ServerLookupError> {
+        Ok(TargetGenerator {
+            target: self.targets.get_mut(server)?,
+            fragment: &mut self.fragment,
+            config: &self.config,
+            main_namespace: &self.namespace,
+            users: &self.users,
+        })
+    }
+}
+
+/// Adds the actions of tools to one `ToolTarget` of a `SchemaGenerator`. It borrows the fields of
+/// the `SchemaGenerator` separately, so that the target and the fragment can both be mutated.
+#[derive(Debug)]
+struct TargetGenerator<'a> {
+    target: &'a mut ToolTarget,
+    fragment: &'a mut Fragment<RawName>,
+    config: &'a SchemaGeneratorConfig,
+    /// The main namespace of the schema stub. It contains the opaque entity types
+    /// (`Float`, `Number`, `Null`, `Unknown`) shared by all targets.
+    main_namespace: &'a Option<Name>,
+    /// The principal types, qualified if `target` is not the main namespace.
+    users: &'a [RawName],
+}
+
+impl TargetGenerator<'_> {
     /// Check if a fingerprint matches an existing entity type definition.
     fn fingerprint_matches_entity(
         fingerprint: &EntityTypeFingerprint,
@@ -652,7 +764,8 @@ impl SchemaGenerator {
     /// Look up whether a given fingerprint was deduplicated.
     /// Returns the LCA namespace if so.
     fn get_dedup_namespace(&self, fingerprint: &EntityTypeFingerprint) -> Option<&Option<Name>> {
-        self.resolved_dedup
+        self.target
+            .resolved_dedup
             .as_ref()
             .and_then(|map| map.get(fingerprint))
             .map(|d| &d.lca_namespace)
@@ -785,65 +898,29 @@ impl SchemaGenerator {
         }
     }
 
-    /// Add a new action to the generated Cedar Schema
-    /// that corresponds to the input `ToolDescription`
-    pub fn add_action_from_tool_description(
+    fn add_action_from_tool_description(
         &mut self,
         description: &ToolDescription,
     ) -> Result<(), SchemaGeneratorError> {
-        if self.tools.tool_descriptions().count() != 0 {
+        if self.target.tools.tool_descriptions().count() != 0 {
             return Err(SchemaGeneratorError::ServerDescriptionMerge);
         }
-        // Keep a copy of state (schema, tools and dedup) in case we have an error
-        let fragment = self.fragment.clone();
-        let tools = self.tools.clone();
-        let resolved_dedup = self.resolved_dedup.clone();
-        self.tools = ServerDescription::new(vec![description.clone()].into_iter(), HashMap::new());
-        match self.add_action_from_tool_description_inner(description, BTreeMap::new()) {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                // Restore the values if adding the new tool failed.
-                self.fragment = fragment;
-                self.tools = tools;
-                self.resolved_dedup = resolved_dedup;
-                Err(e)
-            }
-        }
+        self.target.tools =
+            ServerDescription::new(vec![description.clone()].into_iter(), HashMap::new());
+        self.add_action_from_tool_description_inner(description, BTreeMap::new())
     }
 
-    /// Add a new action to the generated Cedar Schema
-    /// for each tool description within the `ServerDescription`
-    pub fn add_actions_from_server_description(
+    fn add_actions_from_server_description(
         &mut self,
         description: &ServerDescription,
     ) -> Result<(), SchemaGeneratorError> {
-        // Keep a copy of generatore state (schema, tools, dedup map) in case we have an error
-        let fragment = self.fragment.clone();
-        let tools = self.tools.clone();
-        let resolved_dedup = self.resolved_dedup.clone();
-        match self.add_actions_from_server_description_inner(description) {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                // Restore the cloned values
-                self.fragment = fragment;
-                self.tools = tools;
-                self.resolved_dedup = resolved_dedup;
-                Err(e)
-            }
-        }
-    }
-
-    fn add_actions_from_server_description_inner(
-        &mut self,
-        description: &ServerDescription,
-    ) -> Result<(), SchemaGeneratorError> {
-        if self.tools.tool_descriptions().count() != 0 {
+        if self.target.tools.tool_descriptions().count() != 0 {
             return Err(SchemaGeneratorError::ServerDescriptionMerge);
         }
-        self.tools = description.clone();
+        self.target.tools = description.clone();
 
         // Clone once and reuse to avoid borrow issues
-        let namespace = self.namespace.clone();
+        let namespace = self.target.namespace.clone();
 
         // Populate a map from type ref names to fully qualified type name
         // This makes type resolution simpler and will allow for mutually recursive type defs
@@ -890,7 +967,7 @@ impl SchemaGenerator {
 
         for tool_description in description.tool_descriptions() {
             let tool_ns: Name = tool_description.name().parse()?;
-            let tool_ns = tool_ns.qualify_with_name(self.namespace.as_ref());
+            let tool_ns = tool_ns.qualify_with_name(self.target.namespace.as_ref());
             let input_ns = Some(identifiers::INPUT_NAME.qualify_with_name(Some(&tool_ns)));
 
             Self::collect_enum_fingerprints(tool_description.inputs(), &input_ns, &mut dedup_map);
@@ -1043,7 +1120,7 @@ impl SchemaGenerator {
             placed.insert(fingerprint.clone(), dedup_info.clone());
         }
 
-        self.resolved_dedup = Some(placed);
+        self.target.resolved_dedup = Some(placed);
         Ok(())
     }
 
@@ -1053,7 +1130,7 @@ impl SchemaGenerator {
         mut common_types: BTreeMap<SmolStr, RawName>,
     ) -> Result<(), SchemaGeneratorError> {
         let namespace: Name = description.name().parse()?;
-        let namespace = Some(namespace.qualify_with_name(self.namespace.as_ref()));
+        let namespace = Some(namespace.qualify_with_name(self.target.namespace.as_ref()));
         self.add_namespace(namespace.clone());
 
         // Populate a map from type ref names to fully qualified type name
@@ -1081,6 +1158,7 @@ impl SchemaGenerator {
 
         // Shared Common (input Context Types)
         let mut ctx_attrs = self
+            .target
             .contexts
             .iter()
             .map(|(key, ty_name)| {
@@ -1114,7 +1192,7 @@ impl SchemaGenerator {
         };
         let tool_input_ty_name: UnreservedId =
             format!("{}Input", description.name()).as_str().parse()?;
-        let parent_namespace = self.namespace.clone();
+        let parent_namespace = self.target.namespace.clone();
         self.add_commontype(
             &parent_namespace,
             input_type,
@@ -1123,7 +1201,7 @@ impl SchemaGenerator {
         )?;
 
         ctx_attrs.insert(
-            "input".to_smolstr(),
+            identifiers::INPUT_KEY.to_smolstr(),
             TypeOfAttribute {
                 ty: Type::CommonTypeRef {
                     type_name: RawName::new_from_unreserved(tool_input_ty_name, None),
@@ -1158,7 +1236,7 @@ impl SchemaGenerator {
                 true,
             )?;
             ctx_attrs.insert(
-                "output".to_smolstr(),
+                identifiers::OUTPUT_KEY.to_smolstr(),
                 TypeOfAttribute {
                     ty: Type::CommonTypeRef {
                         type_name: RawName::new_from_unreserved(tool_output_ty_name, None),
@@ -1174,8 +1252,8 @@ impl SchemaGenerator {
             external: false,
             attributes: None,
             applies_to: Some(ApplySpec {
-                resource_types: self.resources.clone(),
-                principal_types: self.users.clone(),
+                resource_types: self.target.resources.clone(),
+                principal_types: self.users.to_vec(),
                 context: AttributesOrContext(Type::Type {
                     ty: TypeVariant::Record(RecordType {
                         attributes: ctx_attrs,
@@ -1184,30 +1262,46 @@ impl SchemaGenerator {
                     loc: None,
                 }),
             }),
-            member_of: self.actions.clone(),
+            member_of: self.target.actions.clone(),
             annotations: Annotations::new(),
             loc: None,
         };
 
         #[expect(clippy::unwrap_used, reason = "Namespace exists by construction.")]
-        self.fragment
+        let actions = &mut self
+            .fragment
             .0
-            .get_mut(&self.namespace)
+            .get_mut(&self.target.namespace)
             .unwrap()
-            .actions
-            .insert(description.name().to_smolstr(), action);
+            .actions;
+        match actions.entry(description.name().to_smolstr()) {
+            Entry::Occupied(occ) => {
+                return Err(SchemaGeneratorError::ConflictingActionName {
+                    action: occ.key().clone(),
+                    namespace: self
+                        .target
+                        .namespace
+                        .as_ref()
+                        .map(ToString::to_string)
+                        .unwrap_or_default(),
+                })
+            }
+            Entry::Vacant(vac) => {
+                vac.insert(action);
+            }
+        }
 
         self.drop_namespace_if_empty(&namespace);
 
         Ok(())
     }
 
-    // This function should only be called when name is prefixed by `{self.namespace}::`
-    // Converts `{self.namespace}::Foo::Bar::Baz` to `{self.namespace}::Foo_Bar_Baz`.
+    // This function should only be called when name is prefixed by `{self.main_namespace}::`
+    // Converts `{self.main_namespace}::Foo::Bar::Baz` to `{self.main_namespace}::Foo_Bar_Baz`.
     fn flatten_internalname(&self, name: InternalName) -> InternalName {
         if self.config.flatten_namespaces {
             let name = name.to_string();
-            let name = if self.namespace.is_some() {
+            let name = if self.main_namespace.is_some() {
                 #[expect(
                     clippy::unwrap_used,
                     reason = "By assumption name should include at least one \"::\"."
@@ -1222,14 +1316,14 @@ impl SchemaGenerator {
                 reason = "The `name` should still parse after converting \"::\" to \"_\"."
             )]
             let name: InternalName = name.parse().unwrap();
-            name.qualify_with_name(self.namespace.as_ref())
+            name.qualify_with_name(self.main_namespace.as_ref())
         } else {
             name
         }
     }
 
-    // This function should only be called when name is prefixed by `{self.namespace}::`
-    // Converts `{self.namespace}::Foo::Bar::Baz` to `{self.namespace}::Foo_Bar_Baz`.
+    // This function should only be called when name is prefixed by `{self.main_namespace}::`
+    // Converts `{self.main_namespace}::Foo::Bar::Baz` to `{self.main_namespace}::Foo_Bar_Baz`.
     fn flatten_rawname(&self, name: RawName) -> RawName {
         if self.config.flatten_namespaces {
             RawName::from_name(self.flatten_internalname(name.qualify_with(None)))
@@ -1242,8 +1336,8 @@ impl SchemaGenerator {
         clippy::ref_option,
         reason = "This follows a decision made by cedar-policy-core which we are using."
     )]
-    // This function should only be called when namespace is prefixed by `{self.namespace}::`
-    // If `namespace` is `{self.namespace}::Foo::Bar::Baz` then this function returns the id `Foo_Bar_Baz_id`.
+    // This function should only be called when namespace is prefixed by `{self.main_namespace}::`
+    // If `namespace` is `{self.main_namespace}::Foo::Bar::Baz` then this function returns the id `Foo_Bar_Baz_id`.
     fn flatten_unreserved_id(&self, id: UnreservedId, namespace: &Option<Name>) -> UnreservedId {
         if self.config.flatten_namespaces {
             let name = Name::unqualified_name(id).qualify_with_name(namespace.as_ref());
@@ -1299,7 +1393,7 @@ impl SchemaGenerator {
     ) -> Result<(), SchemaGeneratorError> {
         let (namespace, ty_name) = if self.config.flatten_namespaces {
             (
-                &self.namespace,
+                self.main_namespace,
                 self.flatten_unreserved_id(ty_name, namespace),
             )
         } else {
@@ -1360,7 +1454,7 @@ impl SchemaGenerator {
     ) -> Result<(), SchemaGeneratorError> {
         let (namespace, ty_name) = if self.config.flatten_namespaces {
             (
-                &self.namespace,
+                self.main_namespace,
                 self.flatten_unreserved_id(ty_name, namespace),
             )
         } else {
@@ -1508,11 +1602,12 @@ impl SchemaGenerator {
                     decimal
                 } else {
                     self.add_opaque_entity_type(
-                        &self.namespace.clone(),
+                        &self.main_namespace.clone(),
                         identifiers::FLOAT_TYPE.clone(),
                     )?;
                     let name = RawName::new_from_unreserved(identifiers::FLOAT_TYPE.clone(), None);
-                    let name = RawName::from_name(name.qualify_with_name(self.namespace.as_ref()));
+                    let name =
+                        RawName::from_name(name.qualify_with_name(self.main_namespace.as_ref()));
                     TypeVariant::Entity { name }
                 }
             }
@@ -1521,11 +1616,12 @@ impl SchemaGenerator {
                     decimal
                 } else {
                     self.add_opaque_entity_type(
-                        &self.namespace.clone(),
+                        &self.main_namespace.clone(),
                         identifiers::NUMBER_TYPE.clone(),
                     )?;
                     let name = RawName::new_from_unreserved(identifiers::NUMBER_TYPE.clone(), None);
-                    let name = RawName::from_name(name.qualify_with_name(self.namespace.as_ref()));
+                    let name =
+                        RawName::from_name(name.qualify_with_name(self.main_namespace.as_ref()));
                     TypeVariant::Entity { name }
                 }
             }
@@ -1536,20 +1632,20 @@ impl SchemaGenerator {
             PropertyType::IpAddr => ipaddr,
             PropertyType::Null => {
                 self.add_opaque_entity_type(
-                    &self.namespace.clone(),
+                    &self.main_namespace.clone(),
                     identifiers::NULL_TYPE.clone(),
                 )?;
                 let name = RawName::new_from_unreserved(identifiers::NULL_TYPE.clone(), None);
-                let name = RawName::from_name(name.qualify_with_name(self.namespace.as_ref()));
+                let name = RawName::from_name(name.qualify_with_name(self.main_namespace.as_ref()));
                 TypeVariant::Entity { name }
             }
             PropertyType::Unknown => {
                 self.add_opaque_entity_type(
-                    &self.namespace.clone(),
+                    &self.main_namespace.clone(),
                     identifiers::UNKNOWN_TYPE.clone(),
                 )?;
                 let name = RawName::new_from_unreserved(identifiers::UNKNOWN_TYPE.clone(), None);
-                let name = RawName::from_name(name.qualify_with_name(self.namespace.as_ref()));
+                let name = RawName::from_name(name.qualify_with_name(self.main_namespace.as_ref()));
                 TypeVariant::Entity { name }
             }
             PropertyType::Enum { variants } => {
@@ -1917,7 +2013,11 @@ fn erase_mcp_annotations(schema_stub: Fragment<RawName>) -> Fragment<RawName> {
     let ns = schema_stub
         .0
         .into_iter()
-        .map(|(name, nsdef)| {
+        .map(|(name, mut nsdef)| {
+            nsdef
+                .annotations
+                .0
+                .retain(|anno, _| anno.as_ref() != "mcp_server");
             let common_types = nsdef
                 .common_types
                 .into_iter()
@@ -1947,6 +2047,7 @@ fn erase_mcp_annotations(schema_stub: Fragment<RawName>) -> Fragment<RawName> {
                                 .filter(|(anno, _)| {
                                     anno.as_ref() != "mcp_context"
                                         && anno.as_ref() != "mcp_resource"
+                                        && anno.as_ref() != "mcp_resource_parent"
                                         && anno.as_ref() != "mcp_principal"
                                 })
                                 .collect(),
@@ -1985,6 +2086,141 @@ fn erase_mcp_annotations(schema_stub: Fragment<RawName>) -> Fragment<RawName> {
         })
         .collect();
     Fragment(ns)
+}
+
+/// Parse a `.cedarschema` schema stub
+pub(super) fn parse_stub(stub: &str) -> Result<Fragment<RawName>, SchemaGeneratorError> {
+    let extensions = cedar_policy_core::extensions::Extensions::all_available();
+    let (fragment, _warnings) = Fragment::<RawName>::from_cedarschema_str(stub, extensions)
+        .map_err(|e| SchemaGeneratorError::SchemaParseError(e.to_string()))?;
+    Ok(fragment)
+}
+
+/// A server namespace of a schema stub: its name, its `@mcp_server` annotation, and its definition
+pub(super) type ServerNamespace<'a> = (
+    &'a Name,
+    &'a Option<Annotation>,
+    &'a NamespaceDefinition<RawName>,
+);
+
+/// Split the namespaces of `stub` into the main namespace, i.e., the only namespace without
+/// `@mcp_server`, and the server namespaces
+pub(super) fn split_stub(
+    stub: &Fragment<RawName>,
+) -> Result<
+    (
+        &Name,
+        &NamespaceDefinition<RawName>,
+        Vec<ServerNamespace<'_>>,
+    ),
+    SchemaGeneratorError,
+> {
+    let mut main = None;
+    let mut servers = Vec::new();
+    for (name, ns) in &stub.0 {
+        let Some(name) = name else {
+            return Err(SchemaGeneratorError::GlobalNamespaceUsed);
+        };
+        match ns.annotations.0.get(&*identifiers::MCP_SERVER) {
+            Some(server) => servers.push((name, server, ns)),
+            None if main.is_none() => main = Some((name, ns)),
+            None => return Err(SchemaGeneratorError::WrongNumberOfNamespaces),
+        }
+    }
+    let (name, ns) = main.ok_or(SchemaGeneratorError::WrongNumberOfNamespaces)?;
+    Ok((name, ns, servers))
+}
+
+/// Qualify `id` with `namespace`, if any
+pub(super) fn qualified_rawname(id: UnreservedId, namespace: Option<&Name>) -> RawName {
+    RawName::from_name(RawName::new_from_unreserved(id, None).qualify_with_name(namespace))
+}
+
+/// The entity types of `ns` with annotation `annotation`, qualified with `qualifier`
+pub(super) fn annotated_entity_types(
+    ns: &NamespaceDefinition<RawName>,
+    annotation: &AnyId,
+    qualifier: Option<&Name>,
+) -> Vec<RawName> {
+    ns.entity_types
+        .iter()
+        .filter(|(_, ty)| ty.annotations.0.contains_key(annotation))
+        .map(|(tyname, _)| qualified_rawname(tyname.clone(), qualifier))
+        .collect()
+}
+
+/// The context keys given by the `@mcp_context` annotations of the entity and common types
+/// of `ns`, mapped to these types qualified with `qualifier`
+fn annotated_contexts(
+    ns: &NamespaceDefinition<RawName>,
+    qualifier: Option<&Name>,
+) -> BTreeMap<SmolStr, RawName> {
+    let context_key = |annotations: &Annotations| {
+        annotations
+            .0
+            .get(&*identifiers::MCP_CONTEXT)
+            .and_then(|anno| anno.as_ref())
+            .map(|anno| anno.val.clone())
+    };
+    ns.entity_types
+        .iter()
+        .filter_map(|(tyname, ty)| {
+            Some((
+                context_key(&ty.annotations)?,
+                qualified_rawname(tyname.clone(), qualifier),
+            ))
+        })
+        .chain(ns.common_types.iter().filter_map(|(tyname, ty)| {
+            Some((
+                context_key(&ty.annotations)?,
+                qualified_rawname(tyname.as_ref().clone(), qualifier),
+            ))
+        }))
+        .collect()
+}
+
+/// The actions of `ns` with an `@mcp_action` annotation, with their type qualified with `qualifier`
+pub(super) fn annotated_actions(
+    ns: &NamespaceDefinition<RawName>,
+    qualifier: Option<&Name>,
+) -> Vec<ActionEntityUID<RawName>> {
+    let ty = qualifier
+        .map(|qualifier| qualified_rawname(identifiers::ACTION_ID.clone(), Some(qualifier)));
+    ns.actions
+        .iter()
+        .filter(|(_, action)| action.annotations.0.contains_key(&*identifiers::MCP_ACTION))
+        .map(|(name, _)| ActionEntityUID::new(ty.clone(), name.clone()))
+        .collect()
+}
+
+/// Add the action `AllActions`, with parents `parents`, to `namespace`
+fn add_all_actions(
+    fragment: &mut Fragment<RawName>,
+    namespace: &Name,
+    parents: &[ActionEntityUID<RawName>],
+) -> Result<(), SchemaGeneratorError> {
+    let action = ActionType {
+        external: false,
+        attributes: None,
+        applies_to: None,
+        member_of: (!parents.is_empty()).then(|| parents.to_vec()),
+        annotations: Annotations::new(),
+        loc: None,
+    };
+    #[expect(
+        clippy::unwrap_used,
+        reason = "This function is only called on namespaces appearing in fragment."
+    )]
+    let nsdef = fragment.0.get_mut(&Some(namespace.clone())).unwrap();
+    match nsdef.actions.entry(identifiers::ALL_ACTIONS.into()) {
+        Entry::Occupied(_) => Err(SchemaGeneratorError::AllActionsInStub(
+            namespace.to_string(),
+        )),
+        Entry::Vacant(vac) => {
+            vac.insert(action);
+            Ok(())
+        }
+    }
 }
 
 #[cfg(test)]
@@ -3240,7 +3476,13 @@ namespace Test2 {
             .is_err());
 
         assert_eq!(
-            schema_gen.tools.tool_descriptions().count(),
+            schema_gen
+                .targets
+                .get(None)
+                .unwrap()
+                .tools
+                .tool_descriptions()
+                .count(),
             0,
             "Failed tool should not remain in generator state"
         );
@@ -3325,5 +3567,378 @@ mod coverage_tests {
         );
         // Verify it matches Display for the same fragment
         assert_eq!(output, format!("{}", gen.get_schema()));
+    }
+}
+
+#[cfg(test)]
+mod multi_namespace_tests {
+    use super::*;
+    use cool_asserts::assert_matches;
+
+    const MAIN: &str = r#"@mcp_principal("User") entity User;
+        @mcp_context("session") type Session = { id: String };
+        @mcp_action("Mcp") action Mcp;"#;
+    const TARGET: &str = r#"@mcp_resource("Target") entity Target;"#;
+    const S1: &str = r#"@mcp_server("s1")"#;
+
+    /// A stub with main namespace `Main` with body `main`, and the server namespaces
+    /// `(annotation, namespace, body)` of `servers`
+    fn stub(main: &str, servers: &[(&str, &str, &str)]) -> String {
+        servers.iter().fold(
+            format!("namespace Main {{ {main} }}\n"),
+            |stub, (annotation, namespace, body)| {
+                format!("{stub}{annotation} namespace {namespace} {{ {body} }}\n")
+            },
+        )
+    }
+
+    /// A stub with server `s1` in namespace `Main::S1` with body `server`
+    fn one_server(main: &str, server: &str) -> String {
+        stub(main, &[(S1, "Main::S1", server)])
+    }
+
+    fn generator(stub: &str) -> SchemaGenerator {
+        SchemaGenerator::from_cedarschema_str(stub).unwrap()
+    }
+
+    fn tool(name: &str) -> ServerDescription {
+        ServerDescription::from_json_str(&format!(
+            r#"{{"name": "{name}", "inputSchema": {{"type": "object"}}}}"#
+        ))
+        .unwrap()
+    }
+
+    fn actions<'a>(
+        gen: &'a SchemaGenerator,
+        namespace: &str,
+    ) -> &'a BTreeMap<SmolStr, ActionType<RawName>> {
+        &gen.get_schema().0[&Some(namespace.parse().unwrap())].actions
+    }
+
+    #[test]
+    fn server_namespace_gets_actions() {
+        let mut gen = generator(&one_server(MAIN, TARGET));
+        gen.add_actions_from_named_server_description("s1", &tool("t"))
+            .unwrap();
+        let expected = r#"namespace Main {
+  type Session = {
+    id: String
+  };
+
+  entity User;
+
+  action "Mcp";
+}
+
+namespace Main::S1 {
+  type tInput = {  };
+
+  entity Target;
+
+  action "AllActions" in [Main::Action::"Mcp"];
+
+  action "t" in [Action::"AllActions"] appliesTo {
+    principal: [Main::User],
+    resource: [Target],
+    context: {
+      input: tInput,
+      session: Main::Session
+    }
+  };
+}
+"#;
+        assert_eq!(gen.get_schema().to_cedarschema().unwrap(), expected);
+        gen.new_request_generator().unwrap();
+    }
+
+    #[test]
+    fn main_namespace_with_path() {
+        let stub = r#"namespace A::B { @mcp_principal("User") entity User; }
+            @mcp_server("s1") namespace A::B::S1 { @mcp_resource("Target") entity Target; }"#;
+        let mut gen = generator(stub);
+        gen.add_actions_from_named_server_description("s1", &tool("t"))
+            .unwrap();
+        let applies_to = actions(&gen, "A::B::S1")["t"].applies_to.as_ref().unwrap();
+        assert_eq!(
+            applies_to.principal_types,
+            vec!["A::B::User".parse().unwrap()]
+        );
+        gen.new_request_generator().unwrap();
+    }
+
+    #[test]
+    fn json_stub() {
+        let stub = r#"{
+            "Main": {
+                "entityTypes": { "User": { "annotations": { "mcp_principal": "User" } } },
+                "actions": {}
+            },
+            "Main::S1": {
+                "annotations": { "mcp_server": "s1" },
+                "entityTypes": { "Target": { "annotations": { "mcp_resource": "Target" } } },
+                "actions": {}
+            }
+        }"#;
+        let mut gen = SchemaGenerator::new(Fragment::from_json_str(stub).unwrap()).unwrap();
+        gen.add_actions_from_named_server_description("s1", &tool("t"))
+            .unwrap();
+        assert!(actions(&gen, "Main::S1").contains_key("t"));
+    }
+
+    #[test]
+    fn all_actions_without_main_action_has_no_parent() {
+        let main = MAIN.replace(r#"@mcp_action("Mcp")"#, "");
+        let gen = generator(&one_server(&main, TARGET));
+        assert_matches!(
+            actions(&gen, "Main::S1").get(identifiers::ALL_ACTIONS),
+            Some(ActionType {
+                member_of: None,
+                applies_to: None,
+                ..
+            })
+        );
+    }
+
+    #[test]
+    fn server_action_replaces_all_actions() {
+        let server = format!(r#"{TARGET} @mcp_action("Read") action Read;"#);
+        let mut gen = generator(&one_server(MAIN, &server));
+        gen.add_actions_from_named_server_description("s1", &tool("t"))
+            .unwrap();
+        let actions = actions(&gen, "Main::S1");
+        assert!(!actions.contains_key(identifiers::ALL_ACTIONS));
+        // The generator does not add parents to `Read`
+        assert_matches!(
+            actions.get("Read"),
+            Some(ActionType {
+                member_of: None,
+                ..
+            })
+        );
+        assert_eq!(
+            actions["t"].member_of,
+            Some(vec![ActionEntityUID::new(None, "Read".into())])
+        );
+    }
+
+    #[test]
+    fn server_context_overrides_and_extends_main_context() {
+        let server = format!(
+            r#"{TARGET} @mcp_context("session") entity Session; @mcp_context("region") type Region = String;"#
+        );
+        let mut gen = generator(&one_server(MAIN, &server));
+        gen.add_actions_from_named_server_description("s1", &tool("t"))
+            .unwrap();
+        assert!(gen.get_schema_as_str().contains(
+            "    context: {\n      input: tInput,\n      region: Region,\n      session: Session\n    }"
+        ));
+        gen.new_request_generator().unwrap();
+    }
+
+    #[test]
+    fn same_tool_name_in_two_servers() {
+        let stub = stub(
+            MAIN,
+            &[
+                (S1, "Main::S1", TARGET),
+                (r#"@mcp_server("s2")"#, "Main::S2", TARGET),
+            ],
+        );
+        let mut gen = generator(&stub);
+        gen.add_actions_from_named_server_descriptions(&BTreeMap::from([
+            ("s1".to_string(), tool("t")),
+            ("s2".to_string(), tool("t")),
+        ]))
+        .unwrap();
+        assert!(actions(&gen, "Main::S1").contains_key("t"));
+        assert!(actions(&gen, "Main::S2").contains_key("t"));
+        gen.new_request_generator().unwrap();
+    }
+
+    #[test]
+    fn name_conflicts() {
+        let currency = ServerDescription::from_json_str(
+            r##"{"result": {
+                "tools": [{"name": "t", "inputSchema": {"type": "object", "properties": {"c": {"$ref": "#/$defs/Currency"}}}}],
+                "$defs": {"Currency": {"type": "string", "enum": ["USD"]}}
+            }}"##,
+        )
+        .unwrap();
+        let conflicting_type =
+            "Conflicting type definitions between MCP Tool Description and input Cedar Schema Stub File.";
+        let cases = [
+            (
+                one_server(MAIN, TARGET),
+                tool("AllActions"),
+                r#"The action of tool `AllActions` conflicts with the action `Main::S1::Action::"AllActions"`."#,
+            ),
+            (
+                one_server(MAIN, &format!(r#"{TARGET} @mcp_action("t") action t;"#)),
+                tool("t"),
+                r#"The action of tool `t` conflicts with the action `Main::S1::Action::"t"`."#,
+            ),
+            (
+                one_server(MAIN, &format!("{TARGET} type tInput = {{}};")),
+                tool("t"),
+                conflicting_type,
+            ),
+            (
+                one_server(MAIN, &format!("{TARGET} entity Currency;")),
+                currency,
+                conflicting_type,
+            ),
+        ];
+        for (stub, tools, expected) in cases {
+            let err = generator(&stub)
+                .add_actions_from_named_server_description("s1", &tools)
+                .unwrap_err();
+            assert_eq!(err.to_string(), expected, "for stub:\n{stub}");
+        }
+
+        let mut gen = generator(&format!(
+            r#"namespace Main {{ {MAIN} @mcp_resource("Server") entity Server; }}"#
+        ));
+        assert_eq!(
+            gen.add_actions_from_server_description(&tool("Mcp"))
+                .unwrap_err()
+                .to_string(),
+            r#"The action of tool `Mcp` conflicts with the action `Main::Action::"Mcp"`."#
+        );
+    }
+
+    #[test]
+    fn server_annotation_is_erased_unless_kept() {
+        let stub = one_server(MAIN, TARGET);
+        let server_ns = Some("Main::S1".parse().unwrap());
+        assert!(generator(&stub).get_schema().0[&server_ns]
+            .annotations
+            .is_empty());
+        let gen = SchemaGenerator::from_cedarschema_str_with_config(
+            &stub,
+            SchemaGeneratorConfig::default().erase_annotations(false),
+        )
+        .unwrap();
+        assert!(gen.get_schema().0[&server_ns]
+            .annotations
+            .0
+            .contains_key(&*identifiers::MCP_SERVER));
+    }
+
+    #[test]
+    fn wrong_api_or_unknown_server() {
+        let mut gen = generator(&one_server(MAIN, TARGET));
+        assert_matches!(
+            gen.add_actions_from_server_description(&tool("t")),
+            Err(SchemaGeneratorError::ServerLookup(
+                ServerLookupError::ServerNameRequired
+            ))
+        );
+        assert_matches!(
+            gen.add_action_from_tool_description(tool("t").tool_descriptions().next().unwrap()),
+            Err(SchemaGeneratorError::ServerLookup(
+                ServerLookupError::ServerNameRequired
+            ))
+        );
+        assert_matches!(
+            gen.add_actions_from_named_server_description("s2", &tool("t")),
+            Err(SchemaGeneratorError::ServerLookup(ServerLookupError::UnknownServer(name))) if name == "s2"
+        );
+
+        let mut gen = generator(&format!("namespace Main {{ {MAIN} {TARGET} }}"));
+        assert_matches!(
+            gen.add_actions_from_named_server_description("s1", &tool("t")),
+            Err(SchemaGeneratorError::ServerLookup(
+                ServerLookupError::NoServerNamespaces
+            ))
+        );
+    }
+
+    #[test]
+    fn stub_errors() {
+        let two_mains = format!("{}namespace Other {{}}", one_server(MAIN, TARGET));
+        let resource_in_main =
+            one_server(&format!(r#"{MAIN} @mcp_resource("R") entity R;"#), TARGET);
+        let cases = [
+            (two_mains, "Expected schema with a single namespace not annotated with `@mcp_server`"),
+            (
+                format!("{S1} namespace Main::S1 {{ {TARGET} }}"),
+                "Expected schema with a single namespace not annotated with `@mcp_server`",
+            ),
+            (
+                stub(MAIN, &[("@mcp_server", "Main::S1", TARGET)]),
+                "Namespace `Main::S1` has an `@mcp_server` annotation without a server name.",
+            ),
+            (
+                stub(MAIN, &[(r#"@mcp_server("")"#, "Main::S1", TARGET)]),
+                "Namespace `Main::S1` has an `@mcp_server` annotation without a server name.",
+            ),
+            (
+                stub(MAIN, &[(S1, "Main::S1", TARGET), (S1, "Main::S2", TARGET)]),
+                "Server name `s1` is used by more than one `@mcp_server` namespace.",
+            ),
+            (
+                stub(MAIN, &[(S1, "Main::S1::T", TARGET)]),
+                "Server namespace `Main::S1::T` is not a direct child of the main namespace `Main`.",
+            ),
+            (
+                stub(MAIN, &[(S1, "Other::S1", TARGET)]),
+                "Server namespace `Other::S1` is not a direct child of the main namespace `Main`.",
+            ),
+            (
+                stub(MAIN, &[(S1, "S1", TARGET)]),
+                "Server namespace `S1` is not a direct child of the main namespace `Main`.",
+            ),
+            (
+                one_server(MAIN, &format!(r#"{TARGET} @mcp_principal("U") entity U;"#)),
+                "Server namespace `Main::S1` declares an `@mcp_principal` entity type.",
+            ),
+            (
+                resource_in_main,
+                "The main namespace `Main` declares an `@mcp_resource` entity type, but the schema stub has `@mcp_server` namespaces.",
+            ),
+            (
+                one_server(MAIN, "entity Target;"),
+                "Server namespace `Main::S1` declares 0 `@mcp_resource` entity types.",
+            ),
+            (
+                one_server(MAIN, &format!(r#"{TARGET} @mcp_resource("T2") entity T2;"#)),
+                "Server namespace `Main::S1` declares 2 `@mcp_resource` entity types.",
+            ),
+            (
+                one_server(&MAIN.replace(r#""session""#, r#""input""#), TARGET),
+                "`@mcp_context(\"input\")` uses a context key reserved by the schema generator.",
+            ),
+            (
+                one_server(MAIN, &format!(r#"{TARGET} @mcp_context("output") entity O;"#)),
+                "`@mcp_context(\"output\")` uses a context key reserved by the schema generator.",
+            ),
+            (
+                one_server(&MAIN.replace(r#"@mcp_principal("User")"#, ""), TARGET),
+                "No MCP Principal Entity types specified.",
+            ),
+            (
+                one_server(MAIN, &format!("{TARGET} action AllActions;")),
+                "Server namespace `Main::S1` declares an action `AllActions`, but no `@mcp_action`.",
+            ),
+        ];
+        for (stub, expected) in cases {
+            let err = SchemaGenerator::from_cedarschema_str(&stub).unwrap_err();
+            assert_eq!(err.to_string(), expected, "for stub:\n{stub}");
+        }
+
+        assert_matches!(
+            SchemaGenerator::from_cedarschema_str_with_config(
+                &one_server(MAIN, TARGET),
+                SchemaGeneratorConfig::default().flatten_namespaces(true),
+            ),
+            Err(SchemaGeneratorError::FlattenWithServerNamespaces)
+        );
+    }
+
+    #[test]
+    fn reserved_context_keys_allowed_without_server_namespaces() {
+        generator(&format!(
+            r#"namespace Main {{ {MAIN} {TARGET} @mcp_context("input") entity Foo; }}"#
+        ));
     }
 }

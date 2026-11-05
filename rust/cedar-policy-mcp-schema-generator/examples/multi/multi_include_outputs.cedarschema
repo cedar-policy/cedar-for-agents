@@ -1,0 +1,123 @@
+// Expected output for stub.cedarschema with --server weather-api=weather.json --server billing=billing.json --include-outputs
+namespace Main::Billing {
+  type get_forecastInput = {
+    account_id: String,
+    currency?: Main::Billing::Currency
+  };
+
+  type get_forecastOutput = {  };
+
+  entity Currency enum ["USD", "EUR"];
+
+  entity Target in [Main::Gateway];
+
+  action "ReadOnly" in [Main::Action::"Mcp"];
+
+  action "get_forecast" in [Action::"ReadOnly"] appliesTo {
+    principal: [Main::IamEntity, Main::OAuthUser],
+    resource: [Target],
+    context: {
+      input: get_forecastInput,
+      output?: get_forecastOutput,
+      sessionId: Main::SessionId,
+      system: Main::SystemContext
+    }
+  };
+}
+
+namespace Main::Weather::get_alerts::Input {
+  entity unit enum ["C", "F"];
+}
+
+namespace Main::Weather::get_forecast::Input {
+  entity location = {
+    latitude?: Main::Number,
+    longitude?: Main::Number
+  };
+
+  entity unit enum ["C", "F"];
+}
+
+namespace Main {
+  type SessionId = String;
+
+  type SystemContext = {
+    now: datetime
+  };
+
+  entity Gateway;
+
+  entity IamEntity = {
+    id: String
+  };
+
+  entity Number;
+
+  entity OAuthUser = {
+    id: String
+  } tags String;
+
+  action "Mcp" appliesTo {
+    principal: [OAuthUser, IamEntity],
+    resource: [Gateway],
+    context: {
+      sessionId: SessionId,
+      system: SystemContext
+    }
+  };
+}
+
+namespace Main::Weather::get_forecast::Output {
+  entity unit enum ["C", "F"];
+}
+
+namespace Main::Weather {
+  type SystemContext = {
+    now: datetime,
+    region: String
+  };
+
+  type get_alertsInput = {
+    unit?: Main::Weather::get_alerts::Input::unit
+  };
+
+  type get_alertsOutput = {  };
+
+  type get_forecastInput = {
+    city: String,
+    days?: Long,
+    location?: Main::Weather::get_forecast::Input::location,
+    unit?: Main::Weather::get_forecast::Input::unit
+  };
+
+  type get_forecastOutput = {
+    temperature: Long,
+    unit?: Main::Weather::get_forecast::Output::unit
+  };
+
+  entity Target in [Main::Gateway];
+
+  action "AllActions" in [Main::Action::"Mcp"];
+
+  action "get_alerts" in [Action::"AllActions"] appliesTo {
+    principal: [Main::IamEntity, Main::OAuthUser],
+    resource: [Target],
+    context: {
+      input: get_alertsInput,
+      output?: get_alertsOutput,
+      sessionId: Main::SessionId,
+      system: SystemContext
+    }
+  };
+
+  action "get_forecast" in [Action::"AllActions"] appliesTo {
+    principal: [Main::IamEntity, Main::OAuthUser],
+    resource: [Target],
+    context: {
+      input: get_forecastInput,
+      output?: get_forecastOutput,
+      sessionId: Main::SessionId,
+      system: SystemContext
+    }
+  };
+}

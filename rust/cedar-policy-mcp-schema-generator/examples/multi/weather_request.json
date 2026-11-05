@@ -1,0 +1,11 @@
+{
+    "principal": "Main::OAuthUser::\"alice\"",
+    "resource": "Main::Weather::Target::\"weather\"",
+    "context": {
+        "sessionId": "session1",
+        "system": {
+            "now": {"__extn": {"fn": "datetime", "arg": "2026-11-04"}},
+            "region": "us-east-1"
+        }
+    }
+}

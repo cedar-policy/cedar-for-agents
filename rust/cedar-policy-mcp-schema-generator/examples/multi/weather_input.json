@@ -1,0 +1,1 @@
+{"params": {"name": "get_forecast", "arguments": {"city": "Paris", "unit": "C", "location": {"latitude": 48.85}}}}

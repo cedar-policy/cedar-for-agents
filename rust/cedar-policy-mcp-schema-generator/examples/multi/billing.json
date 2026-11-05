@@ -1,0 +1,21 @@
+{
+    "result": {
+        "tools": [
+            {
+                "name": "get_forecast",
+                "description": "Get the billing forecast for an account (same tool name as a weather-api tool)",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "account_id": {"type": "string"},
+                        "currency": {"$ref": "#/$defs/Currency"}
+                    },
+                    "required": ["account_id"]
+                }
+            }
+        ],
+        "$defs": {
+            "Currency": {"type": "string", "enum": ["USD", "EUR"]}
+        }
+    }
+}

@@ -1,0 +1,104 @@
+// Expected output for stub.cedarschema with --server weather-api=weather.json --server billing=billing.json --deduplicate-entity-types
+// The `unit` enum is deduplicated within weather-api only, not across servers.
+namespace Main::Billing {
+  type get_forecastInput = {
+    account_id: String,
+    currency?: Main::Billing::Currency
+  };
+
+  entity Currency enum ["USD", "EUR"];
+
+  entity Target in [Main::Gateway];
+
+  action "ReadOnly" in [Main::Action::"Mcp"];
+
+  action "get_forecast" in [Action::"ReadOnly"] appliesTo {
+    principal: [Main::IamEntity, Main::OAuthUser],
+    resource: [Target],
+    context: {
+      input: get_forecastInput,
+      sessionId: Main::SessionId,
+      system: Main::SystemContext
+    }
+  };
+}
+
+namespace Main::Weather::get_forecast::Input {
+  entity location = {
+    latitude?: Main::Number,
+    longitude?: Main::Number
+  };
+}
+
+namespace Main {
+  type SessionId = String;
+
+  type SystemContext = {
+    now: datetime
+  };
+
+  entity Gateway;
+
+  entity IamEntity = {
+    id: String
+  };
+
+  entity Number;
+
+  entity OAuthUser = {
+    id: String
+  } tags String;
+
+  action "Mcp" appliesTo {
+    principal: [OAuthUser, IamEntity],
+    resource: [Gateway],
+    context: {
+      sessionId: SessionId,
+      system: SystemContext
+    }
+  };
+}
+
+namespace Main::Weather {
+  type SystemContext = {
+    now: datetime,
+    region: String
+  };
+
+  type get_alertsInput = {
+    unit?: Main::Weather::unit
+  };
+
+  type get_forecastInput = {
+    city: String,
+    days?: Long,
+    location?: Main::Weather::get_forecast::Input::location,
+    unit?: Main::Weather::unit
+  };
+
+  entity Target in [Main::Gateway];
+
+  entity unit enum ["C", "F"];
+
+  action "AllActions" in [Main::Action::"Mcp"];
+
+  action "get_alerts" in [Action::"AllActions"] appliesTo {
+    principal: [Main::IamEntity, Main::OAuthUser],
+    resource: [Target],
+    context: {
+      input: get_alertsInput,
+      sessionId: Main::SessionId,
+      system: SystemContext
+    }
+  };
+
+  action "get_forecast" in [Action::"AllActions"] appliesTo {
+    principal: [Main::IamEntity, Main::OAuthUser],
+    resource: [Target],
+    context: {
+      input: get_forecastInput,
+      sessionId: Main::SessionId,
+      system: SystemContext
+    }
+  };
+}

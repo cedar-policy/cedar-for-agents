@@ -248,7 +248,8 @@ class TestGenerateRequest:
         )
         assert result["isOk"] is True
         entities = json.loads(result["entitiesJson"])
-        assert len(entities) > 0
+        # Not counting the action entities of the schema
+        assert any(not e["uid"]["type"].endswith("::Action") for e in entities)
 
     def test_config_with_request(self):
         result = generate_request(
