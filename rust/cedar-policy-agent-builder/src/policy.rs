@@ -7,6 +7,17 @@ fn action_ref(ns: &str, name: &str) -> String {
     format!("action == {ns}::Action::\"{}\"", eid.escaped())
 }
 
+/// Build the action clause for a consent/feature policy, treating the wildcard
+/// tool key `"*"` as "all actions" (an unscoped `action` clause), consistent with
+/// rate limits, time windows, and environment denials.
+fn action_clause_for_tool(ns: &str, tool: &str) -> String {
+    if tool == "*" {
+        "action".to_string()
+    } else {
+        action_ref(ns, tool)
+    }
+}
+
 // Tools like "my-tool" and "my_tool" will collide to the same counter key.
 pub(crate) fn sanitize_counter_key(tool: &str) -> String {
     tool.chars()
@@ -32,7 +43,14 @@ fn get_roles_granting_tool<'a>(config: &'a CedarAgentConfig, tool: &str) -> Vec<
     };
     roles
         .iter()
-        .filter(|(_, tools)| tools.iter().any(|t| t == "*" || t == tool))
+        .filter(|(_, tools)| {
+            if tool == "*" {
+                // The wildcard consent key applies to every role that grants any tool.
+                !tools.is_empty()
+            } else {
+                tools.iter().any(|t| t == "*" || t == tool)
+            }
+        })
         .map(|(role_name, _)| role_name.as_str())
         .collect()
 }
@@ -66,21 +84,24 @@ impl<'a> PolicyGenerator<'a> {
             None => return,
         };
         let ns = &self.config.namespace;
-        let mut policies = Vec::new();
 
         for (role_name, tools) in roles {
             let consent_tools = get_consent_tools_for_role(self.config, role_name);
+            // If the user asks consent for all tools, then no permit should be emitted here
+            if consent_tools.contains("*") {
+                continue;
+            }
             let role_ref = format!("{ns}::Role::\"{}\"", EntityId::new(role_name).escaped());
 
             if tools.contains(&"*".to_string()) {
                 if consent_tools.is_empty() {
-                    policies.push(format!(
+                    self.policies_text.push(format!(
                         "permit(principal in {role_ref}, action, resource);"
                     ));
                 } else {
                     let exclusions: Vec<String> =
                         consent_tools.iter().map(|t| action_ref(ns, t)).collect();
-                    policies.push(format!(
+                    self.policies_text.push(format!(
                     "permit(\n  principal in {role_ref},\n  action,\n  resource\n) when {{ !({}) }};",
                     exclusions.join(" || ")
                 ));
@@ -91,15 +112,13 @@ impl<'a> PolicyGenerator<'a> {
                     .filter(|t| !consent_tools.contains(t.as_str()))
                     .collect();
                 for tool in filtered {
-                    policies.push(format!(
+                    self.policies_text.push(format!(
                         "permit(principal in {role_ref}, {}, resource);",
                         action_ref(ns, tool)
                     ));
                 }
             }
         }
-
-        self.policies_text.append(&mut policies);
     }
 
     fn generate_restriction_policies(&mut self) {
@@ -108,12 +127,11 @@ impl<'a> PolicyGenerator<'a> {
             None => return,
         };
         let ns = &self.config.namespace;
-        let mut policies = Vec::new();
 
         for (tool, restriction) in restrictions {
             let action_clause = action_ref(ns, tool);
             if restriction.allowed_values.is_empty() {
-                policies.push(format!(
+                self.policies_text.push(format!(
                     "forbid(\n  principal,\n  {action_clause},\n  resource\n);"
                 ));
                 continue;
@@ -129,15 +147,13 @@ impl<'a> PolicyGenerator<'a> {
                         )
                     })
                     .collect();
-                policies.push(format!(
+                self.policies_text.push(format!(
                 "forbid(\n  principal,\n  {action_clause},\n  resource\n) when {{\n  !(context.input has \"{}\" && ({}))\n}};",
                 EntityId::new(field).escaped(),
                 value_checks.join(" || ")
             ));
             }
         }
-
-        self.policies_text.append(&mut policies);
     }
 
     fn generate_rate_limit_policies(&mut self) {
@@ -146,27 +162,24 @@ impl<'a> PolicyGenerator<'a> {
             None => return,
         };
         let ns = &self.config.namespace;
-        let mut policies = Vec::new();
 
         for (tool, max) in rate_limits {
             if tool == "*" {
                 // forbid if call count not provided, or call count is too large
-                policies.push(format!(
+                self.policies_text.push(format!(
                     "forbid(\n  principal,\n  action,\n  resource\n) when {{ !(context.session has \"call_count\") || context.session.call_count >= {max} }};",
                 ));
             } else {
                 let action_clause = action_ref(ns, tool);
                 let counter_key = format!("call_count_{}", sanitize_counter_key(tool));
                 // forbid if call count not provided for this tool, or call count is too large
-                policies.push(format!(
+                self.policies_text.push(format!(
                 "forbid(\n  principal,\n  {action_clause},\n  resource\n) when {{ !(context.session has \"{}\") || context.session.{} >= {max} }};",
                 counter_key,
                 counter_key
                 ));
             }
         }
-
-        self.policies_text.append(&mut policies);
     }
 
     fn generate_time_window_policies(&mut self) {
@@ -175,7 +188,6 @@ impl<'a> PolicyGenerator<'a> {
             None => return,
         };
         let ns = &self.config.namespace;
-        let mut policies = Vec::new();
 
         for (tool, tw) in time_windows {
             let action_clause = if tool == "*" {
@@ -184,40 +196,35 @@ impl<'a> PolicyGenerator<'a> {
                 action_ref(ns, tool)
             };
             // forbid if hour_utc not provided, or outside of specified window
-            policies.push(format!(
+            self.policies_text.push(format!(
                 "forbid(\n  principal,\n  {action_clause},\n  resource\n) when {{ !(context.session has \"hour_utc\") || (context.session.hour_utc < {} || context.session.hour_utc >= {}) }};",
                 tw.hour_start, tw.hour_end));
         }
-        self.policies_text.append(&mut policies);
     }
 
     fn generate_env_denial_policies(&mut self) {
-        let deny_in_env = match &self.config.deny_in_env {
-            Some(d) => d,
-            None => return,
+        let Some(deny_in_env) = &self.config.deny_in_env else {
+            return;
         };
         let ns = &self.config.namespace;
-        let mut policies = Vec::new();
 
         for (env, tools) in deny_in_env {
             if tools.contains(&"*".to_string()) {
                 // forbid if environment not provided, or environment is the denied one
-                policies.push(format!(
+                self.policies_text.push(format!(
                 "forbid(\n  principal,\n  action,\n  resource\n) when {{ !(context.session has \"environment\") || context.session.environment == \"{}\" }};",
                 EntityId::new(env).escaped()
             ));
             } else {
                 for tool in tools {
                     // forbid if environment not provided for this action, or environment is the denied one
-                    policies.push(format!(
+                    self.policies_text.push(format!(
                     "forbid(\n  principal,\n  {},\n  resource\n) when {{ !(context.session has \"environment\") || context.session.environment == \"{}\" }};",
                     action_ref(ns, tool),
                     EntityId::new(env).escaped()
                 ));
                 }
             }
-
-            self.policies_text.append(&mut policies);
         }
     }
 
@@ -227,10 +234,9 @@ impl<'a> PolicyGenerator<'a> {
             None => return,
         };
         let ns = &self.config.namespace;
-        let mut policies = Vec::new();
 
         for (tool, scope) in consent {
-            let action_clause = action_ref(ns, tool);
+            let action_clause = action_clause_for_tool(ns, tool);
             let roles = normalize_consent_roles(scope);
             let applicable_roles = get_roles_granting_tool(self.config, tool);
             if roles.contains(&"*") {
@@ -238,7 +244,7 @@ impl<'a> PolicyGenerator<'a> {
                 // (either explicitly or via wildcard "*").
                 for role in &applicable_roles {
                     let role_ref = format!("{ns}::Role::\"{}\"", EntityId::new(role).escaped());
-                    policies.push(format!(
+                    self.policies_text.push(format!(
                     "permit(\n  principal in {role_ref},\n  {action_clause},\n  resource\n) when {{ context.session has user_consent && context.session.user_consent }};",
                 ));
                 }
@@ -248,13 +254,12 @@ impl<'a> PolicyGenerator<'a> {
                         continue;
                     }
                     let role_ref = format!("{ns}::Role::\"{}\"", EntityId::new(role).escaped());
-                    policies.push(format!(
+                    self.policies_text.push(format!(
                     "permit(\n  principal in {role_ref},\n  {action_clause},\n  resource\n) when {{ context.session has user_consent && context.session.user_consent }};",
                 ));
                 }
             }
         }
-        self.policies_text.append(&mut policies);
     }
 
     pub fn generate_policies(config: &CedarAgentConfig) -> String {
@@ -436,6 +441,51 @@ mod tests {
         assert!(policies.contains(
             "forbid(\n  principal,\n  action == Agent::Action::\"delete_record\",\n  resource\n) when { !(context.session has \"environment\") || context.session.environment == \"production\" };"
         ));
+    }
+
+    #[test]
+    fn test_consent_wildcard_tool_gates_all_tools() {
+        // A "*" consent tool key must gate every tool: the consent permit uses an
+        // unscoped `action` clause, and the role's unconditional permit is removed.
+        let config = CedarAgentConfig {
+            roles: Some(BTreeMap::from([
+                ("admin".to_string(), vec!["*".to_string()]),
+                (
+                    "analyst".to_string(),
+                    vec!["search".to_string(), "send_email".to_string()],
+                ),
+            ])),
+            consent: Some(BTreeMap::from([(
+                "*".to_string(),
+                ConsentScope::AllRoles(true),
+            )])),
+            ..Default::default()
+        };
+        let policies = PolicyGenerator::generate_policies(&config);
+        assert_valid_cedar(&policies);
+
+        // Consent permit for each role must be unscoped (`action`), NOT a literal
+        // action named "*".
+        assert!(policies.contains(
+            "permit(\n  principal in Agent::Role::\"admin\",\n  action,\n  resource\n) when { context.session has user_consent && context.session.user_consent };"
+        ));
+        assert!(policies.contains(
+            "permit(\n  principal in Agent::Role::\"analyst\",\n  action,\n  resource\n) when { context.session has user_consent && context.session.user_consent };"
+        ));
+        // Must NOT emit the literal-action bug form.
+        assert!(
+            !policies.contains("Agent::Action::\"*\""),
+            "must not emit a literal action named '*'; policies:\n{policies}"
+        );
+        // No unconditional role permits should remain — everything is gated.
+        assert!(
+            !policies.contains("permit(principal in Agent::Role::\"admin\", action, resource);"),
+            "admin's unconditional permit must be removed; policies:\n{policies}"
+        );
+        assert!(
+            !policies.contains("permit(principal in Agent::Role::\"analyst\","),
+            "analyst's unconditional permits must be removed; policies:\n{policies}"
+        );
     }
 
     #[test]
