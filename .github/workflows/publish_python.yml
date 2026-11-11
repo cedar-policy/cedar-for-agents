@@ -82,10 +82,16 @@ jobs:
         with:
           ref: refs/tags/${{ inputs.tag }}
 
+      # Keep in sync with the build_and_test_python.yml matrix; --find-interpreter
+      # builds one wheel per interpreter on PATH (macOS/Windows).
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.9"
+          python-version: |
+            3.10
+            3.11
+            3.12
+            3.13
 
       - name: Build wheel
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1
