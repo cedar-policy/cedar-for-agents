@@ -34,7 +34,7 @@ repository = "https://github.com/cedar-policy/cedar-for-agents"
 unsafe_code = "forbid"
 unexpected_cfgs = { level = 'deny', check-cfg = ['cfg(kani)', 'cfg(fuzzing)'] }
 missing_debug_implementations = "deny"
-rust-2018-idioms = "deny"
+rust_2018_idioms = { level = "deny", priority = -1 }
 
 # For clippy lints CI will only block on errors, so setting one to "warn" just
 # means we'll see it in local runs.

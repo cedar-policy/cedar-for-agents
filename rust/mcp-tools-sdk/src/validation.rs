@@ -185,7 +185,7 @@ fn validate_property_type(
                 match vals.remove(property.name()) {
                     Some(v) => {
                         let ty_val =
-                            validate_property_type(property.property_type(), v.clone(), type_defs)?;
+                            validate_property_type(property.property_type(), v, type_defs)?;
                         props.insert(property.name().to_smolstr(), ty_val);
                     }
                     None if property.is_required() => {

@@ -137,7 +137,7 @@ impl CliArgs {
                 let (request, entities) = request_generator.generate_request(
                     principal,
                     resource,
-                    context.into_iter(),
+                    context,
                     entities,
                     &input,
                     output.as_ref(),
