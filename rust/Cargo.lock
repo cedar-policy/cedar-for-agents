@@ -1156,7 +1156,6 @@ dependencies = [
  "itertools 0.15.0",
  "linked-hash-map",
  "miette",
- "nonempty",
  "smol_str",
  "tempfile",
  "thiserror",
