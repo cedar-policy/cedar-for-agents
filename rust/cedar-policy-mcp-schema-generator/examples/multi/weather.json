@@ -1,0 +1,40 @@
+[
+    {
+        "name": "get_forecast",
+        "description": "Get the weather forecast for a city",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "city": {"type": "string"},
+                "days": {"type": "integer"},
+                "unit": {"type": "string", "enum": ["C", "F"]},
+                "location": {
+                    "type": "object",
+                    "properties": {
+                        "latitude": {"type": "number"},
+                        "longitude": {"type": "number"}
+                    }
+                }
+            },
+            "required": ["city"]
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "temperature": {"type": "integer"},
+                "unit": {"type": "string", "enum": ["C", "F"]}
+            },
+            "required": ["temperature"]
+        }
+    },
+    {
+        "name": "get_alerts",
+        "description": "Get the weather alerts",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "unit": {"type": "string", "enum": ["C", "F"]}
+            }
+        }
+    }
+]

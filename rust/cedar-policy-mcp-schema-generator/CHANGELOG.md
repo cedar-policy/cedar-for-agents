@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Adds support for schema stubs with one namespace per MCP server. A namespace annotated with `@mcp_server("name")` is a server namespace; it must be a direct child of the main namespace (the only namespace without `@mcp_server`) and declare exactly one `@mcp_resource` entity type. The tools of a server are generated in its namespace and apply to its resource type. Principals are declared in the main namespace. `@mcp_context` keys of the main namespace apply to every server and can be overridden or extended per server. If a server namespace has no `@mcp_action`, the generator adds an `AllActions` action, child of the main namespace's `@mcp_action` actions, as the parent of the server's tools.
+- Adds `SchemaGenerator::add_actions_from_named_server_description` and `SchemaGenerator::add_actions_from_named_server_descriptions` to add the tools of servers to their namespace, and `RequestGenerator::generate_named_request`, `generate_named_request_components` and `generate_named_request_components_from_strings` to generate requests for them.
+- Adds the CLI options `generate --server NAME=FILE` (repeatable) and `authorize --server NAME`.
+- Adds `StubBuilder`, which adds a server namespace for each server name to a schema stub with a main namespace. Each server namespace has a resource type `Target`, child of the entity types annotated with the new `@mcp_resource_parent` annotation, and an action `AllActions`, child of the `@mcp_action` actions of the main namespace. The namespace identifier is derived from the server name (e.g., `weather-api` gives `weather_api`) or given explicitly. Adds the CLI command `stub` (`stub main.cedarschema --server NAME[=IDENTIFIER]`).
+
+### Changed
+- The entities returned by request generation now include the action entities of the schema, so that policies using the action hierarchy (`action in ...`) work. Previously, `action in` conditions never held for generated requests unless the caller added the action entities.
+- Adding a tool whose name is the name of an action of the schema stub is now an error (`ConflictingActionName`). Previously, the generated action silently replaced the action of the stub.
+
 ## [0.7.0] - 2026-10-22
 
 ### Added

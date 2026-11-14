@@ -41,11 +41,12 @@ pub struct EmptyEnum {
 /// SchemaGenerator encountered an error during generation
 #[derive(Debug, Error, Diagnostic)]
 pub enum SchemaGeneratorError {
-    /// SchemaGenerator only supports input schemas with a single named namespace
-    #[error("Expected schema with a single namespace")]
+    /// SchemaGenerator requires input schemas with exactly one named namespace that is not
+    /// annotated with `@mcp_server` (the main namespace)
+    #[error("Expected schema with a single namespace not annotated with `@mcp_server`")]
     #[diagnostic(
         code(schema_generator::no_namespace_provided),
-        help("Input Cedar Schema stub should contain exactly 1 namespace.")
+        help("Input Cedar Schema stub should contain exactly 1 namespace without an `@mcp_server` annotation.")
     )]
     WrongNumberOfNamespaces,
     /// SchemaGenerator does not support input schemas that use the global (unnamed) namespace.
@@ -122,6 +123,146 @@ pub enum SchemaGeneratorError {
         help("Ensure the input is a valid .cedarschema string.")
     )]
     SchemaParseError(String),
+    /// A namespace of the input schema stub has an `@mcp_server` annotation without a value
+    #[error("Namespace `{0}` has an `@mcp_server` annotation without a server name.")]
+    #[diagnostic(
+        code(schema_generator::missing_server_name),
+        help("Give the server name as the annotation value, e.g., `@mcp_server(\"my-server\")`.")
+    )]
+    MissingServerName(String),
+    /// Two namespaces of the input schema stub have the same `@mcp_server` name
+    #[error("Server name `{0}` is used by more than one `@mcp_server` namespace.")]
+    #[diagnostic(
+        code(schema_generator::duplicate_server_name),
+        help("Each `@mcp_server` namespace should have a distinct server name.")
+    )]
+    DuplicateServerName(SmolStr),
+    /// A server namespace of the input schema stub is not a direct child of the main namespace
+    #[error(
+        "Server namespace `{namespace}` is not a direct child of the main namespace `{main}`."
+    )]
+    #[diagnostic(
+        code(schema_generator::server_namespace_not_child_of_main),
+        help("Name each `@mcp_server` namespace `{main}::<Name>`.")
+    )]
+    ServerNamespaceNotChildOfMain {
+        /// The server namespace
+        namespace: String,
+        /// The main namespace (the only namespace without `@mcp_server`)
+        main: String,
+    },
+    /// A server namespace of the input schema stub declares an MCP principal type
+    #[error("Server namespace `{0}` declares an `@mcp_principal` entity type.")]
+    #[diagnostic(
+        code(schema_generator::principal_in_server_namespace),
+        help("Declare `@mcp_principal` entity types in the main namespace only.")
+    )]
+    PrincipalInServerNamespace(String),
+    /// The main namespace of a schema stub with `@mcp_server` namespaces declares an MCP resource type
+    #[error("The main namespace `{0}` declares an `@mcp_resource` entity type, but the schema stub has `@mcp_server` namespaces.")]
+    #[diagnostic(
+        code(schema_generator::resource_in_main_namespace),
+        help("Tools are only added to `@mcp_server` namespaces. Declare one `@mcp_resource` entity type in each `@mcp_server` namespace instead.")
+    )]
+    ResourceInMainNamespace(String),
+    /// A server namespace of the input schema stub does not declare exactly one MCP resource type
+    #[error("Server namespace `{namespace}` declares {count} `@mcp_resource` entity types.")]
+    #[diagnostic(
+        code(schema_generator::wrong_number_of_server_resources),
+        help("Each `@mcp_server` namespace should declare exactly 1 `@mcp_resource` entity type.")
+    )]
+    WrongNumberOfServerResources {
+        /// The server namespace
+        namespace: String,
+        /// The number of `@mcp_resource` entity types it declares
+        count: usize,
+    },
+    /// An `@mcp_context` key conflicts with an attribute added by the generator
+    #[error("`@mcp_context(\"{0}\")` uses a context key reserved by the schema generator.")]
+    #[diagnostic(
+        code(schema_generator::reserved_context_key),
+        help("The schema generator adds the `input` and `output` context attributes. Use another key.")
+    )]
+    ReservedContextKey(SmolStr),
+    /// `flatten_namespaces` was set for a schema stub with `@mcp_server` namespaces
+    #[error("The `flatten_namespaces` option is not supported for schema stubs with `@mcp_server` namespaces.")]
+    #[diagnostic(
+        code(schema_generator::flatten_with_server_namespaces),
+        help("Disable `flatten_namespaces`, or use a schema stub with a single namespace.")
+    )]
+    FlattenWithServerNamespaces,
+    /// The action of a tool has the same name as an action of the schema stub
+    #[error("The action of tool `{action}` conflicts with the action `{namespace}::Action::\"{action}\"`.")]
+    #[diagnostic(
+        code(schema_generator::conflicting_action_name),
+        help("Rename the action of the schema stub. Note that the generator adds an `AllActions` action to each `@mcp_server` namespace without an `@mcp_action`.")
+    )]
+    ConflictingActionName {
+        /// The name of the tool and of the action
+        action: SmolStr,
+        /// The namespace of the action
+        namespace: String,
+    },
+    /// A server namespace without `@mcp_action` declares an action named `AllActions`
+    #[error("Server namespace `{0}` declares an action `AllActions`, but no `@mcp_action`.")]
+    #[diagnostic(
+        code(schema_generator::all_actions_in_stub),
+        help("The generator adds an `AllActions` action to each `@mcp_server` namespace without an `@mcp_action`. Annotate the action with `@mcp_action`, or rename it.")
+    )]
+    AllActionsInStub(String),
+    /// `StubBuilder` cannot use `namespace` as the namespace identifier of server `server`
+    #[error("`{namespace}` is not a valid namespace identifier for server `{server}`.")]
+    #[diagnostic(
+        code(schema_generator::invalid_server_namespace),
+        help("The identifier derived from a server name replaces every character that is not an ASCII letter, digit or `_` by `_`. Give a valid Cedar identifier with `add_server_with_namespace`.")
+    )]
+    InvalidServerNamespace {
+        /// The server name
+        server: SmolStr,
+        /// The namespace identifier
+        namespace: String,
+    },
+    /// The namespace of a server added by `StubBuilder` already exists in the schema stub
+    #[error("Namespace `{0}` already exists in the schema stub.")]
+    #[diagnostic(
+        code(schema_generator::existing_server_namespace),
+        help("Give another namespace identifier with `add_server_with_namespace`.")
+    )]
+    ExistingServerNamespace(String),
+    /// The API used does not match the schema stub (with or without `@mcp_server` namespaces),
+    /// or the server name is unknown
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ServerLookup(#[from] ServerLookupError),
+}
+
+/// A generator was asked for the tools of a server that does not exist, either because the
+/// server name is unknown or because the API used does not match the schema stub.
+#[derive(Debug, Clone, Error, Diagnostic)]
+pub enum ServerLookupError {
+    /// The schema stub has `@mcp_server` namespaces, but no server name was given
+    #[error("The schema stub declares `@mcp_server` namespaces, so a server name is required.")]
+    #[diagnostic(
+        code(schema_generator::server_name_required),
+        help("Use the methods taking a server name, e.g., `add_actions_from_named_server_description` or `generate_named_request`.")
+    )]
+    ServerNameRequired,
+    /// The schema stub has no `@mcp_server` namespace, but a server name was given
+    #[error(
+        "The schema stub declares no `@mcp_server` namespace, so a server name cannot be used."
+    )]
+    #[diagnostic(
+        code(schema_generator::no_server_namespaces),
+        help("Use the methods without a server name, e.g., `add_actions_from_server_description` or `generate_request`.")
+    )]
+    NoServerNamespaces,
+    /// No `@mcp_server` namespace has this server name
+    #[error("Unknown server `{0}`.")]
+    #[diagnostic(
+        code(schema_generator::unknown_server),
+        help("The server name should be the value of an `@mcp_server` annotation of the schema stub.")
+    )]
+    UnknownServer(SmolStr),
 }
 
 impl SchemaGeneratorError {
@@ -180,4 +321,7 @@ pub enum RequestGeneratorError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     DuplicateEntities(#[from] cedar_policy_core::entities::err::EntitiesError),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ServerLookup(#[from] ServerLookupError),
 }

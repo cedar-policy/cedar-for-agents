@@ -1,0 +1,35 @@
+// A schema stub with only the main namespace, for `StubBuilder` and the `stub` command.
+namespace Main {
+    @mcp_principal("User")
+    entity OAuthUser {
+        id: String,
+    } tags String;
+
+    @mcp_principal("IamEntity")
+    entity IamEntity {
+        id: String,
+    };
+
+    // Parent of the `Target` resource type of every server
+    @mcp_resource_parent("Gateway")
+    entity Gateway;
+
+    @mcp_context("sessionId")
+    type SessionId = String;
+
+    @mcp_context("system")
+    type SystemContext = {
+        now: datetime,
+    };
+
+    // Parent of the `AllActions` action of every server
+    @mcp_action("Mcp")
+    action Mcp appliesTo {
+        principal: [OAuthUser, IamEntity],
+        resource: [Gateway],
+        context: {
+            sessionId: SessionId,
+            system: SystemContext,
+        }
+    };
+}

@@ -453,7 +453,12 @@ fn test_generate_request_with_nested_object_produces_entities() {
     let entities: serde_json::Value =
         serde_json::from_str(result["entitiesJson"].as_str().unwrap()).unwrap();
     let arr = entities.as_array().unwrap();
-    assert!(!arr.is_empty(), "Nested objects should produce entities");
+    // Not counting the action entities of the schema
+    assert!(
+        arr.iter()
+            .any(|e| !e["uid"]["type"].as_str().unwrap().ends_with("::Action")),
+        "Nested objects should produce entities"
+    );
 }
 
 #[wasm_bindgen_test]

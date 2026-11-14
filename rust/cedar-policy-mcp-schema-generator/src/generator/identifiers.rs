@@ -28,6 +28,19 @@ pub(super) static MCP_PRINCIPAL: LazyLock<AnyId> =
 pub(super) static MCP_RESOURCE: LazyLock<AnyId> = LazyLock::new(|| "mcp_resource".parse().unwrap());
 pub(super) static MCP_CONTEXT: LazyLock<AnyId> = LazyLock::new(|| "mcp_context".parse().unwrap());
 pub(super) static MCP_ACTION: LazyLock<AnyId> = LazyLock::new(|| "mcp_action".parse().unwrap());
+pub(super) static MCP_SERVER: LazyLock<AnyId> = LazyLock::new(|| "mcp_server".parse().unwrap());
+pub(super) static MCP_RESOURCE_PARENT: LazyLock<AnyId> =
+    LazyLock::new(|| "mcp_resource_parent".parse().unwrap());
+
+// Context attributes added by the generator
+pub(super) const INPUT_KEY: &str = "input";
+pub(super) const OUTPUT_KEY: &str = "output";
+
+// Parent action generated in server namespaces without an `@mcp_action`
+pub(super) const ALL_ACTIONS: &str = "AllActions";
+
+// Resource type of the server namespaces added by `StubBuilder`
+pub(super) static TARGET: LazyLock<UnreservedId> = LazyLock::new(|| "Target".parse().unwrap());
 
 // Namespace names
 pub(super) static INPUT_NAME: LazyLock<Name> = LazyLock::new(|| "Input".parse().unwrap());
@@ -42,6 +55,7 @@ pub(super) static DATETIME_TYPE: LazyLock<RawName> = LazyLock::new(|| "datetime"
 pub(super) static DURATION_TYPE: LazyLock<RawName> = LazyLock::new(|| "duration".parse().unwrap());
 pub(super) static IPADDR_TYPE: LazyLock<RawName> = LazyLock::new(|| "ipaddr".parse().unwrap());
 pub(super) static ACTION: LazyLock<EntityType> = LazyLock::new(|| "Action".parse().unwrap());
+pub(super) static ACTION_ID: LazyLock<UnreservedId> = LazyLock::new(|| "Action".parse().unwrap());
 
 // Cedar extension functions
 pub(super) static DECIMAL_CTOR: LazyLock<Name> = LazyLock::new(|| "decimal".parse().unwrap());
@@ -79,6 +93,10 @@ mod test {
         let _ = *DURATION_TYPE;
         let _ = *IPADDR_TYPE;
         let _ = *ACTION;
+        let _ = *ACTION_ID;
+        let _ = *MCP_SERVER;
+        let _ = *MCP_RESOURCE_PARENT;
+        let _ = *TARGET;
         let _ = *DECIMAL_CTOR;
         let _ = *DATETIME_CTOR;
         let _ = *DURATION_CTOR;

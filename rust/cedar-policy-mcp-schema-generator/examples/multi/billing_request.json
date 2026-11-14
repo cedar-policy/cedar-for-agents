@@ -1,0 +1,10 @@
+{
+    "principal": "Main::OAuthUser::\"alice\"",
+    "resource": "Main::Billing::Target::\"billing\"",
+    "context": {
+        "sessionId": "session1",
+        "system": {
+            "now": {"__extn": {"fn": "datetime", "arg": "2026-11-04"}}
+        }
+    }
+}
