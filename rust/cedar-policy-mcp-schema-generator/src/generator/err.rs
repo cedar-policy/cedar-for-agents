@@ -137,19 +137,29 @@ pub enum SchemaGeneratorError {
         help("Each `@mcp_server` namespace should have a distinct server name.")
     )]
     DuplicateServerName(SmolStr),
-    /// A server namespace of the input schema stub is not a direct child of the main namespace
-    #[error(
-        "Server namespace `{namespace}` is not a direct child of the main namespace `{main}`."
-    )]
+    /// A server namespace of the input schema stub is not inside the main namespace
+    #[error("Server namespace `{namespace}` is not inside the main namespace `{main}`.")]
     #[diagnostic(
-        code(schema_generator::server_namespace_not_child_of_main),
-        help("Name each `@mcp_server` namespace `{main}::<Name>`.")
+        code(schema_generator::server_namespace_not_in_main),
+        help("Name each `@mcp_server` namespace `{main}::<Name>`, or `{main}::<Name1>::<Name2>`, etc.")
     )]
-    ServerNamespaceNotChildOfMain {
+    ServerNamespaceNotInMain {
         /// The server namespace
         namespace: String,
         /// The main namespace (the only namespace without `@mcp_server`)
         main: String,
+    },
+    /// A server namespace of the input schema stub is inside another server namespace
+    #[error("Server namespace `{inner}` is inside server namespace `{outer}`.")]
+    #[diagnostic(
+        code(schema_generator::nested_server_namespaces),
+        help("The tools of server namespace `{outer}` are generated in namespaces `{outer}::<tool>`, which can clash with `{inner}`. Move `{inner}` out of `{outer}`.")
+    )]
+    NestedServerNamespaces {
+        /// The server namespace inside `outer`
+        inner: String,
+        /// The server namespace that contains `inner`
+        outer: String,
     },
     /// A server namespace of the input schema stub declares an MCP principal type
     #[error("Server namespace `{0}` declares an `@mcp_principal` entity type.")]
@@ -214,7 +224,7 @@ pub enum SchemaGeneratorError {
     #[error("`{namespace}` is not a valid namespace identifier for server `{server}`.")]
     #[diagnostic(
         code(schema_generator::invalid_server_namespace),
-        help("The identifier derived from a server name replaces every character that is not an ASCII letter, digit or `_` by `_`. Give a valid Cedar identifier with `add_server_with_namespace`.")
+        help("The identifier derived from a server name replaces every character that is not an ASCII letter, digit or `_` by `_`. Give a valid Cedar identifier, or a `::`-separated path of them, with `add_server_with_namespace`.")
     )]
     InvalidServerNamespace {
         /// The server name

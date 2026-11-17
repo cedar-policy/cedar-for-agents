@@ -3737,4 +3737,42 @@ mod multi_namespace_tests {
             r#"Main::Weather::Action::"get_forecast""#
         );
     }
+
+    #[test]
+    fn named_request_components_in_nested_server_namespaces() {
+        let stub = r#"namespace Main { @mcp_principal("User") entity User; }
+            @mcp_server("gw1/weather") namespace Main::Gw1::Weather { @mcp_resource("Target") entity Target; }
+            @mcp_server("gw2/weather") namespace Main::Gw2::Weather { @mcp_resource("Target") entity Target; }"#;
+        let mut gen = SchemaGenerator::from_cedarschema_str(stub).unwrap();
+        let weather = ServerDescription::from_json_str(WEATHER).unwrap();
+        for server in ["gw1/weather", "gw2/weather"] {
+            gen.add_actions_from_named_server_description(server, &weather)
+                .unwrap();
+        }
+        let gen = gen.new_request_generator().unwrap();
+        for (server, namespace) in [
+            ("gw1/weather", "Main::Gw1::Weather"),
+            ("gw2/weather", "Main::Gw2::Weather"),
+        ] {
+            let components = gen
+                .generate_named_request_components_from_strings(
+                    server,
+                    &Input::from_json_str(WEATHER_INPUT).unwrap(),
+                    "User",
+                    "alice",
+                    "Target",
+                    "weather",
+                )
+                .unwrap();
+            assert_eq!(components.principal, r#"Main::User::"alice""#);
+            assert_eq!(
+                components.resource,
+                format!(r#"{namespace}::Target::"weather""#)
+            );
+            assert_eq!(
+                components.action,
+                format!(r#"{namespace}::Action::"get_forecast""#)
+            );
+        }
+    }
 }

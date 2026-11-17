@@ -445,6 +445,10 @@ impl SchemaGenerator {
                     namespace.to_string(),
                 ));
             }
+            let server_namespaces: HashSet<String> = servers
+                .iter()
+                .map(|(server_ns, _, _)| server_ns.to_string())
+                .collect();
             let mut targets = BTreeMap::new();
             for (server_ns, server, ns) in servers {
                 let server_name = server
@@ -454,12 +458,21 @@ impl SchemaGenerator {
                     .ok_or_else(|| {
                         SchemaGeneratorError::MissingServerName(server_ns.to_string())
                     })?;
-                // Otherwise, a tool `Y` of server `Main::X` would generate the namespace of
-                // server `Main::X::Y`
-                if server_ns.as_ref().namespace() != namespace.to_string() {
-                    return Err(SchemaGeneratorError::ServerNamespaceNotChildOfMain {
+                if !is_inside(server_ns, namespace) {
+                    return Err(SchemaGeneratorError::ServerNamespaceNotInMain {
                         namespace: server_ns.to_string(),
                         main: namespace.to_string(),
+                    });
+                }
+                // Otherwise, a tool `Y` of server `Main::X` would generate the namespace of
+                // server `Main::X::Y`
+                if let Some(outer) = enclosing_namespaces(server_ns)
+                    .into_iter()
+                    .find(|outer| server_namespaces.contains(outer))
+                {
+                    return Err(SchemaGeneratorError::NestedServerNamespaces {
+                        inner: server_ns.to_string(),
+                        outer,
                     });
                 }
                 if !annotated_entity_types(ns, &identifiers::MCP_PRINCIPAL, None).is_empty() {
@@ -2131,6 +2144,29 @@ pub(super) fn split_stub(
     Ok((name, ns, servers))
 }
 
+/// Whether `inner` is strictly inside namespace `outer`, e.g., `A::B::C` is inside `A` and
+/// `A::B`
+pub(super) fn is_inside(inner: &Name, outer: &Name) -> bool {
+    inner.to_string().starts_with(&format!("{outer}::"))
+}
+
+/// The namespaces that strictly contain `name`, e.g., `A` and `A::B` for `A::B::C`
+fn enclosing_namespaces(name: &Name) -> Vec<String> {
+    let name = name.to_string();
+    let mut ids: Vec<&str> = name.split("::").collect();
+    ids.pop();
+    let mut prefix = String::new();
+    ids.into_iter()
+        .map(|id| {
+            if !prefix.is_empty() {
+                prefix.push_str("::");
+            }
+            prefix.push_str(id);
+            prefix.clone()
+        })
+        .collect()
+}
+
 /// Qualify `id` with `namespace`, if any
 pub(super) fn qualified_rawname(id: UnreservedId, namespace: Option<&Name>) -> RawName {
     RawName::from_name(RawName::new_from_unreserved(id, None).qualify_with_name(namespace))
@@ -3756,6 +3792,43 @@ namespace Main::S1 {
     }
 
     #[test]
+    fn nested_server_namespaces() {
+        // Servers of the same name in two groups, e.g., targets of the same name on two gateways
+        let stub = stub(
+            MAIN,
+            &[
+                (r#"@mcp_server("g1/billing")"#, "Main::G1::Billing", TARGET),
+                (r#"@mcp_server("g2/billing")"#, "Main::G2::Billing", TARGET),
+                (
+                    r#"@mcp_server("g1/search")"#,
+                    "Main::G1::Search::Index",
+                    TARGET,
+                ),
+            ],
+        );
+        let mut gen = generator(&stub);
+        gen.add_actions_from_named_server_descriptions(&BTreeMap::from([
+            ("g1/billing".to_string(), tool("refund")),
+            ("g2/billing".to_string(), tool("refund")),
+            ("g1/search".to_string(), tool("query")),
+        ]))
+        .unwrap();
+        for (namespace, tool) in [
+            ("Main::G1::Billing", "refund"),
+            ("Main::G2::Billing", "refund"),
+            ("Main::G1::Search::Index", "query"),
+        ] {
+            assert!(actions(&gen, namespace).contains_key(tool), "{namespace}");
+            assert!(
+                actions(&gen, namespace).contains_key("AllActions"),
+                "{namespace}"
+            );
+        }
+        assert!(gen.get_schema_as_str().contains("type refundInput = {  };"));
+        gen.new_request_generator().unwrap();
+    }
+
+    #[test]
     fn name_conflicts() {
         let currency = ServerDescription::from_json_str(
             r##"{"result": {
@@ -3877,16 +3950,30 @@ namespace Main::S1 {
                 "Server name `s1` is used by more than one `@mcp_server` namespace.",
             ),
             (
-                stub(MAIN, &[(S1, "Main::S1::T", TARGET)]),
-                "Server namespace `Main::S1::T` is not a direct child of the main namespace `Main`.",
-            ),
-            (
                 stub(MAIN, &[(S1, "Other::S1", TARGET)]),
-                "Server namespace `Other::S1` is not a direct child of the main namespace `Main`.",
+                "Server namespace `Other::S1` is not inside the main namespace `Main`.",
             ),
             (
                 stub(MAIN, &[(S1, "S1", TARGET)]),
-                "Server namespace `S1` is not a direct child of the main namespace `Main`.",
+                "Server namespace `S1` is not inside the main namespace `Main`.",
+            ),
+            (
+                stub(MAIN, &[(S1, "Mainly::S1", TARGET)]),
+                "Server namespace `Mainly::S1` is not inside the main namespace `Main`.",
+            ),
+            (
+                stub(
+                    MAIN,
+                    &[(S1, "Main::S1", TARGET), (r#"@mcp_server("s2")"#, "Main::S1::T", TARGET)],
+                ),
+                "Server namespace `Main::S1::T` is inside server namespace `Main::S1`.",
+            ),
+            (
+                stub(
+                    MAIN,
+                    &[(S1, "Main::A", TARGET), (r#"@mcp_server("s2")"#, "Main::A::B::C", TARGET)],
+                ),
+                "Server namespace `Main::A::B::C` is inside server namespace `Main::A`.",
             ),
             (
                 one_server(MAIN, &format!(r#"{TARGET} @mcp_principal("U") entity U;"#)),

@@ -153,7 +153,8 @@ pub(crate) enum Command {
         #[clap(required = true)]
         schema_stub: PathBuf,
         /// A server to add a namespace for, as `NAME` or `NAME=IDENTIFIER`. By default, the
-        /// namespace identifier is derived from the server name. Can be repeated, once per server.
+        /// namespace identifier is derived from the server name. `IDENTIFIER` can be a
+        /// `::`-separated path, e.g., `Gw1::Billing`. Can be repeated, once per server.
         /// `NAME` cannot contain `=`. Comments of the input stub are not kept.
         #[arg(long = "server", value_name = "NAME[=IDENTIFIER]", required = true, value_parser = parse_server_namespace)]
         servers: Vec<(String, Option<String>)>,

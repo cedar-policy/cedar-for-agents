@@ -15,7 +15,7 @@
  */
 
 use super::identifiers;
-use super::schema::{annotated_actions, annotated_entity_types, parse_stub, split_stub};
+use super::schema::{annotated_actions, annotated_entity_types, is_inside, parse_stub, split_stub};
 use crate::SchemaGeneratorError;
 
 use cedar_policy_core::ast::{Annotation, AnyId, Name, UnreservedId};
@@ -33,7 +33,8 @@ use std::collections::BTreeMap;
 /// Builds a schema stub by adding a namespace for each MCP server to a schema stub, which
 /// may have only its main namespace.
 ///
-/// Each added namespace, `Main::{id}` for main namespace `Main`, contains:
+/// Each added namespace, `Main::{id}` (or `Main::{id1}::{id2}`, etc.) for main namespace `Main`,
+/// contains:
 /// - the resource type `Target`, child of the entity types of the main namespace annotated with
 ///   `@mcp_resource_parent`,
 /// - the action `AllActions`, child of the actions of the main namespace annotated with
@@ -66,7 +67,9 @@ impl StubBuilder {
         self.add_server_with_namespace(server, &namespace)
     }
 
-    /// Add a namespace for server `server`, with identifier `namespace`
+    /// Add a namespace for server `server`, with identifier `namespace`. The identifier can
+    /// also be a `::`-separated path of identifiers, e.g., `Gw1::Billing` adds the namespace
+    /// `Main::Gw1::Billing`.
     pub fn add_server_with_namespace(
         mut self,
         server: &str,
@@ -79,7 +82,14 @@ impl StubBuilder {
         if server.is_empty() {
             return Err(invalid());
         }
-        let id: UnreservedId = namespace.parse().map_err(|_| invalid())?;
+        let ids = namespace
+            .split("::")
+            .map(|id| match id.parse::<UnreservedId>() {
+                // Rejects identifiers with surrounding whitespace, which the parser accepts
+                Ok(parsed) if parsed.to_string() == id => Ok(parsed),
+                _ => Err(invalid()),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
         let (main, main_ns, servers) = split_stub(&self.stub)?;
         if servers
@@ -88,11 +98,26 @@ impl StubBuilder {
         {
             return Err(SchemaGeneratorError::DuplicateServerName(server.into()));
         }
-        let server_ns = Name::unqualified_name(id).qualify_with_name(Some(main));
+        let server_ns = ids.into_iter().fold(main.clone(), |ns, id| {
+            Name::unqualified_name(id).qualify_with_name(Some(&ns))
+        });
         if self.stub.0.contains_key(&Some(server_ns.clone())) {
             return Err(SchemaGeneratorError::ExistingServerNamespace(
                 server_ns.to_string(),
             ));
+        }
+        for (other, _, _) in &servers {
+            let (inner, outer) = if is_inside(&server_ns, other) {
+                (&server_ns, *other)
+            } else if is_inside(other, &server_ns) {
+                (*other, &server_ns)
+            } else {
+                continue;
+            };
+            return Err(SchemaGeneratorError::NestedServerNamespaces {
+                inner: inner.to_string(),
+                outer: outer.to_string(),
+            });
         }
 
         let parents =
@@ -248,6 +273,28 @@ namespace Main::weather_api {
     }
 
     #[test]
+    fn adds_nested_server_namespaces() {
+        let builder = builder(MAIN)
+            .add_server_with_namespace("gw1/billing", "gw1::billing")
+            .unwrap()
+            .add_server_with_namespace("gw2/billing", "gw2::billing")
+            .unwrap();
+        let stub = builder.get_stub_as_str();
+        for server in ["gw1", "gw2"] {
+            assert!(stub.contains(&format!(
+                "@mcp_server(\"{server}/billing\")\nnamespace Main::{server}::billing {{\n  @mcp_resource(\"Target\")\n  entity Target in [Main::Gateway];"
+            )));
+        }
+
+        let mut gen = SchemaGenerator::new(builder.into_stub()).unwrap();
+        for server in ["gw1/billing", "gw2/billing"] {
+            gen.add_actions_from_named_server_description(server, &tool("t"))
+                .unwrap();
+        }
+        gen.new_request_generator().unwrap();
+    }
+
+    #[test]
     fn parents_of_target_and_all_actions() {
         let main = r#"namespace Main {
     @mcp_principal("User") entity User;
@@ -295,7 +342,7 @@ namespace Main::weather_api {
     #[test]
     fn errors() {
         let existing = include_str!("../../examples/multi/stub.cedarschema");
-        let cases: [(&str, &[(&str, Option<&str>)], &str); 7] = [
+        let cases: [(&str, &[(&str, Option<&str>)], &str); 12] = [
             (
                 MAIN,
                 &[("", None)],
@@ -308,8 +355,33 @@ namespace Main::weather_api {
             ),
             (
                 MAIN,
-                &[("s", Some("A::B"))],
-                "`A::B` is not a valid namespace identifier for server `s`.",
+                &[("s", Some("A::"))],
+                "`A::` is not a valid namespace identifier for server `s`.",
+            ),
+            (
+                MAIN,
+                &[("s", Some("A::in"))],
+                "`A::in` is not a valid namespace identifier for server `s`.",
+            ),
+            (
+                MAIN,
+                &[("s", Some("A:: B"))],
+                "`A:: B` is not a valid namespace identifier for server `s`.",
+            ),
+            (
+                MAIN,
+                &[("s", Some(" A"))],
+                "` A` is not a valid namespace identifier for server `s`.",
+            ),
+            (
+                MAIN,
+                &[("s", Some("A")), ("t", Some("A::B"))],
+                "Server namespace `Main::A::B` is inside server namespace `Main::A`.",
+            ),
+            (
+                MAIN,
+                &[("s", Some("A::B::C")), ("t", Some("A"))],
+                "Server namespace `Main::A::B::C` is inside server namespace `Main::A`.",
             ),
             (
                 MAIN,
