@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-17
+
 ### Changed
 - Bumped `cedar-policy-core` dependency to `=4.15.0` (Cedar Language Version 4.7). Types from `cedar-policy-core` appear in the public API (e.g. `SchemaGenerator::new` takes a `Fragment<RawName>`), so callers that pass these types must also move to `cedar-policy-core` 4.15.0.
 
