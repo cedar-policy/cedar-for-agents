@@ -10,3 +10,8 @@ allow = [
     "Unicode-3.0",
     "Zlib",
 ]
+
+[advisories]
+ignore = [
+    { id = "RUSTSEC-2026-0543", reason = "chrono is unmaintained; also required by cedar-policy-core" },
+]

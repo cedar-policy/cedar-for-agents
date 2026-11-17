@@ -1,0 +1,3 @@
+[advisories]
+# chrono is unmaintained, no fixed version. It is also a dependency of cedar-policy-core.
+ignore = ["RUSTSEC-2026-0543"]
