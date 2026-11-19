@@ -19,7 +19,6 @@ use std::sync::Arc;
 
 use cedar_policy_core::ast::{
     Context, Eid, Entity, EntityType, EntityUID, InternalName, Name, Request, RestrictedExpr,
-    UnreservedId,
 };
 use cedar_policy_core::entities::Entities;
 use cedar_policy_core::parser::err::ParseErrors;
@@ -156,7 +155,7 @@ impl RequestGenerator {
         let mut type_defs = TypeDefsInfo::new();
         type_defs.extend(self.tools.type_definitions(), self.root_namespace.clone());
 
-        let tool_ns: Name = tool.name().parse()?;
+        let tool_ns: Name = identifiers::encoded_id(tool.name()).into();
         let tool_ns = tool_ns.qualify_with_name(self.root_namespace.as_ref());
 
         // Extend with tool specific type definitions
@@ -492,7 +491,7 @@ impl RequestGenerator {
                 for (i, val) in vals.iter().enumerate() {
                     let sub_ty_name = format!("Proj{i}");
                     let name = format!("proj{i}").to_smolstr();
-                    let sub_namespace: Name = ty_name.parse::<UnreservedId>()?.into();
+                    let sub_namespace: Name = identifiers::encoded_id(ty_name).into();
                     let sub_namespace = sub_namespace.qualify_with_name(namespace);
                     let (expr, new_entities) =
                         self.val_to_cedar(val, type_defs, Some(&sub_namespace), &sub_ty_name)?;
@@ -509,7 +508,7 @@ impl RequestGenerator {
             TypedValue::Union { index, value } => {
                 let sub_ty_name = format!("TypeChoice{}", index);
                 let name = format!("typeChoice{}", index).to_smolstr();
-                let sub_namespace: Name = ty_name.parse::<UnreservedId>()?.into();
+                let sub_namespace: Name = identifiers::encoded_id(ty_name).into();
                 let sub_namespace = sub_namespace.qualify_with_name(namespace);
                 let (expr, entities) =
                     self.val_to_cedar(value, type_defs, Some(&sub_namespace), &sub_ty_name)?;
@@ -532,7 +531,7 @@ impl RequestGenerator {
                     return Ok((RestrictedExpr::record(std::iter::empty())?, Entities::new()));
                 }
 
-                let sub_namespace: Name = ty_name.parse::<UnreservedId>()?.into();
+                let sub_namespace: Name = identifiers::encoded_id(ty_name).into();
                 let sub_namespace = sub_namespace.qualify_with_name(namespace);
 
                 let mut entities = Entities::new();
@@ -609,15 +608,14 @@ impl RequestGenerator {
         ty_name: &str,
         namespace: Option<&Name>,
     ) -> Result<EntityType, ParseErrors> {
-        // Parse as UnreservedId first to reject names containing `::`
-        // which could inject entity types into unintended namespaces.
-        let id: UnreservedId = ty_name.parse()?;
-        let ty = EntityType::from(Name::from(id));
+        // Derive the identifier the schema generator used for `ty_name`. An `UnreservedId`
+        // never contains `::`, so a name cannot inject entity types into unintended namespaces.
+        let id = identifiers::encoded_id(ty_name);
+        let ty = EntityType::from(Name::from(id.clone()));
 
         if let Some(ref resolved) = self.resolved_dedup {
             let dedup_info = resolved.iter().find(|(fp, info)| {
-                fp.base_name().to_string() == ty_name
-                    && info.source_namespaces.contains(&namespace.cloned())
+                fp.base_name() == &id && info.source_namespaces.contains(&namespace.cloned())
             });
             if let Some((_, info)) = dedup_info {
                 Ok(ty.qualify_with(info.lca_namespace.as_ref()))
@@ -3180,8 +3178,89 @@ mod test {
         assert_eq!(expr.to_string(), "{proj0: true, proj1: 42}");
     }
 
-    /// Regression test: property names containing `::` must be rejected to prevent
-    /// namespace injection. Previously these parsed as multi-component Cedar Names.
+    /// Tool, property and `$defs` names that are not Cedar identifiers: the request generator
+    /// derives the same namespace and type identifiers as the schema generator, so the request
+    /// validates against the generated schema.
+    #[test]
+    fn test_generate_request_non_identifier_names() {
+        let request_generator = get_request_generator(
+            SchemaGeneratorConfig::default(),
+            r##"{
+    "name": "get-weather",
+    "description": "A tool whose name is not a Cedar identifier",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "@odata.type": {
+                "type": "object",
+                "properties": {
+                    "kind name": {"type": "string", "enum": ["a", "b"]}
+                }
+            },
+            "unit : oh no": {"$ref": "#/$defs/temp-unit"}
+        },
+        "required": [],
+        "$defs": {
+            "temp-unit": {"type": "string", "enum": ["C", "F"]}
+        }
+    }
+}"##,
+        );
+
+        let input = Input::from_json_str(
+            r#"{
+    "params": {
+        "tool": "get-weather",
+        "args": {
+            "@odata.type": {"kind name": "a"},
+            "unit : oh no": "C"
+        }
+    }
+}"#,
+        )
+        .expect("Failed to parse input");
+
+        let principal = r#"Test::user::"""#.parse::<EntityUID>().unwrap();
+        let resource = r#"Test::resource::"""#.parse::<EntityUID>().unwrap();
+        let (request, entities) = request_generator
+            .generate_request(
+                principal,
+                resource,
+                Context::empty(),
+                Entities::new(),
+                &input,
+                None,
+            )
+            .expect("Failed to generate request");
+
+        assert_eq!(
+            request.action().uid().unwrap(),
+            &r#"Test::Action::"get-weather""#.parse::<EntityUID>().unwrap()
+        );
+        let types: Vec<String> = entities
+            .iter()
+            .map(|e| e.uid().entity_type().to_string())
+            .collect();
+        assert_eq!(
+            types,
+            vec!["Test::CDRG26__get_2d_weather::Input::CDRG26___40_odata_2e_type".to_string()]
+        );
+        let context = request.context().unwrap().to_string();
+        assert!(
+            context.contains(r#"Test::CDRG26__get_2d_weather::Input::CDRG26__temp_2d_unit::"C""#),
+            "{context}"
+        );
+        assert!(
+            entities.iter().any(|e| e.to_string().contains(
+                r#"Test::CDRG26__get_2d_weather::Input::CDRG26___40_odata_2e_type::CDRG26__kind_20_name::"a""#
+            )),
+            "{entities}"
+        );
+    }
+
+    /// Regression test: property names containing `::` must not inject namespaces.
+    /// Previously these parsed as multi-component Cedar Names. Now the derived identifier
+    /// escapes `:`, so `foo::bar` is the single identifier `CDRG26__foo_3a__3a_bar`.
     #[test]
     fn test_namespace_injection_rejected() {
         let request_generator = get_schema_generator(SchemaGeneratorConfig::default())
@@ -3190,40 +3269,52 @@ mod test {
 
         let type_defs = TypeDefsInfo::new();
         let namespace = Some("Test".parse().unwrap());
+        let enum_val = || Box::new(TypedValue::Enum("variant".into()));
 
-        // Each variant exercises a different code path that parses ty_name into a namespace:
-        // - Tuple/Union/Object: parse ty_name as sub_namespace
-        // - Enum: parse ty_name in resolved_ty to construct an EntityType
-        let vals: &[(&str, TypedValue)] = &[
-            ("Tuple", TypedValue::Tuple(vec![TypedValue::Bool(true)])),
+        // Each variant exercises a different code path that derives a namespace or a type
+        // from ty_name: Tuple/Union/Object as a sub-namespace, Enum in resolved_ty.
+        let vals: &[(&str, TypedValue, &str)] = &[
+            (
+                "Tuple",
+                TypedValue::Tuple(vec![*enum_val()]),
+                r#"{proj0: Test::CDRG26__foo_3a__3a_bar::Proj0::"variant"}"#,
+            ),
             (
                 "Union",
                 TypedValue::Union {
                     index: 0,
-                    value: Box::new(TypedValue::Bool(true)),
+                    value: enum_val(),
                 },
+                r#"{typeChoice0: Test::CDRG26__foo_3a__3a_bar::TypeChoice0::"variant"}"#,
             ),
             (
-                "Object",
-                TypedValue::Object {
-                    properties: HashMap::new(),
-                    additional_properties: HashMap::new(),
-                    declared_shape: mcp_tools_sdk::data::DeclaredObjectShape {
-                        properties_empty: true,
-                        has_additional_properties: false,
-                    },
-                },
+                "Enum",
+                *enum_val(),
+                r#"Test::CDRG26__foo_3a__3a_bar::"variant""#,
             ),
-            ("Enum", TypedValue::Enum("variant".into())),
         ];
-
-        for (label, val) in vals {
-            let result =
-                request_generator.val_to_cedar(val, &type_defs, namespace.as_ref(), "foo::bar");
-            assert!(
-                result.is_err(),
-                "ty_name with `::` should be rejected in {label}"
-            );
+        for (label, val, expected) in vals {
+            let (expr, _) = request_generator
+                .val_to_cedar(val, &type_defs, namespace.as_ref(), "foo::bar")
+                .unwrap_or_else(|e| panic!("{label}: {e}"));
+            assert_eq!(&expr.to_string(), expected, "{label}");
         }
+
+        let object = TypedValue::Object {
+            properties: HashMap::new(),
+            additional_properties: HashMap::new(),
+            declared_shape: mcp_tools_sdk::data::DeclaredObjectShape {
+                properties_empty: true,
+                has_additional_properties: false,
+            },
+        };
+        let (_, entities) = request_generator
+            .val_to_cedar(&object, &type_defs, namespace.as_ref(), "foo::bar")
+            .expect("Object");
+        let types: Vec<String> = entities
+            .iter()
+            .map(|e| e.uid().entity_type().to_string())
+            .collect();
+        assert_eq!(types, vec!["Test::CDRG26__foo_3a__3a_bar".to_string()]);
     }
 }
