@@ -27,6 +27,7 @@ use cedar_policy_core::validator::{
     },
     RawName,
 };
+use cedar_policy_core::FromNormalizedStr;
 use mcp_tools_sdk::description::{
     Parameters, Property, PropertyType, ServerDescription, ToolDescription,
 };
@@ -703,47 +704,50 @@ impl SchemaGenerator {
         match property_type {
             PropertyType::Enum { variants } => {
                 if !variants.is_empty() {
-                    if let Ok(base_name) = name.parse::<UnreservedId>() {
-                        let fingerprint = EntityTypeFingerprint::Enum {
-                            base_name,
-                            variants: variants.clone().into_iter().map(Eid::new).collect(),
-                        };
-                        dedup_map.record(fingerprint, namespace.clone());
-                    }
+                    let base_name = identifiers::encoded_id(name);
+                    let fingerprint = EntityTypeFingerprint::Enum {
+                        base_name,
+                        variants: variants.clone().into_iter().map(Eid::new).collect(),
+                    };
+                    dedup_map.record(fingerprint, namespace.clone());
                 }
             }
             PropertyType::Object {
                 properties,
                 additional_properties,
             } => {
-                if let Ok(obj_name) = name.parse::<UnreservedId>() {
-                    let child_ns: Name = obj_name.into();
-                    let child_ns = Some(child_ns.qualify_with_name(namespace.as_ref()));
-                    for prop in properties {
-                        Self::collect_enum_fingerprints_from_property_type(
-                            prop.name(),
-                            prop.property_type(),
-                            &child_ns,
-                            dedup_map,
-                        );
-                    }
-                    if let Some(additional) = additional_properties {
-                        let tag_name = format!("{name}Tag");
-                        Self::collect_enum_fingerprints_from_property_type(
+                let obj_name = identifiers::encoded_id(name);
+                let child_ns: Name = obj_name.clone().into();
+                let child_ns = Some(child_ns.qualify_with_name(namespace.as_ref()));
+                for prop in properties {
+                    Self::collect_enum_fingerprints_from_property_type(
+                        prop.name(),
+                        prop.property_type(),
+                        &child_ns,
+                        dedup_map,
+                    );
+                }
+                if let Some(additional) = additional_properties {
+                    // The tag type's base name is `{obj_name}Tag`, already a derived
+                    // identifier, matching `cedar_type_from_property_type`. It must not go
+                    // through `collect_enum_fingerprints_from_property_type`, which would
+                    // derive it a second time.
+                    if let Ok(tag_name) =
+                        UnreservedId::from_normalized_str(&format!("{obj_name}Tag"))
+                    {
+                        Self::collect_enum_fingerprints_from_derived_name(
                             &tag_name,
                             additional.as_ref(),
                             &child_ns,
                             dedup_map,
                         );
                     }
+                }
 
-                    if is_leaf_record(property_type) {
-                        if let Ok(base_name) = name.parse::<UnreservedId>() {
-                            let fingerprint =
-                                EntityTypeFingerprint::new_leaf_record(base_name, properties);
-                            dedup_map.record(fingerprint, namespace.clone());
-                        }
-                    }
+                if is_leaf_record(property_type) {
+                    let base_name = identifiers::encoded_id(name);
+                    let fingerprint = EntityTypeFingerprint::new_leaf_record(base_name, properties);
+                    dedup_map.record(fingerprint, namespace.clone());
                 }
             }
             PropertyType::Array { element_ty } => {
@@ -755,30 +759,123 @@ impl SchemaGenerator {
                 );
             }
             PropertyType::Union { types } => {
-                if let Ok(union_name) = name.parse::<UnreservedId>() {
-                    let child_ns: Name = union_name.into();
-                    let child_ns = Some(child_ns.qualify_with_name(namespace.as_ref()));
-                    for (i, ty) in types.iter().enumerate() {
-                        let variant_name = format!("TypeChoice{i}");
-                        Self::collect_enum_fingerprints_from_property_type(
-                            &variant_name,
-                            ty,
+                let union_name = identifiers::encoded_id(name);
+                let child_ns: Name = union_name.into();
+                let child_ns = Some(child_ns.qualify_with_name(namespace.as_ref()));
+                for (i, ty) in types.iter().enumerate() {
+                    let variant_name = format!("TypeChoice{i}");
+                    Self::collect_enum_fingerprints_from_property_type(
+                        &variant_name,
+                        ty,
+                        &child_ns,
+                        dedup_map,
+                    );
+                }
+            }
+            PropertyType::Tuple { types } => {
+                let tuple_name = identifiers::encoded_id(name);
+                let child_ns: Name = tuple_name.into();
+                let child_ns = Some(child_ns.qualify_with_name(namespace.as_ref()));
+                for (i, ty) in types.iter().enumerate() {
+                    let proj_name = format!("Proj{i}");
+                    Self::collect_enum_fingerprints_from_property_type(
+                        &proj_name, ty, &child_ns, dedup_map,
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Like `collect_enum_fingerprints_from_property_type`, but `base_name` is already a derived
+    /// identifier used verbatim, not re-derived. Used for the synthetic `{obj}Tag` type of a
+    /// tagged object, whose name the schema generator builds by concatenation, not derivation.
+    #[expect(
+        clippy::ref_option,
+        reason = "Consistent with the rest of the codebase's namespace parameter style."
+    )]
+    fn collect_enum_fingerprints_from_derived_name(
+        base_name: &UnreservedId,
+        property_type: &PropertyType,
+        namespace: &Option<Name>,
+        dedup_map: &mut DeduplicationMap,
+    ) {
+        match property_type {
+            PropertyType::Enum { variants } => {
+                if !variants.is_empty() {
+                    let fingerprint = EntityTypeFingerprint::Enum {
+                        base_name: base_name.clone(),
+                        variants: variants.clone().into_iter().map(Eid::new).collect(),
+                    };
+                    dedup_map.record(fingerprint, namespace.clone());
+                }
+            }
+            PropertyType::Array { element_ty } => {
+                Self::collect_enum_fingerprints_from_derived_name(
+                    base_name,
+                    element_ty.as_ref(),
+                    namespace,
+                    dedup_map,
+                );
+            }
+            // A tag type that is an object, union or tuple introduces its own child namespace.
+            // The schema generator derives sub-names (nested properties, `Proj{i}`,
+            // `TypeChoice{i}`) from the raw structure under that namespace, so recurse with the
+            // raw-name scanner, qualifying by the already-derived `base_name`.
+            PropertyType::Object {
+                properties,
+                additional_properties,
+            } => {
+                let child_ns: Name = base_name.clone().into();
+                let child_ns = Some(child_ns.qualify_with_name(namespace.as_ref()));
+                for prop in properties {
+                    Self::collect_enum_fingerprints_from_property_type(
+                        prop.name(),
+                        prop.property_type(),
+                        &child_ns,
+                        dedup_map,
+                    );
+                }
+                if let Some(additional) = additional_properties {
+                    if let Ok(tag_name) =
+                        UnreservedId::from_normalized_str(&format!("{base_name}Tag"))
+                    {
+                        Self::collect_enum_fingerprints_from_derived_name(
+                            &tag_name,
+                            additional.as_ref(),
                             &child_ns,
                             dedup_map,
                         );
                     }
                 }
+                if is_leaf_record(property_type) {
+                    let fingerprint =
+                        EntityTypeFingerprint::new_leaf_record(base_name.clone(), properties);
+                    dedup_map.record(fingerprint, namespace.clone());
+                }
+            }
+            PropertyType::Union { types } => {
+                let child_ns: Name = base_name.clone().into();
+                let child_ns = Some(child_ns.qualify_with_name(namespace.as_ref()));
+                for (i, ty) in types.iter().enumerate() {
+                    Self::collect_enum_fingerprints_from_property_type(
+                        &format!("TypeChoice{i}"),
+                        ty,
+                        &child_ns,
+                        dedup_map,
+                    );
+                }
             }
             PropertyType::Tuple { types } => {
-                if let Ok(tuple_name) = name.parse::<UnreservedId>() {
-                    let child_ns: Name = tuple_name.into();
-                    let child_ns = Some(child_ns.qualify_with_name(namespace.as_ref()));
-                    for (i, ty) in types.iter().enumerate() {
-                        let proj_name = format!("Proj{i}");
-                        Self::collect_enum_fingerprints_from_property_type(
-                            &proj_name, ty, &child_ns, dedup_map,
-                        );
-                    }
+                let child_ns: Name = base_name.clone().into();
+                let child_ns = Some(child_ns.qualify_with_name(namespace.as_ref()));
+                for (i, ty) in types.iter().enumerate() {
+                    Self::collect_enum_fingerprints_from_property_type(
+                        &format!("Proj{i}"),
+                        ty,
+                        &child_ns,
+                        dedup_map,
+                    );
                 }
             }
             _ => {}
@@ -849,7 +946,7 @@ impl SchemaGenerator {
         // This makes type resolution simpler and will allow for mutually recursive type defs
         let mut common_types = BTreeMap::new();
         for type_def in description.type_definitions() {
-            let type_name = CommonTypeId::new(type_def.name().parse()?)?;
+            let type_name = CommonTypeId::new(identifiers::encoded_id(type_def.name()))?;
             let type_name = get_refname(&namespace, &type_name);
             let ref_name = type_def.name().to_smolstr();
             common_types.insert(ref_name, type_name);
@@ -857,7 +954,7 @@ impl SchemaGenerator {
 
         // Preemptively add all typedefs as commontypes
         for type_def in description.type_definitions() {
-            let ty_name = type_def.name().parse::<UnreservedId>()?;
+            let ty_name = identifiers::encoded_id(type_def.name());
             let ty = self.cedar_type_from_property_type(
                 &namespace,
                 ty_name.clone(),
@@ -889,7 +986,7 @@ impl SchemaGenerator {
         let mut dedup_map = DeduplicationMap::default();
 
         for tool_description in description.tool_descriptions() {
-            let tool_ns: Name = tool_description.name().parse()?;
+            let tool_ns: Name = identifiers::encoded_id(tool_description.name()).into();
             let tool_ns = tool_ns.qualify_with_name(self.namespace.as_ref());
             let input_ns = Some(identifiers::INPUT_NAME.qualify_with_name(Some(&tool_ns)));
 
@@ -907,13 +1004,12 @@ impl SchemaGenerator {
             for type_def in tool_description.type_definitions() {
                 if let PropertyType::Enum { variants } = type_def.property_type() {
                     if !variants.is_empty() {
-                        if let Ok(base_name) = type_def.name().parse::<UnreservedId>() {
-                            let fingerprint = EntityTypeFingerprint::Enum {
-                                base_name,
-                                variants: variants.clone().into_iter().map(Eid::new).collect(),
-                            };
-                            dedup_map.record(fingerprint, Some(tool_ns.clone()));
-                        }
+                        let base_name = identifiers::encoded_id(type_def.name());
+                        let fingerprint = EntityTypeFingerprint::Enum {
+                            base_name,
+                            variants: variants.clone().into_iter().map(Eid::new).collect(),
+                        };
+                        dedup_map.record(fingerprint, Some(tool_ns.clone()));
                     }
                 }
             }
@@ -1002,8 +1098,7 @@ impl SchemaGenerator {
                         let attributes = fields
                             .iter()
                             .map(|(name, prop_type, required)| {
-                                let ty_name: UnreservedId =
-                                    name.parse().map_err(SchemaGeneratorError::from)?;
+                                let ty_name = identifiers::encoded_id(name);
                                 let ty = self.cedar_type_from_property_type(
                                     lca_ns,
                                     ty_name,
@@ -1052,14 +1147,15 @@ impl SchemaGenerator {
         description: &ToolDescription,
         mut common_types: BTreeMap<SmolStr, RawName>,
     ) -> Result<(), SchemaGeneratorError> {
-        let namespace: Name = description.name().parse()?;
+        let tool_id = identifiers::encoded_id(description.name());
+        let namespace: Name = tool_id.clone().into();
         let namespace = Some(namespace.qualify_with_name(self.namespace.as_ref()));
         self.add_namespace(namespace.clone());
 
         // Populate a map from type ref names to fully qualified type name
         // This makes type resolution simpler and will allow for mutually recursive type defs
         for type_def in description.type_definitions() {
-            let type_name = CommonTypeId::new(type_def.name().parse()?)?;
+            let type_name = CommonTypeId::new(identifiers::encoded_id(type_def.name()))?;
             let type_name = get_refname(&namespace, &type_name);
             let ref_name = type_def.name().to_smolstr();
             // Resolution rules are that defs defined closer to use are preferred
@@ -1069,7 +1165,7 @@ impl SchemaGenerator {
 
         // Preemptively add all typedefs as commontypes
         for type_def in description.type_definitions() {
-            let ty_name = type_def.name().parse::<UnreservedId>()?;
+            let ty_name = identifiers::encoded_id(type_def.name());
             let ty = self.cedar_type_from_property_type(
                 &namespace,
                 ty_name.clone(),
@@ -1112,8 +1208,7 @@ impl SchemaGenerator {
             ty: TypeVariant::Record(inputs),
             loc: None,
         };
-        let tool_input_ty_name: UnreservedId =
-            format!("{}Input", description.name()).as_str().parse()?;
+        let tool_input_ty_name = UnreservedId::from_normalized_str(&format!("{tool_id}Input"))?;
         let parent_namespace = self.namespace.clone();
         self.add_commontype(
             &parent_namespace,
@@ -1149,8 +1244,8 @@ impl SchemaGenerator {
                 ty: TypeVariant::Record(outputs),
                 loc: None,
             };
-            let tool_output_ty_name: UnreservedId =
-                format!("{}Output", description.name()).parse()?;
+            let tool_output_ty_name =
+                UnreservedId::from_normalized_str(&format!("{tool_id}Output"))?;
             self.add_commontype(
                 &parent_namespace,
                 output_type,
@@ -1420,7 +1515,7 @@ impl SchemaGenerator {
         // Populate a map from type ref names to fully qualified type name
         // This makes type resolution simpler and will allow for mutually recursive type defs
         for type_def in parameters.type_definitions() {
-            let type_name = CommonTypeId::new(type_def.name().parse()?)?;
+            let type_name = CommonTypeId::new(identifiers::encoded_id(type_def.name()))?;
             let type_name = get_refname(namespace, &type_name);
             let ref_name = type_def.name().to_smolstr();
             // Resolution rules are that defs defined closer to use are preferred
@@ -1430,7 +1525,7 @@ impl SchemaGenerator {
 
         // Preemptively add all typedefs as commontypes
         for type_def in parameters.type_definitions() {
-            let ty_name = type_def.name().parse::<UnreservedId>()?;
+            let ty_name = identifiers::encoded_id(type_def.name());
             let ty = self.cedar_type_from_property_type(
                 namespace,
                 ty_name.clone(),
@@ -1444,7 +1539,7 @@ impl SchemaGenerator {
 
         for property in parameters.properties() {
             let attr_name = property.name().to_smolstr();
-            let ty_name = property.name().parse()?;
+            let ty_name = identifiers::encoded_id(property.name());
 
             let ty = self.cedar_type_from_property_type(
                 namespace,
@@ -1720,7 +1815,7 @@ impl SchemaGenerator {
 
                 for property in properties {
                     let attr_name = property.name().to_smolstr();
-                    let ty_name = property.name().parse()?;
+                    let ty_name = identifiers::encoded_id(property.name());
 
                     let ty = self.cedar_type_from_property_type(
                         &ns,
@@ -3207,14 +3302,14 @@ namespace Test2 {
     }
 
     fn bad_tool() -> ToolDescription {
-        let json = r#"{
+        let json = r##"{
     "name": "bad_tool",
-    "description": "Tool with invalid property name",
+    "description": "Tool with an undefined `$ref`",
     "inputSchema": {
         "type": "object",
-        "properties": { "foo bar": {"type": "string"} }
+        "properties": { "foo": {"$ref": "#/$defs/undefined_ref"} }
     }
-}"#;
+}"##;
         ToolDescription::from_json_str(json).expect("Failed to parse tool description")
     }
 
@@ -3263,6 +3358,87 @@ namespace Test2 {
 
         gen.add_action_from_tool_description(&good_tool())
             .expect("Generator should accept a valid tool after a failed server description");
+    }
+
+    /// Tool, property and `$defs` names that are not Cedar identifiers used to make generation
+    /// fail. They now derive to `CDRG26__...` identifiers for namespaces and type names, while the
+    /// action name and record attribute names stay the raw MCP names.
+    #[test]
+    fn test_non_identifier_names_are_derived() {
+        let tool = r##"{
+    "name": "get-weather",
+    "description": "A tool whose name is not a Cedar identifier",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "@odata.type": {
+                "type": "object",
+                "properties": {
+                    "kind name": {"type": "string", "enum": ["a", "b"]}
+                }
+            },
+            "unit : oh no": {"$ref": "#/$defs/temp-unit"}
+        },
+        "required": [],
+        "$defs": {
+            "temp-unit": {"type": "string", "enum": ["C", "F"]}
+        }
+    }
+}"##;
+        let tool = ToolDescription::from_json_str(tool).expect("Failed to parse tool description");
+        let mut gen =
+            SchemaGenerator::new(test_schema_stub()).expect("Failed to create schema generator");
+        gen.add_action_from_tool_description(&tool)
+            .expect("Generation should succeed for names that are not identifiers");
+
+        let schema = gen.get_schema();
+        let root_nsdef = schema
+            .0
+            .get(&Some("Test".parse::<Name>().unwrap()))
+            .expect("Expected namespace Test to exist");
+        assert!(root_nsdef.actions.contains_key("get-weather"));
+        assert!(root_nsdef
+            .common_types
+            .contains_key(&CommonTypeId::unchecked(
+                "CDRG26__get_2d_weatherInput".parse().unwrap()
+            )));
+
+        let input_nsdef = schema
+            .0
+            .get(&Some(
+                "Test::CDRG26__get_2d_weather::Input"
+                    .parse::<Name>()
+                    .unwrap(),
+            ))
+            .expect("Expected namespace Test::CDRG26__get_2d_weather::Input to exist");
+        assert!(input_nsdef
+            .entity_types
+            .contains_key(&"CDRG26___40_odata_2e_type".parse().unwrap()));
+        assert!(input_nsdef
+            .entity_types
+            .contains_key(&"CDRG26__temp_2d_unit".parse().unwrap()));
+
+        let odata_nsdef = schema
+            .0
+            .get(&Some(
+                "Test::CDRG26__get_2d_weather::Input::CDRG26___40_odata_2e_type"
+                    .parse::<Name>()
+                    .unwrap(),
+            ))
+            .expect("Expected namespace for the nested object to exist");
+        assert!(odata_nsdef
+            .entity_types
+            .contains_key(&"CDRG26__kind_20_name".parse().unwrap()));
+
+        // Attribute names stay the raw MCP names.
+        let cedarschema = schema.to_cedarschema().expect("Failed to print schema");
+        assert!(cedarschema.contains("\"@odata.type\""), "{cedarschema}");
+        assert!(cedarschema.contains("\"unit : oh no\""), "{cedarschema}");
+        assert!(cedarschema.contains("\"kind name\""), "{cedarschema}");
+
+        // The schema is a valid Cedar schema.
+        gen.new_request_generator()
+            .expect("Generated schema should be valid");
     }
 }
 

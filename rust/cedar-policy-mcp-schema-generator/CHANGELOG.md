@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Tool, property and `$defs` (JSON subschemas) names that are not valid Cedar identifiers (e.g. `get-weather`, `@odata.type`, names with spaces or colons) are now accepted. The generator derives a valid identifier for the namespace and type names it emits, keeping the original name on action ids and record attribute keys. Names that are already valid identifiers are unchanged, so schemas for such names do not change.
+
+### Changed
+- The generated schema shape changes for names that are not valid identifiers: the namespace and type names for those are now prefixed with `CDRG26__` and hex-escaped (e.g. `get-weather` becomes namespace `CDRG26__get_2d_weather`), where generation previously failed. Names that are already valid identifiers and do not start with `CDRG26__` are unaffected. A name that is a valid identifier but starts with `CDRG26__` is now escaped, which changes its generated name; such names are expected to be rare.
+
 ## [0.8.0] - 2026-11-17
 
 ### Changed
